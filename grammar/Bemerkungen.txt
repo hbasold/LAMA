@@ -1,0 +1,31 @@
+Low Abstraction Mode Automata (LAMA)
+
+TODO: Takte mit aufnehmen?
+
+Spracheigenschaften:
+    - baut auf NBAC auf
+    - fügt strikt hierarchische Knoten hinzu
+    - jeder Knoten kann Datenfluss und Automaten deklarieren
+    - Typen und Konstanten können nur auf oberster Ebene deklariert werden
+    - Assertions etc. ebenfalls
+    - Erweiterung des Typsystems um Arrays und Records
+    - keine hybriden Systeme möglich (entsprechende Konstrukte entfernt)
+    - "eq"-Operator entfernt
+    - "#"- und "in"-Konstrukt ebenfalls entfernt
+    - Automaten sind Mode-Automata (s.u.)
+    
+Die Erweiterungen sind nur syntaktischer Zucker, um die Abstraktion
+des Entwicklers besser reflektieren zu können. Ansonsten kann durch
+Inlining und Abrollen alles in NBAC übersetzt werden.
+
+Automaten:
+    - „reactive“ (d.h. total sein)
+    - wenn Transitionen sich nicht ausschließen, werden sie in
+        der Reihenfolge genutzt, in der sie deklariert wurden;
+        dadurch wird die Semantik deterministisch
+    - parallele Komposition erfordert, dass geschriebene
+        Variable disjunkt sind
+    - hierarchische Komposition erfolgt durch Knoten
+ s. hierzu „Mode-Automata: About Modes and States for Reactive Systems“.
+ Wichtig ist hier, dass Transitionen in diesem Modell den
+ „weak transitions“ aus Scade entsprechen.

@@ -1,0 +1,169 @@
+position token Identifier (letter (letter | digit | '_')*) ;
+position token StateId (letter (letter | digit | '_')* '\'') ;
+comment "--" ;
+
+entrypoints File ;
+
+File. File   ::= TypeDefs
+                ConstantDefs
+                Node
+                Assertion
+                Initial
+                Invariant
+            ;
+
+------
+NoTypeDefs. TypeDefs ::= ;
+JustTypeDefs. TypeDefs  ::= "typedef" [TypeDef] ;
+terminator nonempty TypeDef ";" ;
+
+EnumDef. TypeDef   ::= EnumT ;
+RecordDef. TypeDef   ::= RecordT ;
+
+EnumConstr. EnumConstr ::= Identifier ;
+separator nonempty EnumConstr "," ;
+EnumT.      EnumT      ::= "enum" Identifier "=" "{" [EnumConstr] "}" ;
+
+RecordField. RecordField ::= Identifier ":" Type ;
+separator nonempty RecordField "," ;
+RecordT. RecordT    ::= "record" Identifier "=" "{" [RecordField] "}" ;
+
+---- 
+GroundType. Type ::= BaseType ;
+TypeId. Type ::= Identifier ;
+ArrayType. Type ::= BaseType "^" Natural ;
+
+BoolT. BaseType ::= "bool" ;
+IntT. BaseType ::= "int" ;
+RealT. BaseType ::= "real" ;
+SInt. BaseType ::= "sint" "[" Natural "]" ;
+UInt. BaseType ::= "uint" "[" Natural "]" ;
+
+----
+NoConstantDefs. ConstantDefs ::= ;
+JustConstantDefs. ConstantDefs ::= "constants" [ConstantDef] ;
+terminator nonempty ConstantDef ";" ;
+ConstantDef. ConstantDef ::= Identifier "=" Constant ;
+
+------
+Nat. Natural ::= Integer ;
+
+NonNegativeInt. IntegerConst ::= Integer ;
+NegativeInt. IntegerConst ::= "(" "-" Integer ")" ;
+
+BoolConst. Constant ::= BoolV ;
+IntConst. Constant ::= IntegerConst ;
+RealConst. Constant ::= IntegerConst "/" IntegerConst ;
+SIntConst. Constant ::= "sint" "[" Natural "]" "(" IntegerConst ")" ;
+UIntConst. Constant ::= "uint" "[" Natural "]" "(" Natural ")" ;
+
+TrueV. BoolV ::= "true" ;
+FalseV. BoolV ::= "false" ;
+
+------
+NoAssertion. Assertion ::= ;
+JustAssertion. Assertion ::= "assertion" Expr ";" ;
+NoInitial. Initial ::= ;
+JustInitial. Initial ::= "initial" [StateInit] ";" ;
+NoInvariant. Invariant ::= ;
+JustInvariant. Invariant ::= "invariant" Expr ";" ;
+
+separator nonempty StateInit "," ;
+StateInit. StateInit ::= Identifier "=" ConstExpr ;
+ConstExpr. ConstExpr ::= Expr ;
+
+------
+separator nonempty Identifier "," ;
+TypedVars. TypedVars ::= [Identifier] ":" Type ;
+separator nonempty TypedVars ";" ;
+
+NoTypedVars. MaybeTypedVars ::= ;
+JustTypedVars. MaybeTypedVars ::= [TypedVars];
+
+Node. Node  ::= "node" Identifier "(" MaybeTypedVars ")" "returns" "(" [TypedVars] ")" ";"
+                "let"
+                    NodeDecls
+                    StateDecls
+                    LocalDecls
+                    Flow
+                    ControlStructure
+                    Initial
+                "tel" ;
+
+separator nonempty Node "" ;
+SingleDecl. VarDecls ::= TypedVars ";" ;
+ConsDecl. VarDecls ::= TypedVars ";" VarDecls ;
+NoNodes. NodeDecls     ::= ;
+JustNodeDecls. NodeDecls     ::= "nodes" [Node] ;
+NoStateDecls. StateDecls    ::= ;
+JustStateDecls. StateDecls    ::= "state" VarDecls ;
+NoLocals. LocalDecls    ::= ;
+JustLocalDecls. LocalDecls    ::= "local" VarDecls ;
+
+
+-----
+Flow. Flow ::= LocalDefinitions Outputs Transitions ;
+NoLocalDefinitons. LocalDefinitions    ::= ;
+JustLocalDefinitons. LocalDefinitions    ::= "definition" [InstantDefinition] ;
+NoOutputs. Outputs    ::= ;
+JustOutputs. Outputs    ::= "output" [InstantDefinition] ;
+NoTransitions. Transitions    ::= ;
+JustTransitions. Transitions    ::= "transition" [Transition] ;
+
+terminator nonempty InstantDefinition ";" ;
+terminator nonempty Transition ";" ;
+SimpleDef. InstantDefinition ::= Identifier "=" Expr ;
+NodeUsageDef. InstantDefinition ::= Pattern "=" NodeUsage ;
+Transition. Transition ::= StateId "=" Expr ;
+
+Pattern. Pattern ::= List2Id ;
+Id2. List2Id ::= Identifier "," Identifier ;
+ConsId. List2Id ::= Identifier "," List2Id ;
+NodeUsage. NodeUsage ::= "(" "use" Identifier [Expr] ")" ;
+
+-----
+ControlStructure. ControlStructure ::= [Automaton] ;
+Automaton. Automaton ::= "automaton" "let" [Location] InitialLocation [Edge] "tel" ;
+Location. Location ::= "location" Identifier "let" Flow "tel" ;
+InitialLocation. InitialLocation ::= "initial" Identifier ";" ;
+Edge. Edge ::= "edge" "(" Identifier "," Identifier ")" ":" Expr ";" ;
+separator nonempty Location "" ;
+separator nonempty Edge "" ;
+separator Automaton "" ;
+
+-----
+-- Array ggf. zu restriktiv (erfordert evtl. viele temporäre Variable)
+
+-----
+AtomConst. Atom ::= Constant ;
+AtomVar. Atom ::= Identifier ;
+
+AtExpr. Expr ::= Atom ;
+Expr1. Expr ::= "(" UnOp Expr ")" ;
+Expr2. Expr ::= "(" BinOp Expr Expr ")" ;
+Expr3. Expr ::= "(" TernOp Expr Expr Expr ")" ;
+Constr. Expr ::= "(" "constr" Identifier [Expr] ")" ;
+Project. Expr ::= "(" "project" Identifier Natural ")" ;
+Select. Expr ::= "(" "select" Identifier Identifier ")" ;
+separator nonempty Expr "" ;
+
+Not. UnOp ::= "not" ;
+
+Or. BinOp ::= "or" ;
+And. BinOp ::= "and" ;
+Xor. BinOp ::= "xor" ;
+Implies. BinOp ::= "=>" ;
+Equals. BinOp ::= "=" ;
+Less. BinOp ::= "<" ;
+Greater. BinOp ::= ">" ;
+LEq. BinOp ::= "<=" ;
+GEq. BinOp ::= ">=" ;
+Plus. BinOp ::= "+" ;
+Minus. BinOp ::= "-" ;
+Mul. BinOp ::= "*" ;
+RealDiv. BinOp ::= "/" ;
+IntDiv. BinOp ::= "div" ;
+Mod. BinOp ::= "mod" ;
+
+Ite. TernOp ::= "ite" ;
+

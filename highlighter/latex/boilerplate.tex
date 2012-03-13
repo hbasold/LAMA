@@ -1,0 +1,22 @@
+\documentclass{scrartcl}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[ngerman]{babel}
+\usepackage{amsmath}
+
+\usepackage{listings}
+
+\lstdefinelanguage{lama}{
+    morekeywords={ and, bool, definition, enum, int, let, 
+        mod, not, real, select, tel, typedef, xor, assertion, 
+        constants, div, false, invariant, local, node, or, output, record, 
+        sint, transition, uint, automaton, constr, edge, initial, 
+        ite, location, nodes, project, returns, state, true, use
+    },
+    sensitive=true,
+    morecomment=[l]{--}
+}
+
+\begin{document}
+\lstinputlisting[language=lama]{someFile.lm}
+\end{document}

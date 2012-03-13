@@ -1,0 +1,35 @@
+-- Zählt periodisch von 0 bis 10 hoch und wieder runter
+-- Beispiel stammt von http://www-verimag.imag.fr/Language-Design,112.html?artpage=7-8 .
+-- Die Ursprüngliche Version stammt aus dem Paper über Mode-Automata
+-- (http://www-verimag.imag.fr/~maraninx/spip.php?article102). Man beachte, dass hier
+-- x mit -1 initialisiert wird. Dadurch ist xo am Anfang 0 und nicht 1 wie im Paper.
+
+node main () returns (xo : int);
+let
+  state
+    x : int;
+  local
+    x_ : int;
+  output
+    xo = x_;
+  transition
+    x' = x_;
+  
+  automaton let
+    location A let
+      definition x_ = (+ x 1);
+    tel
+    location B let
+      definition x_ = (- x 1);
+    tel
+    initial A;
+    edge (A, B) : (= x 10);
+    edge (B, A) : (= x 0);
+    edge (A, A) : (not (= x 10));
+    edge (B, B) : (not (= x 0));
+  tel
+  
+  initial x = (- 1);
+tel
+
+-- invariant (<= xo 10);

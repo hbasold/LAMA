@@ -1,0 +1,38 @@
+Name:           LAMA
+Version:        0.1
+Build-Type:     Simple
+Cabal-Version:  >= 1.10
+Description:
+  Interpreter for LAMA
+
+Executable test-lama
+  default-language: Haskell2010
+  build-depends: base, containers, mtl, bytestring, natural-numbers, transformers, pretty, array, HUnit
+  hs-source-dirs: test lib
+  GHC-Options: -Wall
+  other-modules:
+    Lang.LAMA.Parser.Abs
+    Lang.LAMA.Parser.ErrM
+    Lang.LAMA.Parser.Lex
+    Lang.LAMA.Parser.Par
+    Lang.LAMA.Parser.Print
+    Lang.LAMA.Types
+    Lang.LAMA.Transform
+    Lang.LAMA.Parse
+  main-is: test-lama.hs
+
+Executable lamai
+  default-language: Haskell2010
+  Build-Depends: base, containers, mtl, bytestring, natural-numbers, transformers, pretty, array
+  Hs-Source-Dirs: . lib
+  GHC-Options: -Wall
+  other-modules:
+    Lang.LAMA.Parser.Abs
+    Lang.LAMA.Parser.ErrM
+    Lang.LAMA.Parser.Lex
+    Lang.LAMA.Parser.Par
+    Lang.LAMA.Parser.Print
+    Lang.LAMA.Types
+    Lang.LAMA.Transform
+    Lang.LAMA.Parse
+  Main-Is: Main.hs

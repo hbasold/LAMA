@@ -1,0 +1,185 @@
+module Absyn:
+  datatype identifier = Identifier of ((int * int) * string)
+  datatype stateId = StateId of ((int * int) * string)
+  datatype file =
+     File of typeDefs * constantDefs * node * assertion * initial * invariant
+
+  datatype typeDefs =
+     NoTypeDefs
+   | JustTypeDefs of typeDef list
+
+  datatype typeDef =
+     EnumDef of enumT
+   | RecordDef of recordT
+
+  datatype enumConstr =
+     EnumConstr of identifier
+
+  datatype enumT =
+     EnumT of identifier * enumConstr list
+
+  datatype recordField =
+     RecordField of identifier * type
+
+  datatype recordT =
+     RecordT of identifier * recordField list
+
+  datatype type =
+     GroundType of baseType
+   | TypeId of identifier
+   | ArrayType of baseType * int
+
+  datatype baseType =
+     BoolT
+   | IntT
+   | RealT
+   | SInt of int
+   | UInt of int
+
+  datatype constantDefs =
+     NoConstantDefs
+   | JustConstantDefs of constantDef list
+
+  datatype constantDef =
+     ConstantDef of identifier * constant
+
+  datatype natural =
+     Nat of int
+
+  datatype integerConst =
+     NonNegativeInt of int
+   | NegativeInt of int
+
+  datatype constant =
+     BoolConst of boolV
+   | IntConst of integerConst
+   | RealConst of integerConst * integerConst
+   | SIntConst of natural * integerConst
+   | UIntConst of natural * natural
+
+  datatype boolV =
+     TrueV
+   | FalseV
+
+  datatype assertion =
+     NoAssertion
+   | JustAssertion of expr
+
+  datatype initial =
+     NoInitial
+   | JustInitial of expr
+
+  datatype invariant =
+     NoInvariant
+   | JustInvariant of expr
+
+  datatype typedVars =
+     TypedVars of identifier list * type
+
+  datatype maybeTypedVars =
+     NoTypedVars
+   | JustTypedVars of typedVars list
+
+  datatype node =
+     Node of identifier * maybeTypedVars * typedVars list * nodeDecls * stateDecls * localDecls * flow * controlStructure * initial
+
+  datatype varDecls =
+     SingleDecl of typedVars
+   | ConsDecl of typedVars * varDecls
+
+  datatype nodeDecls =
+     NoNodes
+   | JustNodeDecls of node list
+
+  datatype stateDecls =
+     NoStateDecls
+   | JustStateDecls of varDecls
+
+  datatype localDecls =
+     NoLocals
+   | JustLocalDecls of varDecls
+
+  datatype flow =
+     Flow of localDefinitions * outputs * transitions
+
+  datatype localDefinitions =
+     NoLocalDefinitons
+   | JustLocalDefinitons of instantDefinition list
+
+  datatype outputs =
+     NoOutputs
+   | JustOutputs of instantDefinition list
+
+  datatype transitions =
+     NoTransitions
+   | JustTransitions of transition list
+
+  datatype instantDefinition =
+     SimpleDef of identifier * expr
+   | NodeUsageDef of pattern * nodeUsage
+
+  datatype transition =
+     Transition of stateId * expr
+
+  datatype pattern =
+     Pattern of list2Id
+
+  datatype list2Id =
+     Id2 of identifier * identifier
+   | ConsId of identifier * list2Id
+
+  datatype nodeUsage =
+     NodeUsage of identifier * expr list
+
+  datatype controlStructure =
+     ControlStructure of automaton list
+
+  datatype automaton =
+     Automaton of location list * initialLocation * edge list
+
+  datatype location =
+     Location of identifier * flow
+
+  datatype initialLocation =
+     InitialLocation of identifier
+
+  datatype edge =
+     Edge of identifier * identifier * expr
+
+  datatype atom =
+     AtomConst of constant
+   | AtomVar of identifier
+
+  datatype expr =
+     AtExpr of atom
+   | Expr1 of unOp * expr
+   | Expr2 of binOp * expr * expr
+   | Expr3 of ternOp * expr * expr * expr
+   | Constr of identifier * expr list
+   | Project of identifier * int
+   | Select of identifier * identifier
+
+  datatype unOp =
+     Not
+
+  datatype binOp =
+     Or
+   | And
+   | Xor
+   | Implies
+   | Equals
+   | Less
+   | Greater
+   | LEq
+   | GEq
+   | Plus
+   | Minus
+   | Mul
+   | RealDiv
+   | IntDiv
+   | Mod
+
+  datatype ternOp =
+     Ite
+
+end

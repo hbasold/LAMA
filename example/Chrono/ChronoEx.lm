@@ -1,0 +1,124 @@
+typedef
+  record times = {seconds : int, minutes : int};
+  
+constants
+  secondsPartFactor = 100;
+  secondsFactor = 60;
+  minutesFactor = 60;
+  
+node chrono (StSt, Rst : bool) returns (t : times);
+let
+  nodes
+    -- Innerer Automat
+    node button (StSt : bool; internal_reset : bool)
+      returns (so, mo : int; run : bool);
+    let
+      state
+        d, s, m : int;
+      local
+        -- Variablen mit _ am Ende sollen andeuten,
+        -- dass dies der Wert waere, den die Variable
+        -- im naechsten Zustand haette.
+        d_, s_, m_: int;
+        STOP_d_, START_d_, STOP_s_, START_s_,
+          STOP_m_, START_m_ : int;
+        run_, STOP_run_, START_run_ : bool;
+      definition
+        -- Berechnungen in den einzelnen Zustaenden. Diese
+        -- muessen jeweils verfuegbar sein, da es sich um
+        -- Strong-Transitions handelt. D.h. die Berechnung
+        -- des Folgezustands muss sofort verfuegbar sein.
+        STOP_d_ = d;
+        START_d_ = (mod (+ d 1) secondsPartFactor);
+        STOP_s_ = s;
+        START_s_ = (ite (< d_ d) (mod (+ s 1) secondsFactor) s);
+        STOP_m_ = m;
+        START_m_ = (ite (< s_ s) (mod (+ m 1) minutesFactor) m);
+        STOP_run_ = false;
+        START_run_ = true;
+
+      output
+        so = (ite internal_reset 0 s_);
+        mo = (ite internal_reset 0 m_);
+        run = (ite internal_reset false run_);
+
+      transition
+        d' = (ite internal_reset 0 d_);
+        s' = (ite internal_reset 0 s_);
+        m' = (ite internal_reset 0 m_);
+              
+        automaton let
+          location STOP let
+            definition
+              d_ = (ite (not StSt) STOP_d_ START_d_);
+              s_ = (ite (not StSt) STOP_s_ START_s_);
+              m_ = (ite (not StSt) STOP_m_ START_m_);
+              run_ = (ite (not StSt) STOP_run_ START_run_);
+          tel
+          location START let
+            definition
+              d_ = (ite (not StSt) START_d_ STOP_d_);
+              s_ = (ite (not StSt) START_s_ STOP_s_);
+              m_ = (ite (not StSt) START_m_ STOP_m_);
+              run_ = (ite (not StSt) START_run_ STOP_run_);
+          tel
+          initial STOP;
+          edge (STOP, START) : (and (not internal_reset) StSt);
+          edge (START, STOP) : (and (not internal_reset) StSt);
+          edge (STOP, STOP) : internal_reset;
+          edge (START, STOP) : internal_reset;
+          -- make transition relation total
+          edge (START, START) : (not (or (and (not internal_reset) StSt) internal_reset)); -- = (not (or internal_reset StSt))
+          edge (STOP, STOP) : (not (or (and (not internal_reset) StSt) internal_reset));
+        tel
+
+        initial d = 0, s = 0, m = 0;
+      tel
+  state
+    disp_1, disp_2 : int;        
+  local
+    s, m : int;
+    run : bool;
+  output
+    t = (constr times disp_1 disp_2);
+      
+  automaton let
+    location CHRONO let
+      definition s, m, run = (use button StSt false);
+    tel
+    location CHRONO_RESET let
+      definition s, m, run = (use button StSt true);
+    tel
+    
+    initial CHRONO;
+    edge (CHRONO, CHRONO) : (or (not Rst) run);
+    edge (CHRONO, CHRONO_RESET) : (and Rst (not run));
+    edge (CHRONO_RESET, CHRONO) : true;
+    -- make transition relation total
+    edge (CHRONO, CHRONO) : (not (or (or (not Rst) run) (and Rst (not run)))); -- = false
+    edge (CHRONO_RESET, CHRONO_RESET) : (not true); -- = false
+  tel
+      
+  automaton let
+    location TIME let
+      transition
+        disp_1' = s;
+        disp_2' = m;
+    tel
+    location LAP let
+      transition
+        disp_1' = disp_1;
+        disp_2' = disp_2;
+    tel
+    
+    initial TIME;
+    edge (TIME, LAP) : (and Rst run);
+    edge (LAP, TIME) : Rst;
+    -- make transition relation total
+    edge (TIME, TIME) : (not (and Rst run));
+    edge (LAP, LAP) : (not Rst);
+  tel
+  
+  initial disp_1 = 0, disp_2 = 0;
+tel
+

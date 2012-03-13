@@ -1,0 +1,127 @@
+
+(* (dependencies, history, inputs, modes) -> (outputs, next state) *)
+(* Checks to be done before:
+    - dependencies should be a DAG
+    - all outputs, definitions and states should be written exactly once
+    - inputs should not be written
+*)
+relation node_eval: (Dependencies, Env, Env, Modes, node) => (Env, Env, Modes) =
+  rule  lookup(h, init) => false &
+        restrict(h, states) => this_h &
+        emptyEnv() => l &
+        eval_flow(d, this_h, i, l, m, flow) => (l', s1, o1) &
+        eval_automaton(d, this_h, l', m, autom) => (l'', s2, m', o2)
+        -------------------------------------------------------------------------------
+        node_eval(d, h, i, m, Node(n, in, out, sub, locals, states, flow, autom, _) )
+          => (union(o1, o2), union(s1, s2), m')
+
+  (* Use intial values in first step. init_vals is expected to be an environment which
+    contains all used state variables. We pass "init" to deeper levels. *)          
+  rule  lookup(h, init) => true &
+        update(init_vals, init, true) => init_vals' &
+        emptyEnv() => l &
+        eval_flow(d, init_vals', i, l, m, flow) => (l', s1, o1) &
+        eval_automaton(d, init_vals', l', m, autom) => (l'', s2, m', o2)
+        -------------------------------------------------------------------------------
+        node_eval(d, h, i, m, Node(n, in, out, sub, locals, states, flow, autom, init_vals) )
+          => (union(o1, o2), union(s1, s2), m')
+end
+
+(* (dependencies, history, inputs, local variables) -> (updated locals, outputs, next state) *)
+relation eval_flow: (Dependencies, Env, Env, Env, Modes, flow) => (Env, Env, Env) =
+  eval_locals(d, h, i, l, m, localDefs) => (_, l') &
+  eval_outputs(d, h, i, l', m, outputDefs) => (o, l'') &
+  eval_transitions(d, h, i, l'', m, stateDefs) => (s, l''')
+  --------------------------------------------------------
+  eval_flow(d, h, i, l, m, Flow(localDefs, outputDefs, stateDefs) ) => (l''', o, s)
+end
+
+(* (dependencies, history, inputs, local variables) -> (newlocals, updated locals) *)
+relation eval_locals: (Dependencies, Env, Env, Env, Modes, localDefinitions) => (Env, Env) =
+  eval_instants(d, h, i, l, m, instDefs) => (new_l, l')
+  --------------------------------------------------------
+  eval_locals(d, h, i, l, m, JustLocalDefinitons(instDefs) ) => (new_l, l')
+end
+
+(* (dependencies, history, inputs, local variables) -> (outputs, updated locals) *)
+relation eval_outputs: (Dependencies, Env, Env, Env, Modes, localDefinitions) => (Env, Env) =
+  eval_instants(d, h, i, l, m, instDefs) => (o, l')
+  --------------------------------------------------------
+  eval_outputs(d, h, i, l, m, JustOutputs(instDefs) ) => (o, l')
+end
+
+(* (dependencies, history, inputs, local variables) -> (written vars, updated locals) *)
+relation eval_definitions: (Dependencies, Env, Env, Env, Modes, flow) => (Env, Env) =
+  eval_definitions(d, h, l, m, localDefs) => l' &
+  eval_transitions(h, l', stateDefs) => s
+  --------------------------------------------------------
+  eval_definitions(d, h, i, l, m, Flow(localDefs, stateDefs) ) => (l', s)
+end
+
+
+(* Evaluation semantics  of Exp1 *)
+relation eval: Exp => int  =
+  
+  axiom eval( INTconst(ival) ) => ival   (* eval of an integer node *)
+                                         (* is the integer itself *)
+
+  (* Evaluation of an addition node PLUSop is v3, if v3 is the result of
+   * adding the evaluated results of its children e1 and e2 
+   * Subtraction, multiplication, division operators have similar specs.
+   *)
+
+  rule  eval() => v1  & eval(e2) => v2  &  v1 + v2 => v3 
+        -----------------------------------------------------------
+        eval( ADDop(e1,e2) ) => v3
+
+  rule  eval(e1) => v1  &  eval(e2) => v2  &  v1 -v2 => v3
+        ----------------------------------------------------------
+        eval( SUBop(e1,e2) ) => v3
+
+  rule  eval(e1) => v1  &  eval(e2) => v2  &  v1 * v2 => v3
+        ----------------------------------------------------------
+        eval( MULop(e1,e2) ) => v3
+
+  rule  eval(e1) => v1  &  eval(e2) => v2  &  v1 / v2 => v3
+        ----------------------------------------------------------
+        eval( DIVop(e1,e2) ) => v3
+
+  rule  eval(e) => v1  &  -v1 => v2
+        -----------------------------------
+        eval( NEGop(e) ) => v2
+
+end (* eval *)
+
+type VarBnd = Ident * Value
+type Env = VarBnd list
+
+relation emptyEnv: () => Env =
+  axiom emptyEnv() => []
+
+relation lookup: (Env,Ident) => Value  =
+(* lookup returns the value associated with an identifier.
+ * If no association is present, lookup will fail. *)
+
+  rule  id = id2
+        ------------------------------
+        lookup((id2,value) :: _, id) => value
+
+  rule  not id=id2  &  lookup(rest, id) => value
+        -------------------------------------
+        lookup((id2,_) :: rest, id)  => value
+end
+
+relation lookupextend: (Env,Ident) => (Env,Value)  =
+
+  rule  not lookup(env,id) => v
+        -----------------------------
+        lookupextend(env, id)  => ((id,0)::env,0)
+
+  rule  lookup(env,id) => value
+        --------------------------------
+        lookupextend(env, id)  => (env,value)
+end
+
+relation update: (Env,Ident,Value) => Env  =
+  axiom  update(env,id,value) => ((id,value) :: env)
+end
