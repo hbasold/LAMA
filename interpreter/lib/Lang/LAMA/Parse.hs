@@ -17,7 +17,7 @@ parse = Par.pFile
 
 data Error = ParseError String | StaticError String deriving Show
 
-parseLAMA :: BS.ByteString -> Either Error File
+parseLAMA :: BS.ByteString -> Either Error Program
 parseLAMA inp =
   let ts = lexer inp
   in case parse ts of

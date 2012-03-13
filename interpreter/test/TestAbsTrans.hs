@@ -51,7 +51,7 @@ eqE e1 e2 = Typed (Expr2 Equals e1 e2) boolT
 notE :: Expr -> Expr
 notE e = Typed (LogNot e) boolT
 
-checkEqual :: File -> BL.ByteString -> Test
+checkEqual :: Program -> BL.ByteString -> Test
 checkEqual t inp = case parseLAMA inp of
   Left (ParseError pe) -> TestCase $ assertFailure $ "Parsing failed: " ++ show pe
   Left (StaticError se) -> TestCase $ assertFailure $ "Conversion failed: " ++ show se
@@ -67,9 +67,9 @@ typesSrc = BL.pack $ unlines [
   "  record r2 = { f2 : r1 };",
   "node main() returns (x : r2); let tel" ]
 
-expectedTypes :: File
+expectedTypes :: Program
 expectedTypes =
-  File {
+  Program {
     fileTypeDefinitions = fromList [
       (e, EnumDef (EnumT [e1, e2])),
       (r1, RecordDef (RecordT [(f1, NamedType e)])),
@@ -109,9 +109,9 @@ constantsSrc = BL.pack $ unlines [
   "    y = uint[16](1322);",
   "tel" ]
 
-expectedConstants :: File
+expectedConstants :: Program
 expectedConstants =
-  File {
+  Program {
     fileTypeDefinitions = fromList [],
     fileConstantDefinitions = fromList [],
     fileMainNode = Node {
@@ -160,9 +160,9 @@ switch = BL.pack $ unlines [
     "  initial s = false;",
     "tel"]
 
-expectedSwitch :: File
+expectedSwitch :: Program
 expectedSwitch =
-  File {
+  Program {
     fileTypeDefinitions = fromList [],
     fileConstantDefinitions = fromList [],
     fileMainNode = Node {
@@ -231,9 +231,9 @@ upDownCounter = BL.pack $ unlines [
  " tel" ]
  -- "invariant (<= xo 10);" ]
 
-expectedUpDownCounter :: File
+expectedUpDownCounter :: Program
 expectedUpDownCounter =
-  File {
+  Program {
     fileTypeDefinitions = fromList [], fileConstantDefinitions = fromList [],
     fileMainNode = Node {
       nodeName = ident "main",

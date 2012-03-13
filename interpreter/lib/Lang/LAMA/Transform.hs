@@ -135,7 +135,7 @@ envAddLocal vars = local $ (\env -> env { envVars = Map.union (envVars env) vars
 envSetNodes :: Map Identifier Node -> Result a -> Result a
 envSetNodes ns = local $ (\env -> env { envNodes = ns })
 
-absToConc :: Abs.File -> Either String File
+absToConc :: Abs.File -> Either String Program
 absToConc f = runReader (runErrorT $ transFile f) emptyEnv
 
 -- | Signals an undefined translation case. To be abandoned when finished.
@@ -237,14 +237,14 @@ transStateId x = case x of
   Abs.StateId str  -> return $ makeStateId str
 
 
-transFile :: Abs.File -> Result File
+transFile :: Abs.File -> Result Program
 transFile x = case x of
   Abs.File typedefs constantdefs node assertion initial invariant -> do
     types <- transTypeDefs typedefs
     consts <- transConstantDefs constantdefs
 
     envSetTypes types $ envSetConsts consts $
-      File types consts <$>
+      Program types consts <$>
         (transNode node) <*>
         (transAssertion assertion) <*>
         (transInitial initial) <*>

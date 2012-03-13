@@ -7,9 +7,20 @@ import Lang.LAMA.Identifier
 
 type TypeId = Identifier
 
-data Type = GroundType BaseType | NamedType TypeId | ArrayType BaseType Natural deriving (Eq, Show)
-data BaseType =
-  BoolT | IntT | RealT | SInt Natural | UInt Natural
+-- | LAMA type expressions
+data Type
+  = GroundType BaseType   -- ^ Basic sorts
+  | NamedType TypeId      -- ^ Named type (enum, record)
+  | ArrayType BaseType Natural  -- ^ Array with fixed length of basic sort
+  deriving (Eq, Show)
+
+-- | Basic LAMA sorts
+data BaseType
+  = BoolT         -- ^ Boolean
+  | IntT          -- ^ Integers
+  | RealT         -- ^ Ideal real numbers (but seen as rational numbers)
+  | SInt Natural  -- ^ Bounded signed integer type (bounded by bit size)
+  | UInt Natural  -- ^ Bounded unsigned integer type (bounded by bit size)
   deriving (Eq, Show)
   
 boolT :: Type
