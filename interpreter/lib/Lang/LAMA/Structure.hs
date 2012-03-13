@@ -1,4 +1,30 @@
-module Lang.LAMA.Structure where
+{-| Structure of LAMA programs -}
+module Lang.LAMA.Structure (
+  Program(..),
+  -- * Type definitions
+  TypeDef(..),
+  -- ** Enums
+  EnumConstr, EnumT(..),
+  -- ** Records
+  RecordField, RecordT(..),
+  -- * Constants
+  Constant, UConst(..),
+  -- * Nodes
+  Node(..), Variable(..),
+  -- * Data flow
+  Flow(..),
+  -- ** Definition of local and output variables
+  Pattern, NodeUsage(..), InstantDefinition(..),
+  -- ** Definition of state variables
+  StateTransition(..), StateInit,
+  -- * Automata
+  LocationId, Location(..), Edge(..), Automaton(..),
+  -- * Expressions
+  Atom, Expr, ConstExpr,
+  -- ** Untyped expressions
+  -- $untyped-doc
+  UAtom(..), UExpr(..), UConstExpr(..), BinOp(..), RecordConstr(..)
+) where
 
 import Data.Natural
 import Data.Map
@@ -6,24 +32,33 @@ import Data.Map
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
 
+-- | A LAMA program needs at least a top level node ('progMainNode')
+--  which will be the target for the given verification
+--  properties ('progInvariant').
 data Program = Program {
-    fileTypeDefinitions     :: Map TypeId TypeDef,
-    fileConstantDefinitions :: Map Identifier Constant,
-    fileMainNode            :: Node,
-    fileAssertions          :: [Expr],
-    fileInitial             :: StateInit,
-    fileInvariant           :: [Expr]
+    progTypeDefinitions     :: Map TypeId TypeDef,
+    progConstantDefinitions :: Map Identifier Constant,
+    progMainNode            :: Node,
+    progAssertions          :: [Expr],
+    progInitial             :: StateInit,
+    progInvariant           :: [Expr]
   } deriving (Eq, Show)
 
 
 ---- Type definitions -----
 
-data TypeDef = EnumDef EnumT | RecordDef RecordT deriving (Eq, Show)
+-- | Type definition
+data TypeDef
+  = EnumDef EnumT     -- ^ Enum definition
+  | RecordDef RecordT -- ^ Record definition
+  deriving (Eq, Show)
 
+-- | Naming of enum constructors
 type EnumConstr = Identifier
 -- | Enum definition: lists the names for the constructors
 data EnumT = EnumT [EnumConstr] deriving (Eq, Show)
 
+-- | Naming of record fields
 type RecordField = Identifier
 -- | Record definition: consists of named fields and their types
 data RecordT = RecordT [(RecordField, Type)] deriving (Eq, Show)
@@ -44,7 +79,7 @@ data UConst e
 
 
 ---- Nodes -----
-                  
+
 data Node = Node {
     nodeName        :: Identifier,
     nodeInputs      :: [Variable],
@@ -89,6 +124,11 @@ data Automaton = Automaton {
 
 
 ---- Expressions -----
+
+-- $untyped-doc
+-- The parameter /e/ of the untyped expressions
+-- is replaced by the typed variant of themselves
+-- by 'Typed'. So 'Typed' builds up a fix point type.
 
 type Expr = Typed UExpr             -- ^ Typed expression
 type Atom = Typed UAtom             -- ^ Typed atom

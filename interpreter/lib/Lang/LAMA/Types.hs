@@ -1,10 +1,24 @@
-module Lang.LAMA.Types where
+{-| Type system of LAMA
+-}
+
+module Lang.LAMA.Types(
+  -- * Types
+  TypeId,
+  Type (..),
+  BaseType(..),
+  boolT, intT, realT,
+  -- * Typing structures
+  Typed(..),
+  preserveType,
+  EqFunctor(..), ShowFunctor(..)
+) where
 
 import Data.Natural
 import Control.Arrow (first, (&&&))
 
 import Lang.LAMA.Identifier
 
+-- | Naming user declared types like enums and records
 type TypeId = Identifier
 
 -- | LAMA type expressions
@@ -22,16 +36,21 @@ data BaseType
   | SInt Natural  -- ^ Bounded signed integer type (bounded by bit size)
   | UInt Natural  -- ^ Bounded unsigned integer type (bounded by bit size)
   deriving (Eq, Show)
-  
+
+-- | Construct ground bool type
 boolT :: Type
 boolT = GroundType BoolT
 
+-- | Construct ground int type
 intT :: Type
 intT = GroundType IntT
 
+-- | Construct ground real type
 realT :: Type
 realT = GroundType RealT
 
+
+----- Structure typing ------
 
 -- | Add type to an arbitrary structure
 data Typed e = Typed {

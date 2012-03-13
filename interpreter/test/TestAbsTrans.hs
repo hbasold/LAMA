@@ -70,13 +70,13 @@ typesSrc = BL.pack $ unlines [
 expectedTypes :: Program
 expectedTypes =
   Program {
-    fileTypeDefinitions = fromList [
+    progTypeDefinitions = fromList [
       (e, EnumDef (EnumT [e1, e2])),
       (r1, RecordDef (RecordT [(f1, NamedType e)])),
       (r2, RecordDef (RecordT [(f2, NamedType r1)]))
     ],
-    fileConstantDefinitions = fromList [],
-    fileMainNode = Node {
+    progConstantDefinitions = fromList [],
+    progMainNode = Node {
       nodeName = ident "main",
       nodeInputs = [],
       nodeOutputs = [Variable x (NamedType r2)],
@@ -84,7 +84,7 @@ expectedTypes =
       nodeFlow = Flow {
         flowDefinitions = [], flowOutputs = [], flowTransitions = []}, nodeAutomata = [], nodeInitial = fromList []
       },
-    fileAssertions = [], fileInitial = fromList [], fileInvariant = []
+    progAssertions = [], progInitial = fromList [], progInvariant = []
   }
   where
     e = ident "e"
@@ -112,9 +112,9 @@ constantsSrc = BL.pack $ unlines [
 expectedConstants :: Program
 expectedConstants =
   Program {
-    fileTypeDefinitions = fromList [],
-    fileConstantDefinitions = fromList [],
-    fileMainNode = Node {
+    progTypeDefinitions = fromList [],
+    progConstantDefinitions = fromList [],
+    progMainNode = Node {
       nodeName = ident "main",
       nodeInputs = [],
       nodeOutputs = [
@@ -132,7 +132,7 @@ expectedConstants =
       },
       nodeAutomata = [], nodeInitial = fromList []
     },
-    fileAssertions = [], fileInitial = fromList [], fileInvariant = []
+    progAssertions = [], progInitial = fromList [], progInvariant = []
   }
   where
     x = ident "x"
@@ -163,9 +163,9 @@ switch = BL.pack $ unlines [
 expectedSwitch :: Program
 expectedSwitch =
   Program {
-    fileTypeDefinitions = fromList [],
-    fileConstantDefinitions = fromList [],
-    fileMainNode = Node {
+    progTypeDefinitions = fromList [],
+    progConstantDefinitions = fromList [],
+    progMainNode = Node {
       nodeName = ident "Switch",
       nodeInputs = [Variable on boolT, Variable off boolT],
       nodeOutputs = [Variable so boolT],
@@ -186,7 +186,7 @@ expectedSwitch =
       nodeAutomata = [],
       nodeInitial = fromList [(s,(Typed (Const false) boolT))]
     },
-    fileAssertions = [], fileInitial = fromList [], fileInvariant = []
+    progAssertions = [], progInitial = fromList [], progInvariant = []
   }
   where
     on = ident "on"
@@ -234,8 +234,8 @@ upDownCounter = BL.pack $ unlines [
 expectedUpDownCounter :: Program
 expectedUpDownCounter =
   Program {
-    fileTypeDefinitions = fromList [], fileConstantDefinitions = fromList [],
-    fileMainNode = Node {
+    progTypeDefinitions = fromList [], progConstantDefinitions = fromList [],
+    progMainNode = Node {
       nodeName = ident "main",
       nodeInputs = [],
       nodeOutputs = [Variable xo intT],
@@ -268,7 +268,7 @@ expectedUpDownCounter =
       }],
       nodeInitial = fromList [(x, intConstE (-1))]
     },
-    fileAssertions = [], fileInitial = fromList [], fileInvariant = []
+    progAssertions = [], progInitial = fromList [], progInvariant = []
   }
   where
     x = ident "x"
