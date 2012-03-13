@@ -16,7 +16,9 @@ Executable test-lama
     Lang.LAMA.Parser.Lex
     Lang.LAMA.Parser.Par
     Lang.LAMA.Parser.Print
+    Lang.LAMA.Identifier
     Lang.LAMA.Types
+    Lang.LAMA.Structure
     Lang.LAMA.Transform
     Lang.LAMA.Parse
   main-is: test-lama.hs
@@ -32,7 +34,9 @@ Executable lamai
     Lang.LAMA.Parser.Lex
     Lang.LAMA.Parser.Par
     Lang.LAMA.Parser.Print
+    Lang.LAMA.Identifier
     Lang.LAMA.Types
+    Lang.LAMA.Structure
     Lang.LAMA.Transform
     Lang.LAMA.Parse
   Main-Is: Main.hs

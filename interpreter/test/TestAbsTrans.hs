@@ -5,7 +5,9 @@ import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as B
 import Data.Map as Map
 
+import Lang.LAMA.Identifier
 import Lang.LAMA.Types
+import Lang.LAMA.Structure
 import Lang.LAMA.Parse
 
 tests :: Test

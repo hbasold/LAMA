@@ -6,7 +6,6 @@ import System.IO (stdin)
 import System.Environment (getArgs)
 import qualified Data.ByteString.Lazy.Char8 as BS
 
-import Lang.LAMA.Types
 import Lang.LAMA.Parse
 
 type Verbosity = Int
@@ -25,7 +24,7 @@ run v inp = case parseLAMA inp of
   Left (StaticError se) -> do
     putStrLn $ "Conversion failed:"
     putStrLn se
-  Right concTree -> putStrLn $ show concTree
+  Right concTree -> putStrV v $ show concTree
 
 main :: IO ()
 main = do args <- getArgs

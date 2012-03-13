@@ -14,7 +14,9 @@ import Control.Monad.Reader
 
 import qualified Lang.LAMA.Parser.Abs as Abs
 import qualified Lang.LAMA.Parser.Print as Abs (printTree)
+import Lang.LAMA.Identifier
 import Lang.LAMA.Types
+import Lang.LAMA.Structure
 
 log2 :: (Integral a, Num b) => a -> b
 log2 x
@@ -24,9 +26,6 @@ log2 x
     log2' 0 = 0
     log2' 1 = 0
     log2' y = 1 + (log2 $ div y 2)
-
-prettyIdentifier :: Identifier -> String
-prettyIdentifier (Id x (l, c)) = show x ++ " in line " ++ show l ++ " at column " ++ show c
 
 data VarUsage = Input | Output | Local | State
 
@@ -59,20 +58,20 @@ emptyEnv = Env Map.empty Map.empty Map.empty Map.empty
 type Result = ErrorT String (Reader Environment)
 
 -- | Lookup a record type
-envLookupRecordType :: Identifier -> Result RecordT
+envLookupRecordType :: TypeId -> Result RecordT
 envLookupRecordType ident = do
   env <- ask
   case Map.lookup ident $ envTypes env of
-    Nothing -> fail $ "Undefined type " ++ prettyIdentifier ident
+    Nothing -> fail $ "Undefined type " ++ show ident
     Just (RecordDef t) -> return t
-    _ -> fail $ prettyIdentifier ident ++ " is not a record type"
+    _ -> fail $ show ident ++ " is not a record type"
 
 -- | Lookup a type
-envLookupType :: Identifier -> Result TypeDef
+envLookupType :: TypeId -> Result TypeDef
 envLookupType ident = do
   env <- ask
   case Map.lookup ident $ envTypes env of
-    Nothing -> fail $ "Undefined type " ++ prettyIdentifier ident
+    Nothing -> fail $ "Undefined type " ++ show ident
     Just t -> return t
 
 -- | Lookup a variable that needs to be read
