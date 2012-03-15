@@ -10,7 +10,7 @@ module Lang.LAMA.Structure (
   -- * Constants
   Constant, UConst(..),
   -- * Nodes
-  Node(..), Variable(..),
+  Node(..), Variable(..), varIdent,
   -- * Data flow
   Flow(..),
   -- ** Definition of local and output variables
@@ -93,6 +93,9 @@ data Node = Node {
   } deriving (Eq, Show)
   
 data Variable = Variable Identifier Type deriving (Eq, Show)
+
+varIdent :: Variable -> Identifier
+varIdent (Variable x _) = x
 
 
 ---- Data flow -----

@@ -1,20 +1,43 @@
+{-# LANGUAGE TypeSynonymInstances #-}
+
 module Main (main) where
 
 import System.IO (stdin)
 import System.Environment (getArgs)
-import qualified Data.ByteString.Lazy.Char8 as BS
+import qualified Data.ByteString.Lazy.Char8 as BL
+import qualified Data.ByteString.Char8 as BS
+import Data.GraphViz as GV
+import Data.GraphViz.Attributes.Complete as GV
+import Data.GraphViz.Commands as GV
+import Data.GraphViz.Types.Canonical as GV
+import qualified Data.Graph.Inductive.Graph as G
+import Data.Text.Lazy (pack)
+import Data.Foldable (forM_)
+import Lang.LAMA.Identifier
+import Data.Map as Map
 
 import Lang.LAMA.Parse
+import Lang.LAMA.Dependencies
 
 type Verbosity = Int
 
-putStrV :: Verbosity -> String -> IO ()
-putStrV v s = if v > 1 then putStrLn s else return ()
+instance Labellable () where
+  toLabelValue = const $ textLabelValue $ pack ""
+
+instance Labellable Var where
+  toLabelValue = textLabelValue . pack . prettyVar
+    where
+      prettyVar ((Id x _), u, m) = BS.unpack x ++ "(" ++ show u ++ prettyMode m ++ ")"
+      prettyMode GlobalMode = ""
+      prettyMode (LocationMode (Id l _)) = " in " ++ BS.unpack l
+
+putStrV :: Verbosity -> Verbosity -> String -> IO ()
+putStrV whenV v s = if v >= whenV then putStrLn s else return ()
 
 runFile :: Verbosity -> FilePath -> IO ()
-runFile v f = putStrLn f >> BS.readFile f >>= run v
+runFile v f = putStrLn f >> BL.readFile f >>= run v
 
-run :: Verbosity -> BS.ByteString -> IO ()
+run :: Verbosity -> BL.ByteString -> IO ()
 run v inp = case parseLAMA inp of
   Left (ParseError pe) -> do
     putStrLn "Parse failed..."
@@ -22,11 +45,25 @@ run v inp = case parseLAMA inp of
   Left (StaticError se) -> do
     putStrLn $ "Conversion failed:"
     putStrLn se
-  Right concTree -> putStrV v $ show concTree
+  Right concTree -> case mkDepsProgram concTree of
+    Left err -> putStrLn "Dependency error: " >> putStrLn err
+    Right deps -> do
+      putStrV 2 v $ show concTree
+      let gs = Map.toList $ fmap (defaultVis . graph) deps
+      forM_ gs (\((Id n _), g) -> runGraphviz g Svg (BS.unpack n ++ ".svg"))
+      -- putStrV 1 v $ show $ fmap (graphviz' . graph) deps
+      --forM_ deps (preview . graph)
+
+defaultVis :: (G.Graph gr, Labellable nl) => gr nl el -> DotGraph G.Node
+defaultVis = graphToDot params
+  where params = nonClusteredParams {
+          globalAttributes = [GraphAttrs [RankDir FromTop]],
+          fmtNode = \(_, l) -> [Label $ toLabelValue l]
+        }
 
 main :: IO ()
 main = do args <- getArgs
           case args of
-            [] -> BS.hGetContents stdin >>= run 2
-            "-s":fs -> mapM_ (runFile 0) fs
-            fs -> mapM_ (runFile 2) fs
+            [] -> BL.hGetContents stdin >>= run 2
+            "-v":v:fs -> mapM_ (runFile $ read v) fs
+            fs -> mapM_ (runFile 0) fs

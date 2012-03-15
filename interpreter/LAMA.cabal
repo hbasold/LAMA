@@ -7,10 +7,13 @@ Description:
 
 Executable test-lama
   default-language: Haskell2010
-  build-depends: base, containers, mtl, bytestring, natural-numbers, transformers, pretty, array, HUnit
+  build-depends: base, containers, mtl, bytestring, natural-numbers,
+    transformers, pretty, array, HUnit, fgl
   hs-source-dirs: test lib
   GHC-Options: -Wall
   other-modules:
+    Data.Graph.Inductive.DAG
+    Data.Graph.Inductive.NodeMapSupport
     Lang.LAMA.Parser.Abs
     Lang.LAMA.Parser.ErrM
     Lang.LAMA.Parser.Lex
@@ -21,14 +24,18 @@ Executable test-lama
     Lang.LAMA.Structure
     Lang.LAMA.Transform
     Lang.LAMA.Parse
+    Lang.LAMA.Dependencies
   main-is: test-lama.hs
 
 Executable lamai
   default-language: Haskell2010
-  Build-Depends: base, containers, mtl, bytestring, natural-numbers, transformers, pretty, array
+  Build-Depends: base, containers, mtl, bytestring, natural-numbers,
+    transformers, pretty, array, fgl, graphviz, text
   Hs-Source-Dirs: . lib
   GHC-Options: -Wall
   other-modules:
+    Data.Graph.Inductive.DAG
+    Data.Graph.Inductive.NodeMapSupport
     Lang.LAMA.Parser.Abs
     Lang.LAMA.Parser.ErrM
     Lang.LAMA.Parser.Lex
@@ -39,4 +46,5 @@ Executable lamai
     Lang.LAMA.Structure
     Lang.LAMA.Transform
     Lang.LAMA.Parse
+    Lang.LAMA.Dependencies
   Main-Is: Main.hs
