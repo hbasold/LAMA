@@ -29,33 +29,40 @@ end
 
 (* (dependencies, history, inputs, local variables) -> (updated locals, outputs, next state) *)
 relation eval_flow: (Dependencies, Env, Env, Env, Modes, flow) => (Env, Env, Env) =
-  eval_locals(d, h, i, l, m, localDefs) => (_, l') &
-  eval_outputs(d, h, i, l', m, outputDefs) => (o, l'') &
-  eval_transitions(d, h, i, l'', m, stateDefs) => (s, l''')
-  --------------------------------------------------------
-  eval_flow(d, h, i, l, m, Flow(localDefs, outputDefs, stateDefs) ) => (l''', o, s)
+  rule  eval_locals(d, h, i, l, m, localDefs) => (_, l') &
+        eval_outputs(d, h, i, l', m, outputDefs) => (o, l'') &
+        eval_transitions(d, h, i, l'', m, stateDefs) => (s, l''')
+        --------------------------------------------------------
+        eval_flow(d, h, i, l, m, Flow(localDefs, outputDefs, stateDefs) ) => (l''', o, s)
 end
 
 (* (dependencies, history, inputs, local variables) -> (newlocals, updated locals) *)
 relation eval_locals: (Dependencies, Env, Env, Env, Modes, localDefinitions) => (Env, Env) =
-  eval_instants(d, h, i, l, m, instDefs) => (new_l, l')
-  --------------------------------------------------------
-  eval_locals(d, h, i, l, m, JustLocalDefinitons(instDefs) ) => (new_l, l')
+  rule  eval_instants(d, h, i, l, m, instDefs) => (new_l, l')
+        --------------------------------------------------------
+        eval_locals(d, h, i, l, m, JustLocalDefinitons(instDefs) ) => (new_l, l')
 end
 
 (* (dependencies, history, inputs, local variables) -> (outputs, updated locals) *)
 relation eval_outputs: (Dependencies, Env, Env, Env, Modes, localDefinitions) => (Env, Env) =
-  eval_instants(d, h, i, l, m, instDefs) => (o, l')
-  --------------------------------------------------------
-  eval_outputs(d, h, i, l, m, JustOutputs(instDefs) ) => (o, l')
+  rule  eval_instants(d, h, i, l, m, instDefs) => (o, l')
+        --------------------------------------------------------
+        eval_outputs(d, h, i, l, m, JustOutputs(instDefs) ) => (o, l')
 end
 
-(* (dependencies, history, inputs, local variables) -> (written vars, updated locals) *)
-relation eval_definitions: (Dependencies, Env, Env, Env, Modes, flow) => (Env, Env) =
-  eval_definitions(d, h, l, m, localDefs) => l' &
-  eval_transitions(h, l', stateDefs) => s
-  --------------------------------------------------------
-  eval_definitions(d, h, i, l, m, Flow(localDefs, stateDefs) ) => (l', s)
+(* (dependencies, history, inputs, local variables, variable environment to write) -> (written vars, updated locals) *)
+relation eval_instant: (Dependencies, Env, Env, Env, Env, Modes, instantDefinition) => (Env, Env) =
+  rule  eval_expression(d, h, l, m, e) => (v, l') &
+        update(vs, x, v) => vs'
+        --------------------------------------------------------
+        eval_instant(d, h, i, l, vs, m, SimpleDef(x, e) ) => (vs', l')
+
+  rule  eval_expressions(d, h, l, m, exprs) => vals &
+        match_inputs(n, vals) => inp &
+        eval_node(d, h, inp, m, node) => (o, s, m') &
+        match_update(vars, xs, o) => vars'
+        --------------------------------------------------------
+        eval_instant(d, h, i, l, vars, m, NodeUsageDef(xs, NodeUsage(n, exprs)) ) => (vars', l')
 end
 
 
