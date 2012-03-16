@@ -1,11 +1,10 @@
-{-# LANGUAGE ScopedTypeVariables, TupleSections #-}
+{-# LANGUAGE TupleSections #-}
 
 module Lang.LAMA.Dependencies where -- (
 --   Assignment, NodeDeps, Dependencies, mkDependencies
 -- ) where
 
 import Data.Graph.Inductive.PatriciaTree
-import qualified Data.Graph.Inductive.Tree as GTree
 import Data.Graph.Inductive.NodeMap as G hiding (insMapNode, insMapNodeM, insMapNodes, insMapNodesM)
 import Data.Graph.Inductive.NodeMapSupport as G
 import Data.Graph.Inductive.DAG
@@ -22,12 +21,7 @@ import Lang.LAMA.Identifier
 import Lang.LAMA.Types
 import Lang.LAMA.Structure
 
-instance forall a b. (Show a, Show b) => Show (Gr a b) where
-  show g =
-    let n = G.labNodes g
-        e = G.labEdges g
-        g' = G.mkGraph n e :: GTree.Gr a b
-    in show g'
+
 
 data VarUsage = Constant | Input | Output | Local | StateIn | StateOut deriving (Show, Eq, Ord)
 type VarMap = Map Identifier VarUsage
@@ -39,25 +33,18 @@ varMap n =
   (Map.fromList $ map ((, StateIn) . varIdent) $ nodeState n)
 
 data Assignment = SimpleAssign Expr | NodeAssign NodeUsage deriving Show
-type NodeDeps = DAG Gr Assignment ()
--- | Dependencies of assignments in nodes
-newtype Dependencies = Dependencies (Map Identifier NodeDeps) deriving (Show)
-
-mkDependencies :: Program -> Either String Dependencies
-mkDependencies = undefined
-
 data Mode = GlobalMode | LocationMode Identifier deriving (Eq, Ord, Show)
 type Var = (Identifier, VarUsage, Mode)
 data InterNodeDeps = InterNodeDeps {
-    graph :: DAG Gr Var (),
-    vars :: G.NodeMap Var,
-    exprs :: Map Var Assignment
+    depsGraph :: DAG Gr Var (),
+    depsVars :: G.NodeMap Var,
+    depsExprs :: Map Var Assignment
   }
 
-instance Show InterNodeDeps where
-  show = show . graph 
-
 type InterDeps = Map Identifier InterNodeDeps
+
+mkDeps :: Program -> Either String InterDeps
+mkDeps = mkDepsProgram
 
 type DepMonad = Either String
 
@@ -70,8 +57,7 @@ checkCycles g = case mkDAG g of
     depList h = intercalate " -> " . map (maybe "" id . fmap (\(v, u, m) -> show u ++ " in " ++ show m ++ " " ++ prettyIdentifier v) . G.lab h)
 
 mkDepsProgram :: Program -> DepMonad InterDeps
-mkDepsProgram (Program { progConstantDefinitions=consts, progMainNode=mainNode })
-  = mkDepsNode consts mainNode
+mkDepsProgram p = mkDepsNode (progConstantDefinitions p) (progMainNode p)
 
 mkDepsNode :: Map Identifier Constant -> Node -> DepMonad InterDeps
 mkDepsNode consts node = do
@@ -89,16 +75,6 @@ type DepNodeMapM = State (NodeMap Var, Gr Var ())
 
 type DepGraphM = ErrorT String (ReaderT VarMap DepNodeMapM)
 type ExprMap = Map Var Assignment
-
-lift2 :: (Monad m, Monad (t1 m), MonadTrans t1, MonadTrans t2) => m a -> t2 (t1 m) a
-lift2 = lift . lift
-
-varUsage :: Identifier -> DepGraphM VarUsage
-varUsage v = do
-  vars <- lift ask
-  case Map.lookup v vars of
-    Just u -> return u
-    Nothing -> fail $ "Unknown variable " ++ prettyIdentifier v
 
 nodeDeps :: Flow -> [Automaton] -> DepGraphM ExprMap
 nodeDeps f a = do
@@ -119,7 +95,6 @@ mkDepsInstant m boundExprs (SimpleDef x e) = do
   let ds = getDeps $ untyped e
   insDeps ds xu 
   return $ Map.insert xu (SimpleAssign e) boundExprs
-
 mkDepsInstant m boundExprs (NodeUsageDef p nu@(NodeUsage _ es)) = do
   u <- mapM varUsage p
   let pu = zip3 p u (repeat m)
@@ -127,24 +102,11 @@ mkDepsInstant m boundExprs (NodeUsageDef p nu@(NodeUsage _ es)) = do
   mapM_ (insDeps ds) pu
   return $ foldl (\be v -> Map.insert v (NodeAssign nu) be) boundExprs pu
 
-insDeps :: [Identifier] -> Var -> DepGraphM ()
-insDeps ds xu = do
-  void $ lift2 $ insMapNodeM' xu
-  ds' <- mapM (\v -> varUsage v >>= return . (v,,GlobalMode)) ds
-  void $ lift2 $ insMapNodesM' $ ds'
-  lift2 $ insMapEdgesM $ map (\x' -> (xu,x',())) ds'
-  insGlobLocDeps xu
-
-
 mkDepsState :: Mode -> ExprMap -> StateTransition -> DepGraphM ExprMap
 mkDepsState m boundExprs (StateTransition x e) = do
   let xu = (x, StateOut, m)
-  void $ lift2 $ insMapNodeM' xu
   let ds = getDeps $ untyped e
-  ds' <- mapM (\v -> varUsage v >>= return . (v,,GlobalMode)) ds
-  void $ lift2 $ insMapNodesM' ds'
-  lift2 $ insMapEdgesM $ map (\x' -> (xu,x',())) ds'
-  insGlobLocDeps xu
+  insDeps ds xu
   return $ Map.insert xu (SimpleAssign e) boundExprs
 
 mkDepsAutomaton :: Automaton -> DepGraphM ExprMap
@@ -153,16 +115,48 @@ mkDepsAutomaton = (fmap Map.unions) . (mapM mkDepsLocation) . automLocations
     mkDepsLocation :: Location -> DepGraphM ExprMap
     mkDepsLocation (Location l flow) = mkDepsFlow (LocationMode l) flow
 
+lift2 :: (Monad m, Monad (t1 m), MonadTrans t1, MonadTrans t2) => m a -> t2 (t1 m) a
+lift2 = lift . lift
+
+varUsage :: Identifier -> DepGraphM VarUsage
+varUsage v = do
+  vars <- lift ask
+  case Map.lookup v vars of
+    Just u -> return u
+    Nothing -> throwError $ "Unknown variable " ++ prettyIdentifier v
+
+insVar :: Var -> DepGraphM ()
+insVar = void . lift2 . insMapNodeM'
+
+insVars :: [Var] -> DepGraphM ()
+insVars = void . lift2 . insMapNodesM'
+
+insDep :: Var -> Var -> DepGraphM ()
+insDep from = lift2 . insMapEdgeM . (from, ,())
+
+-- | Inserts a dependency from each given identifier
+--  to /x/ to the given variable /v/. /x/ is treated
+--  as non-state-local variable, since we don't bother
+--  where it is written, but only that it is readable.
+insDeps :: [Identifier] -> Var -> DepGraphM ()
+insDeps ds xu = do
+  insVar xu
+  ds' <- mapM (\v -> varUsage v >>= return . (v,,GlobalMode)) ds
+  insVars ds'
+  mapM_ (insDep xu) ds'
+  insGlobLocDeps xu
+
 -- | Inserts dependencies for a variable from
 --    global usage to using it inside a location.
---    The given variables should not be used
---    globally, as that would introduce loops.
+--    With this we can treat a variable as non-local
+--    for reading but distinguish writing in the
+--    respective states (see 'insDeps').
 insGlobLocDeps :: Var -> DepGraphM ()
 insGlobLocDeps (_, _, GlobalMode) = return ()
 insGlobLocDeps v@(x, u, _) = do
     let vG = (x, u, GlobalMode)
-    void $ lift2 $ insMapNodeM' vG
-    void $ lift2 $ insMapEdgeM (vG, v, ())
+    insVar vG
+    insDep vG v
 
 getDeps :: UExpr (Typed UExpr) -> [Identifier]
 getDeps (AtExpr (Typed (AtomVar ident) _)) = [ident]
