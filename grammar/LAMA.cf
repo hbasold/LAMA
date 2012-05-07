@@ -110,14 +110,13 @@ JustOutputs. Outputs    ::= "output" [InstantDefinition] ;
 
 terminator nonempty InstantDefinition ";" ;
 terminator nonempty Transition ";" ;
-SimpleDef. InstantDefinition ::= Identifier "=" Expr ;
-NodeUsageDef. InstantDefinition ::= Pattern "=" NodeUsage ;
+InstantDef. InstantDefinition ::= Pattern "=" Expr ;
 Transition. Transition ::= StateId "=" Expr ;
 
-Pattern. Pattern ::= List2Id ;
+SinglePattern. Pattern ::= Identifier ;
+ProductPattern. Pattern ::= "(" List2Id ")" ;
 Id2. List2Id ::= Identifier "," Identifier ;
 ConsId. List2Id ::= Identifier "," List2Id ;
-NodeUsage. NodeUsage ::= "(" "use" Identifier [Expr] ")" ;
 
 -----
 ControlStructure. ControlStructure ::= [Automaton] ;
@@ -143,6 +142,7 @@ Expr3. Expr ::= "(" TernOp Expr Expr Expr ")" ;
 Constr. Expr ::= "(" "constr" Identifier [Expr] ")" ;
 Project. Expr ::= "(" "project" Identifier Natural ")" ;
 Select. Expr ::= "(" "select" Identifier Identifier ")" ;
+NodeUsage. Expr ::= "(" "use" Identifier [Expr] ")" ;
 separator nonempty Expr "" ;
 
 Not. UnOp ::= "not" ;
