@@ -10,11 +10,11 @@ module Lang.LAMA.Structure (
   -- * Constants
   Constant, UConst(..),
   -- * Nodes
-  Node(..), Variable(..), varIdent,
+  Node(..), Variable(..), varIdent, varType, Declarations(..),
   -- * Data flow
   Flow(..),
   -- ** Definition of local and output variables
-  Pattern, NodeUsage(..), InstantDefinition(..),
+  Pattern, InstantDefinition(..),
   -- ** Definition of state variables
   StateTransition(..), StateInit,
   -- * Automata
@@ -38,9 +38,10 @@ import Lang.LAMA.Types
 data Program = Program {
     progTypeDefinitions     :: Map TypeId TypeDef,
     progConstantDefinitions :: Map Identifier Constant,
-    progMainNode            :: Node,
-    progAssertions          :: [Expr],
+    progDecls               :: Declarations,
+    progFlow                :: Flow,
     progInitial             :: StateInit,
+    progAssertions          :: [Expr],
     progInvariant           :: [Expr]
   } deriving (Eq, Show)
 
@@ -84,10 +85,9 @@ data Node = Node {
     nodeName        :: Identifier,
     nodeInputs      :: [Variable],
     nodeOutputs     :: [Variable],
-    nodeSubNodes    :: [Node],
-    nodeState       :: [Variable],
-    nodeLocals      :: [Variable],
+    nodeDecls       :: Declarations,
     nodeFlow        :: Flow,
+    nodeOutputDefs  :: [InstantDefinition],
     nodeAutomata    :: [Automaton],
     nodeInitial     :: StateInit
   } deriving (Eq, Show)
@@ -97,18 +97,24 @@ data Variable = Variable Identifier Type deriving (Eq, Show)
 varIdent :: Variable -> Identifier
 varIdent (Variable x _) = x
 
+varType :: Variable -> Type
+varType (Variable _ t) = t
+
+data Declarations = Declarations {
+    declsNode   :: [Node],
+    declsState  :: [Variable],
+    declsLocal  :: [Variable]
+  } deriving (Eq, Show)
 
 ---- Data flow -----
 
 data Flow = Flow {
     flowDefinitions :: [InstantDefinition],
-    flowOutputs     :: [InstantDefinition],
     flowTransitions :: [StateTransition]
   } deriving (Eq, Show)
 
 type Pattern = [Identifier]
-data NodeUsage = NodeUsage Identifier [Expr] deriving (Eq, Show)
-data InstantDefinition = SimpleDef Identifier Expr | NodeUsageDef Pattern NodeUsage deriving (Eq, Show)
+data InstantDefinition = InstantDef Pattern Expr deriving (Eq, Show)
 
 data StateTransition = StateTransition Identifier Expr deriving (Eq, Show)
 type StateInit = Map Identifier ConstExpr
@@ -155,6 +161,7 @@ data UExpr e
   | Constr (RecordConstr e)         -- ^ Record construtor
   | Select Identifier RecordField   -- ^ Record selection
   | Project Identifier Natural      -- ^ Array projection
+  | NodeUsage Identifier [Expr]     -- ^ Using a node
   deriving (Eq, Show)
 
 -- | Binary operators

@@ -26,6 +26,7 @@ data Type
   = GroundType BaseType   -- ^ Basic sorts
   | NamedType TypeId      -- ^ Named type (enum, record)
   | ArrayType BaseType Natural  -- ^ Array with fixed length of basic sort
+  | Prod [Type]
   deriving (Eq, Show)
 
 -- | Basic LAMA sorts

@@ -29,16 +29,15 @@ varMap :: Node -> VarMap
 varMap n =
   (Map.fromList $ map ((, Input) . varIdent) $ nodeInputs n) `Map.union`
   (Map.fromList $ map ((, Output) . varIdent) $ nodeOutputs n) `Map.union`
-  (Map.fromList $ map ((, Local) . varIdent) $ nodeLocals n) `Map.union`
-  (Map.fromList $ map ((, StateIn) . varIdent) $ nodeState n)
+  (Map.fromList $ map ((, Local) . varIdent) $ declsLocal $ nodeDecls n) `Map.union`
+  (Map.fromList $ map ((, StateIn) . varIdent) $ declsState $ nodeDecls n)
 
-data Assignment = SimpleAssign Expr | NodeAssign NodeUsage deriving Show
 data Mode = GlobalMode | LocationMode Identifier deriving (Eq, Ord, Show)
 type Var = (Identifier, VarUsage, Mode)
 data InterNodeDeps = InterNodeDeps {
     depsGraph :: DAG Gr Var (),
     depsVars :: G.NodeMap Var,
-    depsExprs :: Map Var Assignment
+    depsExprs :: Map Var Expr
   }
 
 type InterDeps = Map Identifier InterNodeDeps
@@ -57,13 +56,13 @@ checkCycles g = case mkDAG g of
     depList h = intercalate " -> " . map (maybe "" id . fmap (\(v, u, m) -> show u ++ " in " ++ show m ++ " " ++ prettyIdentifier v) . G.lab h)
 
 mkDepsProgram :: Program -> DepMonad InterDeps
-mkDepsProgram p = mkDepsNode (progConstantDefinitions p) (progMainNode p)
+mkDepsProgram p = mkDepsNode (progConstantDefinitions p) (head $ declsNode $ progDecls p) -- TODO: temporarily
 
 mkDepsNode :: Map Identifier Constant -> Node -> DepMonad InterDeps
 mkDepsNode consts node = do
-  subDeps <- mapM (mkDepsNode consts) $ nodeSubNodes node
+  subDeps <- mapM (mkDepsNode consts) $ declsNode $ nodeDecls node
   let vars = varMap node `Map.union` (fmap (const Constant) consts)
-  let (mes, (vs, deps)) = G.run G.empty $ runReaderT (runErrorT $ nodeDeps (nodeFlow node) (nodeAutomata node)) vars
+  let (mes, (vs, deps)) = G.run G.empty $ runReaderT (runErrorT $ nodeDeps (nodeFlow node) (nodeOutputDefs node) (nodeAutomata node)) vars
   es <- mes
   dagDeps <- checkCycles deps
   return $ Map.insert (nodeName node) (InterNodeDeps dagDeps vs es) (Map.unions subDeps)
@@ -74,40 +73,34 @@ mkDepsNode consts node = do
 type DepNodeMapM = State (NodeMap Var, Gr Var ())
 
 type DepGraphM = ErrorT String (ReaderT VarMap DepNodeMapM)
-type ExprMap = Map Var Assignment
+type ExprMap = Map Var Expr
 
-nodeDeps :: Flow -> [Automaton] -> DepGraphM ExprMap
-nodeDeps f a = do
+nodeDeps :: Flow -> [InstantDefinition] -> [Automaton] -> DepGraphM ExprMap
+nodeDeps f o a = do
   e1 <- mkDepsFlow GlobalMode f
-  e2s <- mapM mkDepsAutomaton a
-  return $ foldl Map.union e1 e2s
+  e2 <- foldlM (mkDepsInstant GlobalMode) e1 o
+  e3s <- mapM mkDepsAutomaton a
+  return $ foldl Map.union e2 e3s
 
 mkDepsFlow :: Mode -> Flow -> DepGraphM ExprMap
-mkDepsFlow m (Flow d o s) = do
+mkDepsFlow m (Flow d s) = do
   e1 <- foldlM (mkDepsInstant m) Map.empty d
-  e2 <- foldlM (mkDepsInstant m) e1 o
-  foldlM (mkDepsState m) e2 s
+  foldlM (mkDepsState m) e1 s
 
 mkDepsInstant :: Mode -> ExprMap -> InstantDefinition -> DepGraphM ExprMap
-mkDepsInstant m boundExprs (SimpleDef x e) = do
-  u <- varUsage x
-  let xu = (x, u, m)
+mkDepsInstant m boundExprs (InstantDef xs e) = do
+  us <- mapM varUsage xs
+  let xus = zipWith (, , m) xs us
   let ds = getDeps $ untyped e
-  insDeps ds xu 
-  return $ Map.insert xu (SimpleAssign e) boundExprs
-mkDepsInstant m boundExprs (NodeUsageDef p nu@(NodeUsage _ es)) = do
-  u <- mapM varUsage p
-  let pu = zip3 p u (repeat m)
-  let ds = concat $ map (getDeps . untyped) es
-  mapM_ (insDeps ds) pu
-  return $ foldl (\be v -> Map.insert v (NodeAssign nu) be) boundExprs pu
+  forM_ xus (insDeps ds)
+  return $ foldl (\boundExprs' xu -> Map.insert xu e boundExprs') boundExprs xus
 
 mkDepsState :: Mode -> ExprMap -> StateTransition -> DepGraphM ExprMap
 mkDepsState m boundExprs (StateTransition x e) = do
   let xu = (x, StateOut, m)
   let ds = getDeps $ untyped e
   insDeps ds xu
-  return $ Map.insert xu (SimpleAssign e) boundExprs
+  return $ Map.insert xu e boundExprs
 
 mkDepsAutomaton :: Automaton -> DepGraphM ExprMap
 mkDepsAutomaton = (fmap Map.unions) . (mapM mkDepsLocation) . automLocations
@@ -167,3 +160,4 @@ getDeps (Ite c e1 e2) = (getDeps $ untyped c) ++ (getDeps $ untyped e1) ++ (getD
 getDeps (Constr (RecordConstr _ es)) = concat $ map (getDeps . untyped) es
 getDeps (Select x _) = [x]
 getDeps (Project x _) = [x]
+getDeps (NodeUsage _ es) = concat $ map (getDeps . untyped) es

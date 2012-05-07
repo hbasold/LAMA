@@ -5,8 +5,8 @@ module Lang.LAMA.Parser.Abs where
 import qualified Data.ByteString.Char8 as BS
 newtype Identifier = Identifier ((Int,Int),BS.ByteString) deriving (Eq,Ord,Show)
 newtype StateId = StateId ((Int,Int),BS.ByteString) deriving (Eq,Ord,Show)
-data File =
-   File TypeDefs ConstantDefs Node Assertion Initial Invariant
+data Program =
+   Program TypeDefs ConstantDefs Declarations Flow Initial Assertion Invariant
   deriving (Eq,Ord,Show)
 
 data TypeDefs =
@@ -113,7 +113,11 @@ data MaybeTypedVars =
   deriving (Eq,Ord,Show)
 
 data Node =
-   Node Identifier MaybeTypedVars [TypedVars] NodeDecls StateDecls LocalDecls Flow ControlStructure Initial
+   Node Identifier MaybeTypedVars [TypedVars] Declarations Flow Outputs ControlStructure Initial
+  deriving (Eq,Ord,Show)
+
+data Declarations =
+   Declarations NodeDecls StateDecls LocalDecls
   deriving (Eq,Ord,Show)
 
 data VarDecls =
@@ -137,7 +141,7 @@ data LocalDecls =
   deriving (Eq,Ord,Show)
 
 data Flow =
-   Flow LocalDefinitions Outputs Transitions
+   Flow LocalDefinitions Transitions
   deriving (Eq,Ord,Show)
 
 data LocalDefinitions =
@@ -145,19 +149,18 @@ data LocalDefinitions =
  | JustLocalDefinitons [InstantDefinition]
   deriving (Eq,Ord,Show)
 
-data Outputs =
-   NoOutputs
- | JustOutputs [InstantDefinition]
-  deriving (Eq,Ord,Show)
-
 data Transitions =
    NoTransitions
  | JustTransitions [Transition]
   deriving (Eq,Ord,Show)
 
+data Outputs =
+   NoOutputs
+ | JustOutputs [InstantDefinition]
+  deriving (Eq,Ord,Show)
+
 data InstantDefinition =
-   SimpleDef Identifier Expr
- | NodeUsageDef Pattern NodeUsage
+   InstantDef Pattern Expr
   deriving (Eq,Ord,Show)
 
 data Transition =
@@ -165,16 +168,13 @@ data Transition =
   deriving (Eq,Ord,Show)
 
 data Pattern =
-   Pattern List2Id
+   SinglePattern Identifier
+ | ProductPattern List2Id
   deriving (Eq,Ord,Show)
 
 data List2Id =
    Id2 Identifier Identifier
  | ConsId Identifier List2Id
-  deriving (Eq,Ord,Show)
-
-data NodeUsage =
-   NodeUsage Identifier [Expr]
   deriving (Eq,Ord,Show)
 
 data ControlStructure =
@@ -210,6 +210,7 @@ data Expr =
  | Constr Identifier [Expr]
  | Project Identifier Natural
  | Select Identifier Identifier
+ | NodeUsage Identifier [Expr]
   deriving (Eq,Ord,Show)
 
 data UnOp =

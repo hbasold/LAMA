@@ -8,7 +8,7 @@ import Lang.LAMA.Parser.ErrM
 import qualified Data.ByteString.Lazy.Char8 as BS
 }
 
-%name pFile File
+%name pProgram Program
 
 -- no lexer declaration
 %monad { Err } { thenM } { returnM }
@@ -86,8 +86,8 @@ Integer :: { Integer } : L_integ  { (read (BS.unpack $1)) :: Integer }
 Identifier    :: { Identifier} : L_Identifier { Identifier (mkPosToken $1)}
 StateId    :: { StateId} : L_StateId { StateId (mkPosToken $1)}
 
-File :: { File }
-File : TypeDefs ConstantDefs Node Assertion Initial Invariant { File $1 $2 $3 $4 $5 $6 } 
+Program :: { Program }
+Program : TypeDefs ConstantDefs Declarations Flow Initial Assertion Invariant { Program $1 $2 $3 $4 $5 $6 $7 } 
 
 
 TypeDefs :: { TypeDefs }
@@ -229,12 +229,16 @@ MaybeTypedVars : {- empty -} { NoTypedVars }
 
 
 Node :: { Node }
-Node : 'node' Identifier '(' MaybeTypedVars ')' 'returns' '(' ListTypedVars ')' ';' 'let' NodeDecls StateDecls LocalDecls Flow ControlStructure Initial 'tel' { Node $2 $4 $8 $12 $13 $14 $15 $16 $17 } 
+Node : 'node' Identifier '(' MaybeTypedVars ')' 'returns' '(' ListTypedVars ')' ';' 'let' Declarations Flow Outputs ControlStructure Initial 'tel' { Node $2 $4 $8 $12 $13 $14 $15 $16 } 
 
 
 ListNode :: { [Node] }
 ListNode : Node { (:[]) $1 } 
   | Node ListNode { (:) $1 $2 }
+
+
+Declarations :: { Declarations }
+Declarations : NodeDecls StateDecls LocalDecls { Declarations $1 $2 $3 } 
 
 
 VarDecls :: { VarDecls }
@@ -258,7 +262,7 @@ LocalDecls : {- empty -} { NoLocals }
 
 
 Flow :: { Flow }
-Flow : LocalDefinitions Outputs Transitions { Flow $1 $2 $3 } 
+Flow : LocalDefinitions Transitions { Flow $1 $2 } 
 
 
 LocalDefinitions :: { LocalDefinitions }
@@ -266,14 +270,14 @@ LocalDefinitions : {- empty -} { NoLocalDefinitons }
   | 'definition' ListInstantDefinition { JustLocalDefinitons $2 }
 
 
-Outputs :: { Outputs }
-Outputs : {- empty -} { NoOutputs } 
-  | 'output' ListInstantDefinition { JustOutputs $2 }
-
-
 Transitions :: { Transitions }
 Transitions : {- empty -} { NoTransitions } 
   | 'transition' ListTransition { JustTransitions $2 }
+
+
+Outputs :: { Outputs }
+Outputs : {- empty -} { NoOutputs } 
+  | 'output' ListInstantDefinition { JustOutputs $2 }
 
 
 ListInstantDefinition :: { [InstantDefinition] }
@@ -287,8 +291,7 @@ ListTransition : Transition ';' { (:[]) $1 }
 
 
 InstantDefinition :: { InstantDefinition }
-InstantDefinition : Identifier '=' Expr { SimpleDef $1 $3 } 
-  | Pattern '=' NodeUsage { NodeUsageDef $1 $3 }
+InstantDefinition : Pattern '=' Expr { InstantDef $1 $3 } 
 
 
 Transition :: { Transition }
@@ -296,16 +299,13 @@ Transition : StateId '=' Expr { Transition $1 $3 }
 
 
 Pattern :: { Pattern }
-Pattern : List2Id { Pattern $1 } 
+Pattern : Identifier { SinglePattern $1 } 
+  | '(' List2Id ')' { ProductPattern $2 }
 
 
 List2Id :: { List2Id }
 List2Id : Identifier ',' Identifier { Id2 $1 $3 } 
   | Identifier ',' List2Id { ConsId $1 $3 }
-
-
-NodeUsage :: { NodeUsage }
-NodeUsage : '(' 'use' Identifier ListExpr ')' { NodeUsage $3 $4 } 
 
 
 ControlStructure :: { ControlStructure }
@@ -356,6 +356,7 @@ Expr : Atom { AtExpr $1 }
   | '(' 'constr' Identifier ListExpr ')' { Constr $3 $4 }
   | '(' 'project' Identifier Natural ')' { Project $3 $4 }
   | '(' 'select' Identifier Identifier ')' { Select $3 $4 }
+  | '(' 'use' Identifier ListExpr ')' { NodeUsage $3 $4 }
 
 
 ListExpr :: { [Expr] }

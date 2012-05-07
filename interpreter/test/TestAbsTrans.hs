@@ -12,10 +12,10 @@ import Lang.LAMA.Parse
 
 tests :: Test
 tests = TestList [
-    TestLabel "Types" testTypes,
-    TestLabel "Constants" testConstants,
-    TestLabel "Switch" testSwitchTrans,
-    TestLabel "UpDownCounter" testUpDownCounterTrans
+    --TestLabel "Types" testTypes,
+    --TestLabel "Constants" testConstants,
+    --TestLabel "Switch" testSwitchTrans,
+    --TestLabel "UpDownCounter" testUpDownCounterTrans
   ]
 
 -- Helper
@@ -59,6 +59,7 @@ checkEqual t inp = case parseLAMA inp of
 
 ---------------
 
+{-
 typesSrc :: BL.ByteString
 typesSrc = BL.pack $ unlines [
   "typedef",
@@ -279,4 +280,4 @@ expectedUpDownCounter =
 
 testUpDownCounterTrans :: Test
 testUpDownCounterTrans = checkEqual expectedUpDownCounter upDownCounter
-
+-}

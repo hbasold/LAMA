@@ -12,8 +12,8 @@ import Lang.LAMA.Transform
 
 lexer :: BS.ByteString -> [Lex.Token]
 lexer = Lex.tokens
-parse :: [Lex.Token] -> Err Abs.File
-parse = Par.pFile
+parse :: [Lex.Token] -> Err Abs.Program
+parse = Par.pProgram
 
 data Error = ParseError String | StaticError String deriving Show
 

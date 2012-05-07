@@ -135,8 +135,14 @@ envAddLocal vars = local $ (\env -> env { envVars = Map.union (envVars env) vars
 envSetNodes :: Map Identifier Node -> Result a -> Result a
 envSetNodes ns = local $ (\env -> env { envNodes = ns })
 
-absToConc :: Abs.File -> Either String Program
-absToConc f = runReader (runErrorT $ transFile f) emptyEnv
+envAddDecls :: Declarations -> Result a -> Result a
+envAddDecls decls =
+  let vars = (variableMap State $ declsState decls) `Map.union` (variableMap Local $ declsLocal decls)
+      localNodes = Map.fromList $ map (\n -> (nodeName n, n)) (declsNode decls)
+  in (envAddLocal vars) . (envSetNodes localNodes)
+
+absToConc :: Abs.Program -> Either String Program
+absToConc f = runReader (runErrorT $ transProgram f) emptyEnv
 
 -- | Signals an undefined translation case. To be abandoned when finished.
 failure :: Show a => a -> Result b
@@ -162,6 +168,11 @@ gBool = Ground boolT
 gInt = Ground intT
 gReal = Ground realT
 
+makeProductT :: [Type] -> Type
+makeProductT [] = error "emtpy type list"
+makeProductT [t] = t
+makeProductT ts = Prod ts
+
 -- | Very simple unification:
 --    If rhs is a type variable, then the type
 --    of the expression is chosen, otherwise
@@ -182,24 +193,26 @@ unify t1 t2 = fail $ "Cannot unify " ++ show t1 ++ " and " ++ show t2
 
 -- | Checks the signature of a used node
 checkSignature :: Identifier -> ([Variable], [Variable]) -> [Type] -> [Type] -> Result ()
-checkSignature node (nInp, nOutp) inp outp =
-  case checkTypeList 1 nInp inp of
-    Nothing -> case checkTypeList 1 nOutp outp of
-      Nothing -> return ()
-      Just (err, True) -> fail $ "Could not match output signature of " ++ prettyIdentifier node ++ ": number of return values did not match (" ++ err ++ ")"
-      Just (err, False) -> fail $ "Could not match output signature of " ++ prettyIdentifier node ++ ": type mismatch on return value " ++ err
-    Just (err, True) -> fail $ "Could not match input signature of " ++ prettyIdentifier node ++ ": number of parameters did not match (" ++ err ++ ")"
-    Just (err, False) -> fail $ "Could not match input signature of " ++ prettyIdentifier node ++ ": type mismatch on parameter " ++ err
+checkSignature node (nInp, nOutp) inp outp = do
+  checkNodeTypes "input" node nInp inp
+  checkNodeTypes "output" node nOutp outp
 
+checkNodeTypes :: String -> Identifier -> [Variable] -> [Type] -> Result ()
+checkNodeTypes kind node namedSig expected =
+  case checkTypeList 1 namedSig expected of
+    Nothing -> return ()
+    Just e -> fail $ "Could not match " ++ kind ++ " signature of " ++ prettyIdentifier node ++
+      case e of
+      (err, True) -> ": number of types did not match (" ++ err ++ ")"
+      (err, False) -> ": type mismatch " ++ err
   where
+    checkTypeList :: Int -> [Variable] -> [Type] -> Maybe (String, Bool)
     checkTypeList _ [] [] = Nothing
     checkTypeList p [] r = Just ("had " ++ (show $ p + (length r)) ++ " but expected " ++ show p, True)
     checkTypeList p r [] = Just ("had" ++ show p ++ " but expected " ++ (show $ p + (length r)), True)
     checkTypeList p (v:vs) (t:ts) =
-      if (getVarType v) == t then checkTypeList (p+1) vs ts
+      if (varType v) == t then checkTypeList (p+1) vs ts
       else Just (show p ++ " (expected " ++ show v ++ " but got " ++ show t ++ ")", False)
-
-    getVarType (Variable _ t) = t
 
 appToArrow :: InterType -> InterType -> Result InterType
 appToArrow t (ArrowT t1 t2) = do
@@ -237,19 +250,17 @@ transStateId x = case x of
   Abs.StateId str  -> return $ makeStateId str
 
 
-transFile :: Abs.File -> Result Program
-transFile x = case x of
-  Abs.File typedefs constantdefs node assertion initial invariant -> do
-    types <- transTypeDefs typedefs
-    consts <- transConstantDefs constantdefs
-
-    envSetTypes types $ envSetConsts consts $
-      Program types consts <$>
-        (transNode node) <*>
-        (transAssertion assertion) <*>
-        (transInitial initial) <*>
-        (transInvariant invariant)
-
+transProgram :: Abs.Program -> Result Program
+transProgram x = case x of
+  Abs.Program typedefs constantdefs declarations flow initial assertion invariant -> do
+    transTypeDefs typedefs >>= \types -> envSetTypes types $
+      transConstantDefs constantdefs >>= \consts -> envSetConsts consts $
+        transDeclarations declarations >>= \decls -> envAddDecls decls $ do
+          Program types consts decls <$>
+            (transFlow flow) <*>
+            (transInitial initial) <*>
+            (transAssertion assertion) <*>
+            (transInvariant invariant)
 
 transTypeDefs :: Abs.TypeDefs -> Result (Map TypeId TypeDef)
 transTypeDefs x = case x of
@@ -436,25 +447,28 @@ transMaybeTypedVars x = case x of
 
 transNode :: Abs.Node -> Result Node
 transNode x = case x of
-  Abs.Node identifier maybetypedvars typedvarss nodedecls statedecls localdecls flow controlstructure initial -> do
+  Abs.Node identifier maybetypedvars typedvarss declarations flow outputs controlstructure initial -> do
     name <- transIdentifier identifier
     inp <- transMaybeTypedVars maybetypedvars
     outp <- fmap concat $ mapM transTypedVars typedvarss
-    nodes <- transNodeDecls nodedecls
-    states <- transStateDecls statedecls
-    locals <- transLocalDecls localdecls
+    decls <- transDeclarations declarations
     let vars = (variableMap Input inp)
                 `Map.union` (variableMap Output outp)
-                `Map.union` (variableMap State states)
-                `Map.union` (variableMap Local locals)
-    let localNodes = Map.fromList $ map (\n -> (nodeName n, n)) nodes
     
-    envAddLocal vars $ envSetNodes localNodes $
-      Node name inp outp nodes states locals <$>
+    envAddLocal vars $ envAddDecls decls $
+      Node name inp outp decls <$>
         (transFlow flow) <*>
+        (transOutputs outputs) <*>
         (transControlStructure controlstructure) <*>
         (transInitial initial)
 
+transDeclarations :: Abs.Declarations -> Result Declarations
+transDeclarations x = case x of
+  Abs.Declarations nodedecls statedecls localdecls ->
+    Declarations <$>
+      transNodeDecls nodedecls <*>
+      transStateDecls statedecls <*>
+      transLocalDecls localdecls
 
 transVarDecls :: Abs.VarDecls -> Result [Variable]
 transVarDecls x = case x of
@@ -485,10 +499,9 @@ transLocalDecls x = case x of
 
 transFlow :: Abs.Flow -> Result Flow
 transFlow x = case x of
-  Abs.Flow localdefinitions outputs transitions  ->
+  Abs.Flow localdefinitions transitions  ->
     Flow <$>
       (transLocalDefinitions localdefinitions) <*>
-      (transOutputs outputs) <*>
       (transTransitions transitions)
 
 transLocalDefinitions :: Abs.LocalDefinitions -> Result [InstantDefinition]
@@ -497,36 +510,27 @@ transLocalDefinitions x = case x of
   Abs.JustLocalDefinitons instantdefinitions  -> mapM transInstantDefinition instantdefinitions
 
 
-transOutputs :: Abs.Outputs -> Result [InstantDefinition]
-transOutputs x = case x of
-  Abs.NoOutputs  -> return []
-  Abs.JustOutputs instantdefinitions  -> mapM transInstantDefinition instantdefinitions
-
-
 transTransitions :: Abs.Transitions -> Result [StateTransition]
 transTransitions x = case x of
   Abs.NoTransitions  -> return []
   Abs.JustTransitions transitions  -> mapM transTransition transitions
 
 
+transOutputs :: Abs.Outputs -> Result [InstantDefinition]
+transOutputs x = case x of
+  Abs.NoOutputs  -> return []
+  Abs.JustOutputs instantdefinitions  -> mapM transInstantDefinition instantdefinitions
+
+
 transInstantDefinition :: Abs.InstantDefinition -> Result InstantDefinition
 transInstantDefinition x = case x of
-  Abs.SimpleDef identifier expr  -> do
-    ident <- transIdentifier identifier
-    t <- envLookupWritable ident
+  Abs.InstantDef pattern expr  -> do
+    pat <- transPattern pattern
     e <- transExpr expr
-    void $ unify (getGround e) (Ground t)
-    return $ SimpleDef ident e
-
-  Abs.NodeUsageDef pattern nodeusage  -> do
-    p <- transPattern pattern
-    u@(NodeUsage node exprs) <- transNodeUsage nodeusage
-    outTypes <- mapM envLookupWritable p
-    let inTypes = map getType exprs
-    nodeSignature <- envLookupNodeSignature node
-    checkSignature node nodeSignature inTypes outTypes
-    return $ NodeUsageDef p u
-
+    ts <- mapM envLookupWritable pat
+    void $ unify (getGround e) (Ground $ makeProductT ts)
+    return $ InstantDef pat e
+  where
 
 transTransition :: Abs.Transition -> Result StateTransition
 transTransition x = case x of
@@ -540,8 +544,8 @@ transTransition x = case x of
 
 transPattern :: Abs.Pattern -> Result Pattern
 transPattern x = case x of
-  Abs.Pattern list2id  -> transList2Id list2id
-
+  Abs.SinglePattern identifier  -> (:[]) <$> (transIdentifier identifier)
+  Abs.ProductPattern list2id  -> transList2Id list2id
 
 transList2Id :: Abs.List2Id -> Result [Identifier]
 transList2Id x = case x of
@@ -550,12 +554,6 @@ transList2Id x = case x of
     ident2 <- transIdentifier identifier
     return [ident1, ident2]
   Abs.ConsId identifier list2id  -> (:) <$> (transIdentifier identifier) <*> (transList2Id list2id)
-
-
-transNodeUsage :: Abs.NodeUsage -> Result NodeUsage
-transNodeUsage x = case x of
-  Abs.NodeUsage identifier exprs  ->
-    NodeUsage <$> (transIdentifier identifier) <*> (mapM transExpr exprs)
 
 
 transControlStructure :: Abs.ControlStructure -> Result [Automaton]
@@ -651,6 +649,16 @@ transExpr x = case x of
     return $ Typed (Project ident $ n) (GroundType base)
 
   Abs.Select identifier0 identifier  -> failure x
+  
+  Abs.NodeUsage identifier exprs  -> do
+    node <- transIdentifier identifier
+    params <- mapM transExpr exprs
+
+    let inTypes = map getType params
+    (nInp, nOutp) <- envLookupNodeSignature node
+    checkNodeTypes "input" node nInp inTypes
+
+    return $ Typed (NodeUsage node params) (makeProductT $ map varType nOutp)
 
 
 transBinOp :: Abs.BinOp -> Result (BinOp, InterType)

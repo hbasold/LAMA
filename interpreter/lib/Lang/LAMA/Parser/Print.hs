@@ -91,9 +91,9 @@ instance Print StateId where
 
 
 
-instance Print File where
+instance Print Program where
   prt i e = case e of
-   File typedefs constantdefs node assertion initial invariant -> prPrec i 0 (concatD [prt 0 typedefs , prt 0 constantdefs , prt 0 node , prt 0 assertion , prt 0 initial , prt 0 invariant])
+   Program typedefs constantdefs declarations flow initial assertion invariant -> prPrec i 0 (concatD [prt 0 typedefs , prt 0 constantdefs , prt 0 declarations , prt 0 flow , prt 0 initial , prt 0 assertion , prt 0 invariant])
 
 
 instance Print TypeDefs where
@@ -240,11 +240,16 @@ instance Print MaybeTypedVars where
 
 instance Print Node where
   prt i e = case e of
-   Node identifier maybetypedvars typedvarss nodedecls statedecls localdecls flow controlstructure initial -> prPrec i 0 (concatD [doc (showString "node") , prt 0 identifier , doc (showString "(") , prt 0 maybetypedvars , doc (showString ")") , doc (showString "returns") , doc (showString "(") , prt 0 typedvarss , doc (showString ")") , doc (showString ";") , doc (showString "let") , prt 0 nodedecls , prt 0 statedecls , prt 0 localdecls , prt 0 flow , prt 0 controlstructure , prt 0 initial , doc (showString "tel")])
+   Node identifier maybetypedvars typedvarss declarations flow outputs controlstructure initial -> prPrec i 0 (concatD [doc (showString "node") , prt 0 identifier , doc (showString "(") , prt 0 maybetypedvars , doc (showString ")") , doc (showString "returns") , doc (showString "(") , prt 0 typedvarss , doc (showString ")") , doc (showString ";") , doc (showString "let") , prt 0 declarations , prt 0 flow , prt 0 outputs , prt 0 controlstructure , prt 0 initial , doc (showString "tel")])
 
   prtList es = case es of
    [x] -> (concatD [prt 0 x])
    x:xs -> (concatD [prt 0 x , prt 0 xs])
+
+instance Print Declarations where
+  prt i e = case e of
+   Declarations nodedecls statedecls localdecls -> prPrec i 0 (concatD [prt 0 nodedecls , prt 0 statedecls , prt 0 localdecls])
+
 
 instance Print VarDecls where
   prt i e = case e of
@@ -272,7 +277,7 @@ instance Print LocalDecls where
 
 instance Print Flow where
   prt i e = case e of
-   Flow localdefinitions outputs transitions -> prPrec i 0 (concatD [prt 0 localdefinitions , prt 0 outputs , prt 0 transitions])
+   Flow localdefinitions transitions -> prPrec i 0 (concatD [prt 0 localdefinitions , prt 0 transitions])
 
 
 instance Print LocalDefinitions where
@@ -281,22 +286,21 @@ instance Print LocalDefinitions where
    JustLocalDefinitons instantdefinitions -> prPrec i 0 (concatD [doc (showString "definition") , prt 0 instantdefinitions])
 
 
-instance Print Outputs where
-  prt i e = case e of
-   NoOutputs  -> prPrec i 0 (concatD [])
-   JustOutputs instantdefinitions -> prPrec i 0 (concatD [doc (showString "output") , prt 0 instantdefinitions])
-
-
 instance Print Transitions where
   prt i e = case e of
    NoTransitions  -> prPrec i 0 (concatD [])
    JustTransitions transitions -> prPrec i 0 (concatD [doc (showString "transition") , prt 0 transitions])
 
 
+instance Print Outputs where
+  prt i e = case e of
+   NoOutputs  -> prPrec i 0 (concatD [])
+   JustOutputs instantdefinitions -> prPrec i 0 (concatD [doc (showString "output") , prt 0 instantdefinitions])
+
+
 instance Print InstantDefinition where
   prt i e = case e of
-   SimpleDef identifier expr -> prPrec i 0 (concatD [prt 0 identifier , doc (showString "=") , prt 0 expr])
-   NodeUsageDef pattern nodeusage -> prPrec i 0 (concatD [prt 0 pattern , doc (showString "=") , prt 0 nodeusage])
+   InstantDef pattern expr -> prPrec i 0 (concatD [prt 0 pattern , doc (showString "=") , prt 0 expr])
 
   prtList es = case es of
    [x] -> (concatD [prt 0 x , doc (showString ";")])
@@ -312,18 +316,14 @@ instance Print Transition where
 
 instance Print Pattern where
   prt i e = case e of
-   Pattern list2id -> prPrec i 0 (concatD [prt 0 list2id])
+   SinglePattern identifier -> prPrec i 0 (concatD [prt 0 identifier])
+   ProductPattern list2id -> prPrec i 0 (concatD [doc (showString "(") , prt 0 list2id , doc (showString ")")])
 
 
 instance Print List2Id where
   prt i e = case e of
    Id2 identifier0 identifier -> prPrec i 0 (concatD [prt 0 identifier0 , doc (showString ",") , prt 0 identifier])
    ConsId identifier list2id -> prPrec i 0 (concatD [prt 0 identifier , doc (showString ",") , prt 0 list2id])
-
-
-instance Print NodeUsage where
-  prt i e = case e of
-   NodeUsage identifier exprs -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "use") , prt 0 identifier , prt 0 exprs , doc (showString ")")])
 
 
 instance Print ControlStructure where
@@ -375,6 +375,7 @@ instance Print Expr where
    Constr identifier exprs -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "constr") , prt 0 identifier , prt 0 exprs , doc (showString ")")])
    Project identifier natural -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "project") , prt 0 identifier , prt 0 natural , doc (showString ")")])
    Select identifier0 identifier -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "select") , prt 0 identifier0 , prt 0 identifier , doc (showString ")")])
+   NodeUsage identifier exprs -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "use") , prt 0 identifier , prt 0 exprs , doc (showString ")")])
 
   prtList es = case es of
    [x] -> (concatD [prt 0 x])
