@@ -12,10 +12,10 @@ import Lang.LAMA.Parse
 
 tests :: Test
 tests = TestList [
-    --TestLabel "Types" testTypes,
-    --TestLabel "Constants" testConstants,
-    --TestLabel "Switch" testSwitchTrans,
-    --TestLabel "UpDownCounter" testUpDownCounterTrans
+    TestLabel "Types" testTypes,
+    TestLabel "Constants" testConstants,
+    TestLabel "Switch" testSwitchTrans,
+    TestLabel "UpDownCounter" testUpDownCounterTrans
   ]
 
 -- Helper
@@ -59,14 +59,15 @@ checkEqual t inp = case parseLAMA inp of
 
 ---------------
 
-{-
 typesSrc :: BL.ByteString
 typesSrc = BL.pack $ unlines [
   "typedef",
   "  enum e = { e1, e2 };",
   "  record r1 = { f1 : e };",
   "  record r2 = { f2 : r1 };",
-  "node main() returns (x : r2); let tel" ]
+  "nodes node main() returns (x : r2); let tel",
+  "local x : r2;",
+  "definition x = (use main);" ]
 
 expectedTypes :: Program
 expectedTypes =
@@ -77,17 +78,23 @@ expectedTypes =
       (r2, RecordDef (RecordT [(f2, NamedType r1)]))
     ],
     progConstantDefinitions = fromList [],
-    progMainNode = Node {
-      nodeName = ident "main",
-      nodeInputs = [],
-      nodeOutputs = [Variable x (NamedType r2)],
-      nodeSubNodes = [], nodeState = [], nodeLocals = [],
-      nodeFlow = Flow {
-        flowDefinitions = [], flowOutputs = [], flowTransitions = []}, nodeAutomata = [], nodeInitial = fromList []
-      },
+    progDecls = Declarations {
+      declsNode = [Node {
+        nodeName = ident "main",
+        nodeInputs = [],
+        nodeOutputs = [Variable x (NamedType r2)],
+        nodeDecls = Declarations [] [] [],
+        nodeFlow = Flow {flowDefinitions = [], flowTransitions = []},
+        nodeOutputDefs = [], nodeAutomata = [], nodeInitial = fromList []
+      }],
+      declsState = [],
+      declsLocal = [Variable x (NamedType r2)]
+    },
+    progFlow = Flow [InstantDef [x] (Typed (NodeUsage main []) (NamedType r2))] [],
     progAssertions = [], progInitial = fromList [], progInvariant = []
   }
   where
+    main = ident "main"
     e = ident "e"
     e1 = ident "e1"
     e2 = ident "e2"
@@ -104,10 +111,11 @@ testTypes = checkEqual expectedTypes typesSrc
 
 constantsSrc :: BL.ByteString
 constantsSrc = BL.pack $ unlines [
-  "node main() returns (x : sint[32]; y : uint[16]); let",
-  "  output",
-  "    x = sint[32]((- 5));",
-  "    y = uint[16](1322);",
+  "nodes",
+  "  node main() returns (x : sint[32]; y : uint[16]); let",
+  "    output",
+  "      x = sint[32]((- 5));",
+  "      y = uint[16](1322);",
   "tel" ]
 
 expectedConstants :: Program
@@ -115,24 +123,26 @@ expectedConstants =
   Program {
     progTypeDefinitions = fromList [],
     progConstantDefinitions = fromList [],
-    progMainNode = Node {
-      nodeName = ident "main",
-      nodeInputs = [],
-      nodeOutputs = [
-        Variable x (GroundType (SInt 32)),
-        Variable y (GroundType (UInt 16))
-      ],
-      nodeSubNodes = [], nodeState = [], nodeLocals = [],
-      nodeFlow = Flow {
-        flowDefinitions = [],
-        flowOutputs = [
-          SimpleDef x (constAtExpr $ Typed (SIntConst (-5)) (GroundType (SInt 32))),
-          SimpleDef y (constAtExpr $ Typed (UIntConst 1322) (GroundType (UInt 16)))
+    progDecls = Declarations {
+      declsNode = [Node {
+        nodeName = ident "main",
+        nodeInputs = [],
+        nodeOutputs = [
+          Variable x (GroundType (SInt 32)),
+          Variable y (GroundType (UInt 16))
         ],
-        flowTransitions = []
-      },
-      nodeAutomata = [], nodeInitial = fromList []
+        nodeDecls = Declarations [] [] [],
+        nodeFlow = Flow [] [],
+        nodeOutputDefs = [
+          InstantDef [x] (constAtExpr $ Typed (SIntConst (-5)) (GroundType (SInt 32))),
+          InstantDef [y] (constAtExpr $ Typed (UIntConst 1322) (GroundType (UInt 16)))
+        ],
+        nodeAutomata = [], nodeInitial = fromList []
+      }],
+      declsState = [],
+      declsLocal = []
     },
+    progFlow = Flow [] [],
     progAssertions = [], progInitial = fromList [], progInvariant = []
   }
   where
@@ -146,6 +156,7 @@ testConstants = checkEqual expectedConstants constantsSrc
 
 switch :: BL.ByteString
 switch = BL.pack $ unlines [
+    "nodes",
     "node Switch(on, off: bool) returns (so: bool);",
     "let",
     "  state",
@@ -154,38 +165,50 @@ switch = BL.pack $ unlines [
     "    s_ : bool;",
     "  definition",
     "    s_ = (ite s (not off) on);",
-    "  output",
-    "    so = s_;",
     "  transition",
     "    s' = s_;",
+    "  output",
+    "    so = s_;",
     "  initial s = false;",
-    "tel"]
+    "tel",
+    "local on, off, so : bool;",
+    "definition so = (use Switch on off);"]
 
 expectedSwitch :: Program
 expectedSwitch =
   Program {
     progTypeDefinitions = fromList [],
     progConstantDefinitions = fromList [],
-    progMainNode = Node {
-      nodeName = ident "Switch",
-      nodeInputs = [Variable on boolT, Variable off boolT],
-      nodeOutputs = [Variable so boolT],
-      nodeSubNodes = [],
-      nodeState = [Variable s boolT],
-      nodeLocals = [Variable s_ boolT],
-      nodeFlow = Flow {
-        flowDefinitions = [
-          SimpleDef s_ (
-            ite (varExpr s boolT)
-                (notE (varExpr off boolT))
-                (varExpr on boolT)
-          )
-        ],
-        flowOutputs = [SimpleDef so (varExpr s_ boolT)], 
-        flowTransitions = [StateTransition s (varExpr s_ boolT)]
-      },
-      nodeAutomata = [],
-      nodeInitial = fromList [(s,(Typed (Const false) boolT))]
+    progDecls = Declarations {
+      declsNode = [Node {
+        nodeName = ident "Switch",
+        nodeInputs = [Variable on boolT, Variable off boolT],
+        nodeOutputs = [Variable so boolT],
+        nodeDecls = Declarations {
+          declsNode = [],
+          declsState = [Variable s boolT],
+          declsLocal = [Variable s_ boolT]
+        },
+        nodeFlow = Flow {
+          flowDefinitions = [
+            InstantDef [s_] (
+              ite (varExpr s boolT)
+                  (notE (varExpr off boolT))
+                  (varExpr on boolT)
+            )
+          ],
+          flowTransitions = [StateTransition s (varExpr s_ boolT)]
+        },
+        nodeOutputDefs = [InstantDef [so] (varExpr s_ boolT)], 
+        nodeAutomata = [],
+        nodeInitial = fromList [(s,(Typed (Const false) boolT))]
+      }],
+      declsState = [],
+      declsLocal = [Variable on boolT, Variable off boolT, Variable so boolT]
+    },
+    progFlow = Flow {
+      flowDefinitions = [InstantDef [so] (Typed (NodeUsage switchN [varExpr on boolT, varExpr off boolT]) boolT)],
+      flowTransitions = []
     },
     progAssertions = [], progInitial = fromList [], progInvariant = []
   }
@@ -195,6 +218,7 @@ expectedSwitch =
     s = ident "s"
     so = ident "so"
     s_ = ident "s_"
+    switchN = ident "Switch"
 
 testSwitchTrans :: Test
 testSwitchTrans = checkEqual expectedSwitch switch
@@ -203,75 +227,89 @@ testSwitchTrans = checkEqual expectedSwitch switch
 
 upDownCounter :: BL.ByteString
 upDownCounter = BL.pack $ unlines [
-  "node main () returns (xo : int);",
-  "let",
-  "  state",
-  "    x : int;",
-  "  local",
-  "    x_ : int;",
-  "  output",
-  "    xo = x_;",
-  "  transition",
-  "    x' = x_;",
-  "  ",
-  "  automaton let",
- "     location A let",
- "       definition x_ = (+ x 1);",
+  "nodes",
+  "  node main () returns (xo : int);",
+  "  let",
+  "    state",
+  "      x : int;",
+  "    local",
+  "      x_ : int;",
+  "    transition",
+  "      x' = x_;",
+  "    output",
+  "      xo = x_;",
+  "    ",
+  "    automaton let",
+ "       location A let",
+ "         definition x_ = (+ x 1);",
+ "       tel",
+ "       location B let",
+ "         definition x_ = (- x 1);",
+ "       tel",
+ "       initial A;",
+ "       edge (A, B) : (= x 10);",
+ "       edge (B, A) : (= x 0);",
+ "       edge (A, A) : (not (= x 10));",
+ "       edge (B, B) : (not (= x 0));",
  "     tel",
- "     location B let",
- "       definition x_ = (- x 1);",
- "     tel",
- "     initial A;",
- "     edge (A, B) : (= x 10);",
- "     edge (B, A) : (= x 0);",
- "     edge (A, A) : (not (= x 10));",
- "     edge (B, B) : (not (= x 0));",
- "   tel",
- "   ",
- "   initial x = (- 1);",
- " tel" ]
+ "     ",
+ "     initial x = (- 1);",
+ "  tel",
+ "local xo : int;",
+ "definition xo = (use main);" ]
  -- "invariant (<= xo 10);" ]
 
 expectedUpDownCounter :: Program
 expectedUpDownCounter =
   Program {
     progTypeDefinitions = fromList [], progConstantDefinitions = fromList [],
-    progMainNode = Node {
-      nodeName = ident "main",
-      nodeInputs = [],
-      nodeOutputs = [Variable xo intT],
-      nodeSubNodes = [],
-      nodeState = [Variable x intT],
-      nodeLocals = [Variable x_ intT],
-      nodeFlow = Flow {
-        flowDefinitions = [],
-        flowOutputs = [SimpleDef xo (varExpr x_ intT)],
-        flowTransitions = [StateTransition x (varExpr x_ intT)]
-      },
-      nodeAutomata = [ Automaton {
-        automLocations = [
-          Location sA (Flow {
-            flowDefinitions = [SimpleDef x_ (Typed (Expr2 Plus (varExpr x intT) (intE 1)) (GroundType IntT))],
-            flowOutputs = [], flowTransitions = []
-          }),
-          Location sB (Flow {
-            flowDefinitions = [SimpleDef x_ (Typed (Expr2 Minus (varExpr x intT) (intE 1)) (GroundType IntT))],
-            flowOutputs = [], flowTransitions = []
-          })
-        ],
-        automInitial = sA,
-        automEdges = [
-          Edge sA sB (eqE (varExpr x intT) (intE 10)),
-          Edge sB sA (eqE (varExpr x intT) (intE 0)),
-          Edge sA sA (notE (eqE (varExpr x intT) (intE 10))),
-          Edge sB sB (notE (eqE (varExpr x intT) (intE 0)))
-        ]
+    progDecls = Declarations {
+      declsNode = [Node {
+        nodeName = ident "main",
+        nodeInputs = [],
+        nodeOutputs = [Variable xo intT],
+        nodeDecls = Declarations {
+          declsNode = [],
+          declsState = [Variable x intT],
+          declsLocal = [Variable x_ intT]
+        },
+        nodeFlow = Flow {
+          flowDefinitions = [],
+          flowTransitions = [StateTransition x (varExpr x_ intT)]
+        },
+        nodeOutputDefs = [InstantDef [xo] (varExpr x_ intT)],
+        nodeAutomata = [ Automaton {
+          automLocations = [
+            Location sA (Flow {
+              flowDefinitions = [InstantDef [x_] (Typed (Expr2 Plus (varExpr x intT) (intE 1)) (GroundType IntT))],
+              flowTransitions = []
+            }),
+            Location sB (Flow {
+              flowDefinitions = [InstantDef [x_] (Typed (Expr2 Minus (varExpr x intT) (intE 1)) (GroundType IntT))],
+              flowTransitions = []
+            })
+          ],
+          automInitial = sA,
+          automEdges = [
+            Edge sA sB (eqE (varExpr x intT) (intE 10)),
+            Edge sB sA (eqE (varExpr x intT) (intE 0)),
+            Edge sA sA (notE (eqE (varExpr x intT) (intE 10))),
+            Edge sB sB (notE (eqE (varExpr x intT) (intE 0)))
+          ]
+        }],
+        nodeInitial = fromList [(x, intConstE (-1))]
       }],
-      nodeInitial = fromList [(x, intConstE (-1))]
+      declsState = [],
+      declsLocal = [Variable xo intT]      
+    },
+    progFlow = Flow {
+      flowDefinitions = [InstantDef [xo] (Typed (NodeUsage main []) intT)],
+      flowTransitions = []
     },
     progAssertions = [], progInitial = fromList [], progInvariant = []
   }
   where
+    main = ident "main"
     x = ident "x"
     x_ = ident "x_"
     xo = ident "xo"
@@ -280,4 +318,4 @@ expectedUpDownCounter =
 
 testUpDownCounterTrans :: Test
 testUpDownCounterTrans = checkEqual expectedUpDownCounter upDownCounter
--}
+
