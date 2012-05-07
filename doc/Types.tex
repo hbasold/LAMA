@@ -1,0 +1,47 @@
+\title{LAMA Types}
+
+\documentclass[12pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[ngerman]{babel}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bussproofs}
+
+\newcommand{\syn}[1]{\texttt{{#1}}}
+\newcommand{\ty}[1]{\textbf{#1}}
+
+\begin{document}
+\maketitle
+
+\section{...}
+
+Typisierung eines LAMA-Programms bestehend aus:
+Typdeklarationen ($T$), Konstantendeklarationen ($C$), Variablendeklarationen ($D$),
+Datenfluss ($F$), Anfangszustand ($I$), Assertion ($A$) und Invarianten ($P$).
+
+\begin{prooftree}
+  \alwaysNoLine
+  \AxiomC{$\emptyset,\Delta_B \vdash T \therefore \Delta'$}
+  \UnaryInfC{$\Gamma = \Gamma_1 \cup \Gamma_2$}
+  \UnaryInfC{$\Gamma,\Delta \vdash F : \ty{ok}$}
+  \UnaryInfC{$\Gamma,\Delta \vdash A : \ty{ok}$}              \AxiomC{$\emptyset,\Delta \vdash C \therefore \Gamma_1$}
+                                                              \UnaryInfC{$\Delta = \Delta_B \cup \Delta'$}
+                                                              \UnaryInfC{$\Gamma,\Delta \vdash I : \ty{ok}$}
+                                                              \UnaryInfC{$\Gamma,\Delta \vdash P : \ty{ok}$}        \AxiomC{$\emptyset,\Delta \vdash D \therefore \Gamma_2$}
+                                                                                                                    \UnaryInfC{\phantom{$\Gamma,$}} % empty premisses
+                                                                                                                    \UnaryInfC{\phantom{$\Gamma,$}} % for vertical spacing
+                                                                                                                    \UnaryInfC{\phantom{$\emptyset,\Delta \vdash D \therefore \Gamma_2$}} % force correct line length
+  \alwaysSingleLine
+  \RightLabel{(program)}
+  \TrinaryInfC{$\vdash T \; C \; D \; F \; I \; A \; P : \ty{ok}$}
+\end{prooftree}
+
+
+
+\AxiomC{$\Gamma,\Delta \vdash P : \ty{bool}$}
+\UnaryInfC{$\Gamma,\Delta \vdash \syn{assertion } P \syn{ ;} : \ty{ok}$}
+\DisplayProof
+
+\end{document}
