@@ -2,15 +2,12 @@ position token Identifier (letter (letter | digit | '_')*) ;
 position token StateId (letter (letter | digit | '_')* '\'') ;
 comment "--" ;
 
-entrypoints File ;
+entrypoints Program ;
 
-File. File   ::= TypeDefs
-                ConstantDefs
-                Node
-                Assertion
-                Initial
-                Invariant
-            ;
+Program. Program  ::= TypeDefs ConstantDefs
+                      Declarations Flow Initial
+                      Assertion Invariant
+                  ;
 
 ------
 NoTypeDefs. TypeDefs ::= ;
