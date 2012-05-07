@@ -82,15 +82,15 @@ JustTypedVars. MaybeTypedVars ::= [TypedVars];
 
 Node. Node  ::= "node" Identifier "(" MaybeTypedVars ")" "returns" "(" [TypedVars] ")" ";"
                 "let"
-                    NodeDecls
-                    StateDecls
-                    LocalDecls
+                    Declarations
                     Flow
+                    Outputs
                     ControlStructure
                     Initial
                 "tel" ;
 
 separator nonempty Node "" ;
+Declarations. Declarations ::= NodeDecls StateDecls LocalDecls ;
 SingleDecl. VarDecls ::= TypedVars ";" ;
 ConsDecl. VarDecls ::= TypedVars ";" VarDecls ;
 NoNodes. NodeDecls     ::= ;
@@ -102,13 +102,14 @@ JustLocalDecls. LocalDecls    ::= "local" VarDecls ;
 
 
 -----
-Flow. Flow ::= LocalDefinitions Outputs Transitions ;
+Flow. Flow ::= LocalDefinitions Transitions ;
 NoLocalDefinitons. LocalDefinitions    ::= ;
 JustLocalDefinitons. LocalDefinitions    ::= "definition" [InstantDefinition] ;
-NoOutputs. Outputs    ::= ;
-JustOutputs. Outputs    ::= "output" [InstantDefinition] ;
 NoTransitions. Transitions    ::= ;
 JustTransitions. Transitions    ::= "transition" [Transition] ;
+
+NoOutputs. Outputs    ::= ;
+JustOutputs. Outputs    ::= "output" [InstantDefinition] ;
 
 terminator nonempty InstantDefinition ";" ;
 terminator nonempty Transition ";" ;
