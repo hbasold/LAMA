@@ -143,7 +143,7 @@ Constr. Expr ::= "(" "constr" Identifier [Expr] ")" ;
 Project. Expr ::= "(" "project" Identifier Natural ")" ;
 Select. Expr ::= "(" "select" Identifier Identifier ")" ;
 NodeUsage. Expr ::= "(" "use" Identifier [Expr] ")" ;
-separator nonempty Expr "" ;
+separator Expr "" ;
 
 Not. UnOp ::= "not" ;
 

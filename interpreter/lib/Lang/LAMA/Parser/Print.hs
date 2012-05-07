@@ -378,7 +378,7 @@ instance Print Expr where
    NodeUsage identifier exprs -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "use") , prt 0 identifier , prt 0 exprs , doc (showString ")")])
 
   prtList es = case es of
-   [x] -> (concatD [prt 0 x])
+   [] -> (concatD [])
    x:xs -> (concatD [prt 0 x , prt 0 xs])
 
 instance Print UnOp where

@@ -353,15 +353,15 @@ Expr : Atom { AtExpr $1 }
   | '(' UnOp Expr ')' { Expr1 $2 $3 }
   | '(' BinOp Expr Expr ')' { Expr2 $2 $3 $4 }
   | '(' TernOp Expr Expr Expr ')' { Expr3 $2 $3 $4 $5 }
-  | '(' 'constr' Identifier ListExpr ')' { Constr $3 $4 }
+  | '(' 'constr' Identifier ListExpr ')' { Constr $3 (reverse $4) }
   | '(' 'project' Identifier Natural ')' { Project $3 $4 }
   | '(' 'select' Identifier Identifier ')' { Select $3 $4 }
-  | '(' 'use' Identifier ListExpr ')' { NodeUsage $3 $4 }
+  | '(' 'use' Identifier ListExpr ')' { NodeUsage $3 (reverse $4) }
 
 
 ListExpr :: { [Expr] }
-ListExpr : Expr { (:[]) $1 } 
-  | Expr ListExpr { (:) $1 $2 }
+ListExpr : {- empty -} { [] } 
+  | ListExpr Expr { flip (:) $1 $2 }
 
 
 UnOp :: { UnOp }
