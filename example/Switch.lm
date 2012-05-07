@@ -1,14 +1,17 @@
-node Switch(on, off: bool) returns (so: bool);
-let
-  state
-    s : bool;
-  local
-    s_ : bool;
-  definition
-    s_ = (ite s (not off) on);
-  output
-    so = s_;
-  transition
-    s' = s_;
-  initial s = false;
-tel
+nodes
+  node Switch(on, off: bool) returns (so: bool);
+  let
+    state
+      s : bool;
+    local
+      s_ : bool;
+    definition
+      s_ = (ite s (not off) on);
+    transition
+      s' = s_;
+    output
+      so = s_;
+    initial s = false;
+  tel
+local on, off, so : bool;
+definition so = (use Switch on off);
