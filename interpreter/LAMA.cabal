@@ -30,7 +30,7 @@ Executable test-lama
 Executable lamai
   default-language: Haskell2010
   Build-Depends: base, containers, mtl, bytestring, natural-numbers,
-    transformers, pretty, array, fgl, graphviz, text
+    transformers, pretty, array, fgl, graphviz, text, filepath
   Hs-Source-Dirs: . lib
   GHC-Options: -Wall
   other-modules:

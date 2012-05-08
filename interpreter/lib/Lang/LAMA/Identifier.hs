@@ -5,6 +5,9 @@ import qualified Data.ByteString.Char8 as BS
 type SourcePosition = (Int, Int)
 data Identifier = Id BS.ByteString SourcePosition deriving Show
 
+identString :: Identifier -> String
+identString (Id s _) = BS.unpack s
+
 instance Eq Identifier where
   (Id s1 _) == (Id s2 _) = s1 == s2
 

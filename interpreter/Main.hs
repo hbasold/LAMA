@@ -4,6 +4,7 @@ module Main (main) where
 
 import System.IO (stdin)
 import System.Environment (getArgs)
+import System.FilePath (takeBaseName)
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as BS
 import Data.GraphViz as GV
@@ -15,6 +16,7 @@ import Lang.LAMA.Identifier
 import Data.Map as Map
 import Data.Graph.Inductive.PatriciaTree
 import qualified Data.Graph.Inductive.Tree as GTree
+import Control.Monad (void)
 
 import Lang.LAMA.Parse
 import Lang.LAMA.Dependencies
@@ -42,10 +44,10 @@ putStrV :: Verbosity -> Verbosity -> String -> IO ()
 putStrV whenV v s = if v >= whenV then putStrLn s else return ()
 
 runFile :: Verbosity -> FilePath -> IO ()
-runFile v f = putStrLn f >> BL.readFile f >>= run v
+runFile v f = putStrLn f >> BL.readFile f >>= run v f
 
-run :: Verbosity -> BL.ByteString -> IO ()
-run v inp = case parseLAMA inp of
+run :: Verbosity -> FilePath -> BL.ByteString -> IO ()
+run v f inp = case parseLAMA inp of
   Left (ParseError pe) -> do
     putStrLn "Parse failed..."
     putStrLn pe
@@ -56,8 +58,12 @@ run v inp = case parseLAMA inp of
     Left err -> putStrLn "Dependency error: " >> putStrLn err
     Right deps -> do
       putStrV 2 v $ show concTree
-      let gs = Map.toList $ fmap (defaultVis . depsGraph) deps
-      forM_ gs (\((Id n _), g) -> runGraphviz g Svg (BS.unpack n ++ ".svg"))
+      let progName = takeBaseName f
+      -- dependency graph for program
+      void $ runGraphviz (defaultVis $ depsGraph $ progFlowDeps deps) Svg (progName ++ ".svg")
+      -- dependency graphs for nodes
+      let gs = Map.toList $ fmap (defaultVis . depsGraph) (nodeDeps deps)
+      forM_ gs (\(n, g) -> runGraphviz g Svg (progName ++ "_" ++ n ++ ".svg"))
       -- putStrV 1 v $ show $ fmap (graphviz' . graph) deps
       --forM_ deps (preview . graph)
 
@@ -71,6 +77,6 @@ defaultVis = graphToDot params
 main :: IO ()
 main = do args <- getArgs
           case args of
-            [] -> BL.hGetContents stdin >>= run 2
+            [] -> BL.hGetContents stdin >>= run 2 "stdin"
             "-v":v:fs -> mapM_ (runFile $ read v) fs
             fs -> mapM_ (runFile 0) fs

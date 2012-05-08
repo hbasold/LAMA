@@ -29,8 +29,12 @@ varMap :: Node -> VarMap
 varMap n =
   (Map.fromList $ map ((, Input) . varIdent) $ nodeInputs n) `Map.union`
   (Map.fromList $ map ((, Output) . varIdent) $ nodeOutputs n) `Map.union`
-  (Map.fromList $ map ((, Local) . varIdent) $ declsLocal $ nodeDecls n) `Map.union`
-  (Map.fromList $ map ((, StateIn) . varIdent) $ declsState $ nodeDecls n)
+  (declsVarMap $ nodeDecls n)
+
+declsVarMap :: Declarations -> VarMap
+declsVarMap d =
+  (Map.fromList $ map ((, Local) . varIdent) $ declsLocal d) `Map.union`
+  (Map.fromList $ map ((, StateIn) . varIdent) $ declsState d)
 
 data Mode = GlobalMode | LocationMode Identifier deriving (Eq, Ord, Show)
 type Var = (Identifier, VarUsage, Mode)
@@ -40,9 +44,14 @@ data InterNodeDeps = InterNodeDeps {
     depsExprs :: Map Var Expr
   }
 
-type InterDeps = Map Identifier InterNodeDeps
+type NodeDeps = Map String InterNodeDeps
 
-mkDeps :: Program -> Either String InterDeps
+data ProgDeps = ProgDeps {
+    nodeDeps :: Map String InterNodeDeps,
+    progFlowDeps :: InterNodeDeps
+  }
+
+mkDeps :: Program -> Either String ProgDeps
 mkDeps = mkDepsProgram
 
 type DepMonad = Either String
@@ -55,17 +64,24 @@ checkCycles g = case mkDAG g of
     depList :: Gr Var () -> [G.Node] -> String
     depList h = intercalate " -> " . map (maybe "" id . fmap (\(v, u, m) -> show u ++ " in " ++ show m ++ " " ++ prettyIdentifier v) . G.lab h)
 
-mkDepsProgram :: Program -> DepMonad InterDeps
-mkDepsProgram p = mkDepsNode (progConstantDefinitions p) (head $ declsNode $ progDecls p) -- TODO: temporarily
+mkDepsProgram :: Program -> DepMonad ProgDeps
+mkDepsProgram p = do
+  nodeDeps <- (return . Map.unions) =<< mapM (mkDepsNode "" (progConstantDefinitions p)) (declsNode $ progDecls p)
+  let vars = declsVarMap $ progDecls p
+  let (mes, (vs, progFlowDeps)) = G.run G.empty $ runReaderT (runErrorT $ mkDepsNodeParts (progFlow p) [] []) vars
+  es <- mes
+  dagProgDeps <- checkCycles progFlowDeps
+  return $ ProgDeps nodeDeps (InterNodeDeps dagProgDeps vs es)
 
-mkDepsNode :: Map Identifier Constant -> Node -> DepMonad InterDeps
-mkDepsNode consts node = do
-  subDeps <- mapM (mkDepsNode consts) $ declsNode $ nodeDecls node
+mkDepsNode :: String -> Map Identifier Constant -> Node -> DepMonad NodeDeps
+mkDepsNode scope consts node = do
+  let scopedName = scope ++ (identString $ nodeName node)
+  subDeps <- mapM (mkDepsNode (scopedName ++ "_") consts) $ declsNode $ nodeDecls node
   let vars = varMap node `Map.union` (fmap (const Constant) consts)
-  let (mes, (vs, deps)) = G.run G.empty $ runReaderT (runErrorT $ nodeDeps (nodeFlow node) (nodeOutputDefs node) (nodeAutomata node)) vars
+  let (mes, (vs, deps)) = G.run G.empty $ runReaderT (runErrorT $ mkDepsNodeParts (nodeFlow node) (nodeOutputDefs node) (nodeAutomata node)) vars
   es <- mes
   dagDeps <- checkCycles deps
-  return $ Map.insert (nodeName node) (InterNodeDeps dagDeps vs es) (Map.unions subDeps)
+  return $ Map.insert scopedName (InterNodeDeps dagDeps vs es) (Map.unions subDeps)
 
 -- | We redefine 'Data.Graph.Inductive.NodeMap.NodeMapM' here, because
 --    the original type alias does not allow leaving the monadic return type
@@ -75,8 +91,8 @@ type DepNodeMapM = State (NodeMap Var, Gr Var ())
 type DepGraphM = ErrorT String (ReaderT VarMap DepNodeMapM)
 type ExprMap = Map Var Expr
 
-nodeDeps :: Flow -> [InstantDefinition] -> [Automaton] -> DepGraphM ExprMap
-nodeDeps f o a = do
+mkDepsNodeParts :: Flow -> [InstantDefinition] -> [Automaton] -> DepGraphM ExprMap
+mkDepsNodeParts f o a = do
   e1 <- mkDepsFlow GlobalMode f
   e2 <- foldlM (mkDepsInstant GlobalMode) e1 o
   e3s <- mapM mkDepsAutomaton a
