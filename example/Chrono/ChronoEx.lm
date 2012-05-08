@@ -10,25 +10,26 @@ nodes
   node chrono (StSt, Rst : bool) returns (t : times);
   let
     nodes
-      -- Innerer Automat
+      -- inner automaton
       node button (StSt : bool; internal_reset : bool)
         returns (so, mo : int; run : bool);
       let
         state
           d, s, m : int;
         local
-          -- Variablen mit _ am Ende sollen andeuten,
-          -- dass dies der Wert waere, den die Variable
-          -- im naechsten Zustand haette.
+          -- Variable names that end in "_" mean that the
+          -- variable will get a values that the according
+          -- state variable will have in the next step.
           d_, s_, m_: int;
           STOP_d_, START_d_, STOP_s_, START_s_,
             STOP_m_, START_m_ : int;
           run_, STOP_run_, START_run_ : bool;
         definition
-          -- Berechnungen in den einzelnen Zustaenden. Diese
-          -- muessen jeweils verfuegbar sein, da es sich um
-          -- Strong-Transitions handelt. D.h. die Berechnung
-          -- des Folgezustands muss sofort verfuegbar sein.
+          -- Since we have to translate a strong transition
+          -- the values calculated in the corresponding state
+          -- have to be calculated here and not in the
+          -- state. Otherwise those values would only be
+          -- accessible in the next step.
           STOP_d_ = d;
           START_d_ = (mod (+ d 1) secondsPartFactor);
           STOP_s_ = s;
@@ -69,7 +70,7 @@ nodes
             edge (STOP, STOP) : internal_reset;
             edge (START, STOP) : internal_reset;
             -- make transition relation total
-            edge (START, START) : (not (or (and (not internal_reset) StSt) internal_reset)); -- = (not (or internal_reset StSt))
+            edge (START, START) : (not (or internal_reset StSt)); -- = (not (or (and (not internal_reset) StSt) internal_reset))
             edge (STOP, STOP) : (not (or (and (not internal_reset) StSt) internal_reset));
           tel
 
@@ -96,8 +97,8 @@ nodes
       edge (CHRONO, CHRONO_RESET) : (and Rst (not run));
       edge (CHRONO_RESET, CHRONO) : true;
       -- make transition relation total
-      edge (CHRONO, CHRONO) : (not (or (or (not Rst) run) (and Rst (not run)))); -- = false
-      edge (CHRONO_RESET, CHRONO_RESET) : (not true); -- = false
+      edge (CHRONO, CHRONO) : false; -- = (not (or (or (not Rst) run) (and Rst (not run))))
+      edge (CHRONO_RESET, CHRONO_RESET) : false; -- = (not true)
     tel
         
     automaton let
