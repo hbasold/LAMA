@@ -48,6 +48,9 @@ ite c e1 e2 = Typed (Ite c e1 e2) boolT
 eqE :: Expr -> Expr -> Expr
 eqE e1 e2 = Typed (Expr2 Equals e1 e2) boolT
 
+leqE :: Expr -> Expr -> Expr
+leqE e1 e2 = Typed (Expr2 LEq e1 e2) boolT
+
 notE :: Expr -> Expr
 notE e = Typed (LogNot e) boolT
 
@@ -256,8 +259,8 @@ upDownCounter = BL.pack $ unlines [
  "     initial x = (- 1);",
  "  tel",
  "local xo : int;",
- "definition xo = (use main);" ]
- -- "invariant (<= xo 10);" ]
+ "definition xo = (use main);",
+ "invariant (<= xo 10);" ]
 
 expectedUpDownCounter :: Program
 expectedUpDownCounter =
@@ -306,7 +309,9 @@ expectedUpDownCounter =
       flowDefinitions = [InstantDef [xo] (Typed (NodeUsage main []) intT)],
       flowTransitions = []
     },
-    progAssertions = [], progInitial = fromList [], progInvariant = []
+    progInitial = fromList [],
+    progAssertions = [],
+    progInvariant = [leqE (varExpr xo intT) (intE 10)]
   }
   where
     main = ident "main"
