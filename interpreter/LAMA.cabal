@@ -22,6 +22,7 @@ Executable test-lama
     Lang.LAMA.Identifier
     Lang.LAMA.Types
     Lang.LAMA.Structure
+    Lang.LAMA.TypedStructure
     Lang.LAMA.Transform
     Lang.LAMA.Parse
     Lang.LAMA.Dependencies
@@ -44,6 +45,7 @@ Executable lamai
     Lang.LAMA.Identifier
     Lang.LAMA.Types
     Lang.LAMA.Structure
+    Lang.LAMA.TypedStructure
     Lang.LAMA.Transform
     Lang.LAMA.Parse
     Lang.LAMA.Dependencies

@@ -9,12 +9,12 @@ module Lang.LAMA.Types(
   boolT, intT, realT,
   -- * Typing structures
   Typed(..),
-  preserveType,
+  mapTyped, preserveType,
   EqFunctor(..), ShowFunctor(..)
 ) where
 
-import Data.Natural
 import Control.Arrow (first, (&&&))
+import Data.Natural
 
 import Lang.LAMA.Identifier
 
@@ -58,6 +58,10 @@ data Typed e = Typed {
     untyped :: (e (Typed e)),
     getType :: Type
   }
+
+-- | fmap for Typed
+mapTyped :: (e1 (Typed e1) -> e2 (Typed e2)) -> (Typed e1 -> Typed e2)
+mapTyped f (Typed a x) = (Typed (f a) x)
 
 -- | Construct new typed expression preserving the type
 preserveType :: (Typed e1 -> (e2 (Typed e2))) -> Typed e1 -> Typed e2

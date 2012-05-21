@@ -7,7 +7,7 @@ import Data.Map as Map
 
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
-import Lang.LAMA.Structure
+import Lang.LAMA.TypedStructure
 import Lang.LAMA.Parse
 
 tests :: Test
@@ -28,10 +28,10 @@ false :: Constant
 false = Typed (BoolConst False) boolT
 
 varExpr :: Identifier -> Type -> Expr
-varExpr v t = Typed (AtExpr (Typed (AtomVar v) t)) t
+varExpr v t = Typed (AtExpr (AtomVar v)) t
 
 constAtExpr :: Constant -> Expr
-constAtExpr c@(Typed _ t) = Typed (AtExpr (Typed (AtomConst c) t)) t
+constAtExpr c@(Typed _ t) = Typed (AtExpr (AtomConst c)) t
 
 intConst :: Integer -> Constant
 intConst c = Typed (IntConst c) intT

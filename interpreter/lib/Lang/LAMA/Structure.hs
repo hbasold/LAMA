@@ -1,6 +1,6 @@
 {-| Structure of LAMA programs -}
 module Lang.LAMA.Structure (
-  Program(..),
+  GProgram(..),
   -- * Type definitions
   TypeDef(..),
   -- ** Enums
@@ -8,22 +8,21 @@ module Lang.LAMA.Structure (
   -- ** Records
   RecordField, RecordT(..),
   -- * Constants
-  Constant, UConst(..),
+  GConst(..),
   -- * Nodes
-  Node(..), Variable(..), varIdent, varType, Declarations(..),
+  GNode(..), Variable(..), varIdent, varType, GDeclarations(..),
   -- * Data flow
-  Flow(..),
+  GFlow(..),
   -- ** Definition of local and output variables
-  Pattern, InstantDefinition(..),
+  Pattern, GInstantDefinition(..),
   -- ** Definition of state variables
-  StateTransition(..), StateInit,
+  GStateTransition(..), GStateInit,
   -- * Automata
-  LocationId, Location(..), Edge(..), Automaton(..),
+  LocationId, GLocation(..), GEdge(..), GAutomaton(..),
   -- * Expressions
-  Atom, Expr, ConstExpr,
   -- ** Untyped expressions
   -- $untyped-doc
-  UAtom(..), UExpr(..), UConstExpr(..), BinOp(..), RecordConstr(..)
+  GAtom(..), GExpr(..), GConstExpr(..), BinOp(..), GRecordConstr(..)
 ) where
 
 import Data.Natural
@@ -35,14 +34,14 @@ import Lang.LAMA.Types
 -- | A LAMA program needs at least a top level node ('progMainNode')
 --  which will be the target for the given verification
 --  properties ('progInvariant').
-data Program = Program {
+data GProgram c e ce = Program {
     progTypeDefinitions     :: Map TypeId TypeDef,
-    progConstantDefinitions :: Map Identifier Constant,
-    progDecls               :: Declarations,
-    progFlow                :: Flow,
-    progInitial             :: StateInit,
-    progAssertions          :: [Expr],
-    progInvariant           :: [Expr]
+    progConstantDefinitions :: Map Identifier c,
+    progDecls               :: GDeclarations e ce,
+    progFlow                :: GFlow e,
+    progInitial             :: GStateInit ce,
+    progAssertions          :: [e],
+    progInvariant           :: [e]
   } deriving (Eq, Show)
 
 
@@ -66,11 +65,8 @@ data RecordT = RecordT [(RecordField, Type)] deriving (Eq, Show)
 
 
 ---- Constants -----
-
--- | Typed constant
-type Constant = Typed UConst
 -- | LAMA constants
-data UConst e
+data GConst e
     = BoolConst Bool        -- ^ Boolean constant
     | IntConst Integer      -- ^ Integer constant
     | RealConst Rational    -- ^ Real constant (seen as arbitrary rational number)
@@ -81,15 +77,15 @@ data UConst e
 
 ---- Nodes -----
 
-data Node = Node {
+data GNode e ce = Node {
     nodeName        :: Identifier,
     nodeInputs      :: [Variable],
     nodeOutputs     :: [Variable],
-    nodeDecls       :: Declarations,
-    nodeFlow        :: Flow,
-    nodeOutputDefs  :: [InstantDefinition],
-    nodeAutomata    :: [Automaton],
-    nodeInitial     :: StateInit
+    nodeDecls       :: GDeclarations e ce,
+    nodeFlow        :: GFlow e,
+    nodeOutputDefs  :: [GInstantDefinition e],
+    nodeAutomata    :: [GAutomaton e],
+    nodeInitial     :: GStateInit ce
   } deriving (Eq, Show)
   
 data Variable = Variable Identifier Type deriving (Eq, Show)
@@ -100,68 +96,59 @@ varIdent (Variable x _) = x
 varType :: Variable -> Type
 varType (Variable _ t) = t
 
-data Declarations = Declarations {
-    declsNode   :: [Node],
+data GDeclarations e ce = Declarations {
+    declsNode   :: [GNode e ce],
     declsState  :: [Variable],
     declsLocal  :: [Variable]
   } deriving (Eq, Show)
 
 ---- Data flow -----
 
-data Flow = Flow {
-    flowDefinitions :: [InstantDefinition],
-    flowTransitions :: [StateTransition]
+data GFlow e = Flow {
+    flowDefinitions :: [GInstantDefinition e],
+    flowTransitions :: [GStateTransition e]
   } deriving (Eq, Show)
 
 type Pattern = [Identifier]
-data InstantDefinition = InstantDef Pattern Expr deriving (Eq, Show)
+data GInstantDefinition e = InstantDef Pattern e deriving (Eq, Show)
 
-data StateTransition = StateTransition Identifier Expr deriving (Eq, Show)
-type StateInit = Map Identifier ConstExpr
+data GStateTransition e = StateTransition Identifier e deriving (Eq, Show)
+type GStateInit ce = Map Identifier ce
 
 
 ---- Automaton -----
 
 type LocationId = Identifier
-data Location = Location LocationId Flow deriving (Eq, Show)
-data Edge = Edge LocationId LocationId Expr deriving (Eq, Show)
-data Automaton = Automaton {
-    automLocations :: [Location],
+data GLocation e = Location LocationId (GFlow e) deriving (Eq, Show)
+data GEdge e = Edge LocationId LocationId e deriving (Eq, Show)
+data GAutomaton e = Automaton {
+    automLocations :: [GLocation e],
     automInitial :: LocationId,
-    automEdges :: [Edge]
+    automEdges :: [GEdge e]
   } deriving (Eq, Show)
 
 
 ---- Expressions -----
 
--- $untyped-doc
--- The parameter /e/ of the untyped expressions
--- is replaced by the typed variant of themselves
--- by 'Typed'. So 'Typed' builds up a fix point type.
-
-type Expr = Typed UExpr             -- ^ Typed expression
-type Atom = Typed UAtom             -- ^ Typed atom
-type ConstExpr = Typed UConstExpr   -- ^ Typed constant expression
-
 -- | Untyped atomic expressions
-data UAtom e
-  = AtomConst Constant  -- ^ Constant
+data GAtom c e
+  = AtomConst c  -- ^ Constant
   | AtomVar Identifier  -- ^ Variable
   deriving (Eq, Show)
 
 -- | Construction of records: requires type and expression for each field
-data RecordConstr e = RecordConstr TypeId [e] deriving (Eq, Show)
+data GRecordConstr e = RecordConstr TypeId [e] deriving (Eq, Show)
 
 -- | Untyped LAMA expressions
-data UExpr e
-  = AtExpr Atom                     -- ^ Atomic expression (see UAtom)
+data GExpr c a e
+  = AtExpr (GAtom c a)                    -- ^ Atomic expression (see GAtom)
   | LogNot e                        -- ^ Logical negation
   | Expr2 BinOp e e                 -- ^ Binary expression
   | Ite e e e                       -- ^ If-then-else
-  | Constr (RecordConstr e)         -- ^ Record construtor
+  | Constr (GRecordConstr e)         -- ^ Record construtor
   | Select Identifier RecordField   -- ^ Record selection
   | Project Identifier Natural      -- ^ Array projection
-  | NodeUsage Identifier [Expr]     -- ^ Using a node
+  | NodeUsage Identifier [e]     -- ^ Using a node
   deriving (Eq, Show)
 
 -- | Binary operators
@@ -172,43 +159,43 @@ data BinOp
   deriving (Eq, Show)
 
 -- | Untyped constant expressions
-data UConstExpr e
-  = Const Constant                        -- ^ Simple constant
-  | ConstRecord (RecordConstr ConstExpr)  -- ^ Record constructed from constant expressions
+data GConstExpr c e
+  = Const c                       -- ^ Simple constant
+  | ConstRecord (GRecordConstr e)  -- ^ Record constructed from constant expressions
   deriving (Eq, Show)
 
 
 ---- Instances -----
 
-instance EqFunctor RecordConstr where
+instance EqFunctor GRecordConstr where
   eqF = (==)
 
-instance EqFunctor UConst where
+instance EqFunctor GConst where
   eqF = (==)
   
-instance EqFunctor UConstExpr where
+instance Eq c => EqFunctor (GConstExpr c) where
   eqF = (==)
 
-instance EqFunctor UAtom where
+instance Eq c => EqFunctor (GAtom c) where
   eqF = (==)
 
-instance EqFunctor UExpr where
+instance (Eq c, Eq a) => EqFunctor (GExpr c a) where
   eqF = (==)
 
 
-instance ShowFunctor RecordConstr where
+instance ShowFunctor GRecordConstr where
   showF = show
 
-instance ShowFunctor UConst where
+instance ShowFunctor GConst where
   showF = show
   
-instance ShowFunctor UConstExpr where
+instance Show c => ShowFunctor (GConstExpr c) where
   showF = show
 
-instance ShowFunctor UAtom where
+instance Show c => ShowFunctor (GAtom c) where
   showF = show
   
-instance ShowFunctor UExpr where
+instance (Show c, Show a) => ShowFunctor (GExpr c a) where
   showF = show
 
 

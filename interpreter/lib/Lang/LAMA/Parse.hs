@@ -7,7 +7,7 @@ import qualified Lang.LAMA.Parser.Lex as Lex
 import qualified Lang.LAMA.Parser.Par as Par
 import Lang.LAMA.Parser.ErrM
 
-import Lang.LAMA.Structure
+import Lang.LAMA.TypedStructure
 import Lang.LAMA.Transform
 
 lexer :: BS.ByteString -> [Lex.Token]

@@ -16,7 +16,7 @@ import qualified Lang.LAMA.Parser.Abs as Abs
 import qualified Lang.LAMA.Parser.Print as Abs (printTree)
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
-import Lang.LAMA.Structure
+import Lang.LAMA.TypedStructure
 
 log2 :: (Integral a, Num b) => a -> b
 log2 x
@@ -192,11 +192,6 @@ unify VarArray t@(Ground (ArrayType _ _)) = return t
 unify t1 t2 = fail $ "Cannot unify " ++ show t1 ++ " and " ++ show t2
 
 -- | Checks the signature of a used node
-checkSignature :: Identifier -> ([Variable], [Variable]) -> [Type] -> [Type] -> Result ()
-checkSignature node (nInp, nOutp) inp outp = do
-  checkNodeTypes "input" node nInp inp
-  checkNodeTypes "output" node nOutp outp
-
 checkNodeTypes :: String -> Identifier -> [Variable] -> [Type] -> Result ()
 checkNodeTypes kind node namedSig expected =
   case checkTypeList 1 namedSig expected of
@@ -423,8 +418,8 @@ transConstExpr :: Abs.ConstExpr -> Result ConstExpr
 transConstExpr x = case x of
   Abs.ConstExpr expr  -> transExpr expr >>= (evalConst . untyped)
   where
-    evalConst :: UExpr Expr -> Result ConstExpr
-    evalConst (AtExpr (Typed (AtomConst c) _)) = return $ preserveType Const c
+    evalConst :: GExpr Constant Atom Expr -> Result ConstExpr
+    evalConst (AtExpr (AtomConst c)) = return $ preserveType Const c
     evalConst (Constr (RecordConstr tid es)) = do
       cExprs <- mapM (evalConst . untyped) es
       return $ Typed (ConstRecord $ RecordConstr tid cExprs) (NamedType tid)
@@ -609,7 +604,7 @@ transAtom x = case x of
 
 transExpr :: Abs.Expr -> Result Expr
 transExpr x = case x of
-  Abs.AtExpr atom -> fmap (preserveType AtExpr) $ transAtom atom
+  Abs.AtExpr atom -> fmap (mapTyped AtExpr) $ transAtom atom
 
   Abs.Expr1 Abs.Not expr -> do
     e <- transExpr expr

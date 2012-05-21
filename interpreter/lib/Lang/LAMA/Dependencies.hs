@@ -19,7 +19,7 @@ import Control.Monad.Trans.Reader
 
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
-import Lang.LAMA.Structure
+import Lang.LAMA.TypedStructure
 
 
 
@@ -167,8 +167,8 @@ insGlobLocDeps v@(x, u, _) = do
     insVar vG
     insDep vG v
 
-getDeps :: UExpr (Typed UExpr) -> [Identifier]
-getDeps (AtExpr (Typed (AtomVar ident) _)) = [ident]
+getDeps :: GExpr Constant Atom Expr -> [Identifier]
+getDeps (AtExpr (AtomVar ident)) = [ident]
 getDeps (AtExpr _) = []
 getDeps (LogNot e) = getDeps $ untyped e
 getDeps (Expr2 _ e1 e2) = (getDeps $ untyped e1) ++ (getDeps $ untyped e2)
