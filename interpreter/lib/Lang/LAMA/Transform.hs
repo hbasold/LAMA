@@ -1,3 +1,6 @@
+{- Translate generated data structures to internal structures
+  while checking for undefined automaton locations and
+  constant expressions. -}
 module Lang.LAMA.Transform (absToConc) where
 
 import qualified Data.Map as Map
@@ -9,140 +12,21 @@ import Prelude hiding (foldl, concat, any)
 import Data.Foldable
 import Control.Applicative hiding (Const)
 import Control.Arrow (second)
-import Control.Monad.Trans.Error
-import Control.Monad.Reader
+import Control.Monad.Trans.Error ()
+import Control.Monad (when)
 
 import qualified Lang.LAMA.Parser.Abs as Abs
 import qualified Lang.LAMA.Parser.Print as Abs (printTree)
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
-import Lang.LAMA.TypedStructure
-
-log2 :: (Integral a, Num b) => a -> b
-log2 x
-  | x < 0 = error "Argument to log2 must be non-negative"
-  | otherwise = log2' x
-  where
-    log2' 0 = 0
-    log2' 1 = 0
-    log2' y = 1 + (log2 $ div y 2)
-
-data VarUsage = Input | Output | Local | State
-
-readable :: VarUsage -> Bool
-readable Input = True
-readable Output = False
-readable Local = True
-readable State = True
-
-writable :: VarUsage -> Bool
-writable Input = False
-writable Output = True
-writable State = True
-writable Local = True
-
--- | Environment which holds declared types, constants and variables
-data Environment = Env {
-    envTypes :: Map TypeId TypeDef,
-    envConsts :: Map Identifier Constant,
-    envVars :: Map Identifier (Type, VarUsage),
-    envNodes :: Map Identifier Node
-  }
-
--- | Generate empty environment
-emptyEnv :: Environment
-emptyEnv = Env Map.empty Map.empty Map.empty Map.empty
+import Lang.LAMA.UnTypedStructure
 
 -- | Monad for the transformation process
---    Carries possible errors and an environment
-type Result = ErrorT String (Reader Environment)
-
--- | Lookup a record type
-envLookupRecordType :: TypeId -> Result RecordT
-envLookupRecordType ident = do
-  env <- ask
-  case Map.lookup ident $ envTypes env of
-    Nothing -> fail $ "Undefined type " ++ show ident
-    Just (RecordDef t) -> return t
-    _ -> fail $ show ident ++ " is not a record type"
-
--- | Lookup a type
-envLookupType :: TypeId -> Result TypeDef
-envLookupType ident = do
-  env <- ask
-  case Map.lookup ident $ envTypes env of
-    Nothing -> fail $ "Undefined type " ++ show ident
-    Just t -> return t
-
--- | Lookup a variable that needs to be read
-envLookupReadable :: Identifier -> Result Type
-envLookupReadable ident = do
-  env <- ask
-  case Map.lookup ident $ envVars env of
-    Nothing -> case Map.lookup ident $ envConsts env of
-      Nothing -> fail $ "Undefined variable " ++ prettyIdentifier ident
-      Just c -> return $ getType c
-    Just (t, u) -> if readable u then return t
-                    else fail $ "Variable " ++ prettyIdentifier ident ++ " not readable"
-
--- | Lookup a variable that needs to be written
-envLookupWritable :: Identifier -> Result Type
-envLookupWritable ident = do
-  env <- ask
-  case Map.lookup ident $ envVars env of
-    Nothing -> fail $ "Undefined variable " ++ prettyIdentifier ident
-    Just (t, u) -> if writable u then return t
-                    else fail $ "Variable " ++ prettyIdentifier ident ++ " not writable"
-
--- | Lookup a state variable
-envLookupState :: Identifier -> Result Type
-envLookupState ident = do
-  env <- ask
-  case Map.lookup ident $ envVars env of
-    Nothing -> fail $ "Undefined variable " ++ prettyIdentifier ident
-    Just (t, State) -> return t
-    _ -> fail $ "Variable " ++ prettyIdentifier ident ++ " is not a state variable"
-
--- | Lookup a state variable
-envLookupNodeSignature :: Identifier -> Result ([Variable], [Variable])
-envLookupNodeSignature ident = do
-  env <- ask
-  case Map.lookup ident $ envNodes env of
-    Nothing -> fail $ "Undefined nodes " ++ prettyIdentifier ident
-    Just n -> return (nodeInputs n, nodeOutputs n)
-
-variableMap :: VarUsage -> [Variable] -> Map Identifier (Type, VarUsage)
-variableMap u = Map.fromList . map splitVar
-  where splitVar (Variable ident t) = (ident, (t, u))
-
--- | Set the types in the environment
-envSetTypes :: Map TypeId TypeDef -> Result a -> Result a
-envSetTypes ts = local $ (\env -> env { envTypes = ts })
-
--- | Adds a type to in the environment
-envAddType :: TypeId -> TypeDef -> Result a -> Result a
-envAddType ident t = local $ (\env -> env { envTypes = Map.insert ident t $ envTypes env })
-
--- | Set the constants in the environment
-envSetConsts :: Map Identifier Constant -> Result a -> Result a
-envSetConsts cs = local $ (\env -> env { envConsts = cs })
-
--- | Add scoped variables to the environment
-envAddLocal :: Map Identifier (Type, VarUsage) -> Result a -> Result a
-envAddLocal vars = local $ (\env -> env { envVars = Map.union (envVars env) vars })
-
--- | Set the nodes in the environment
-envSetNodes :: Map Identifier Node -> Result a -> Result a
-envSetNodes ns = local $ (\env -> env { envNodes = ns })
-
-envAddDecls :: Declarations -> Result a -> Result a
-envAddDecls decls =
-  let vars = (variableMap State $ declsState decls) `Map.union` (variableMap Local $ declsLocal decls)
-      localNodes = Map.fromList $ map (\n -> (nodeName n, n)) (declsNode decls)
-  in (envAddLocal vars) . (envSetNodes localNodes)
+--    Carries possible errors
+type Result = Either String
 
 absToConc :: Abs.Program -> Either String Program
-absToConc f = runReader (runErrorT $ transProgram f) emptyEnv
+absToConc = transProgram
 
 -- | Signals an undefined translation case. To be abandoned when finished.
 failure :: Show a => a -> Result b
@@ -157,81 +41,6 @@ makeId (pos, str) = Id str pos
 --    on the lhs in a state assignment.
 makeStateId :: ((Int, Int), BS.ByteString) -> Identifier
 makeStateId (pos, str) = Id (BS.init str) pos
-
-
---- Type inference
-
--- | Intermediate type for type inference
-data InterType = Ground Type | VarType | VarArray | ArrowT InterType InterType deriving Show
-gBool, gInt, gReal :: InterType
-gBool = Ground boolT
-gInt = Ground intT
-gReal = Ground realT
-
-makeProductT :: [Type] -> Type
-makeProductT [] = error "emtpy type list"
-makeProductT [t] = t
-makeProductT ts = Prod ts
-
--- | Very simple unification:
---    If rhs is a type variable, then the type
---    of the expression is chosen, otherwise
---    the types must be equal.
-unify :: InterType -> InterType -> Result InterType
-unify t@(Ground t1) (Ground t2) =
-  if t1 == t2 then return t
-  else fail $ "Incompatible types: " ++ show t1 ++ " and " ++ show t2
-
-unify VarType t = return t
-unify t VarType = return t
-
-unify VarArray VarArray = return VarArray
-unify t@(Ground (ArrayType _ _)) VarArray = return t
-unify VarArray t@(Ground (ArrayType _ _)) = return t
-
-unify t1 t2 = fail $ "Cannot unify " ++ show t1 ++ " and " ++ show t2
-
--- | Checks the signature of a used node
-checkNodeTypes :: String -> Identifier -> [Variable] -> [Type] -> Result ()
-checkNodeTypes kind node namedSig expected =
-  case checkTypeList 1 namedSig expected of
-    Nothing -> return ()
-    Just e -> fail $ "Could not match " ++ kind ++ " signature of " ++ prettyIdentifier node ++
-      case e of
-      (err, True) -> ": number of types did not match (" ++ err ++ ")"
-      (err, False) -> ": type mismatch " ++ err
-  where
-    checkTypeList :: Int -> [Variable] -> [Type] -> Maybe (String, Bool)
-    checkTypeList _ [] [] = Nothing
-    checkTypeList p [] r = Just ("had " ++ (show $ p + (length r)) ++ " but expected " ++ show p, True)
-    checkTypeList p r [] = Just ("had" ++ show p ++ " but expected " ++ (show $ p + (length r)), True)
-    checkTypeList p (v:vs) (t:ts) =
-      if (varType v) == t then checkTypeList (p+1) vs ts
-      else Just (show p ++ " (expected " ++ show v ++ " but got " ++ show t ++ ")", False)
-
-appToArrow :: InterType -> InterType -> Result InterType
-appToArrow t (ArrowT t1 t2) = do
-  t' <- unify t1 t
-  case t2 of
-    VarType -> return t'
-    (ArrowT VarType t3) -> return $ ArrowT t' t3
-    _ -> return t2
-appToArrow _ t = fail $ show t ++ " is not a function type"
-
--- | Check if ground type (not a type variable) and
---    return that type.
-ensureGround :: InterType -> Result Type
-ensureGround (Ground t) = return t
-ensureGround VarType = fail "Not resolved type variable"
-ensureGround _ = fail "Unresolved function type"
-
-getGround :: Typed e -> InterType
-getGround = Ground . getType
-
-typeExists :: Type -> Result ()
-typeExists (NamedType n) = void $ envLookupType n
-typeExists _ = return ()
-
 
 --- Translation functions
 
@@ -248,29 +57,21 @@ transStateId x = case x of
 transProgram :: Abs.Program -> Result Program
 transProgram x = case x of
   Abs.Program typedefs constantdefs declarations flow initial assertion invariant -> do
-    transTypeDefs typedefs >>= \types -> envSetTypes types $
-      transConstantDefs constantdefs >>= \consts -> envSetConsts consts $
-        transDeclarations declarations >>= \decls -> envAddDecls decls $ do
-          Program types consts decls <$>
-            (transFlow flow) <*>
-            (transInitial initial) <*>
-            (transAssertion assertion) <*>
-            (transInvariant invariant)
+    Program <$>
+      (transTypeDefs typedefs) <*>
+      (transConstantDefs constantdefs) <*>
+      (transDeclarations declarations) <*>
+      (transFlow flow) <*>
+      (transInitial initial) <*>
+      (transAssertion assertion) <*>
+      (transInvariant invariant)
 
-transTypeDefs :: Abs.TypeDefs -> Result (Map TypeId TypeDef)
+transTypeDefs :: Abs.TypeDefs -> Result (Map TypeAlias TypeDef)
 transTypeDefs x = case x of
   Abs.NoTypeDefs  -> return Map.empty
-  Abs.JustTypeDefs typedefs  -> fmap Map.fromList $ transTypeDefs' typedefs
+  Abs.JustTypeDefs typedefs  -> fmap Map.fromList $ mapM transTypeDef typedefs
 
-  where
-    transTypeDefs' [] = return []
-    transTypeDefs' (td:tds) = do
-      td'@(ident, t) <- transTypeDef td
-      tds' <- envAddType ident t $
-                transTypeDefs' tds
-      return $ td' : tds'
-
-transTypeDef :: Abs.TypeDef -> Result (TypeId, TypeDef)
+transTypeDef :: Abs.TypeDef -> Result (TypeAlias, TypeDef)
 transTypeDef x = case x of
   Abs.EnumDef enumt  -> fmap (second EnumDef) $ transEnumT enumt
   Abs.RecordDef recordt  -> fmap (second RecordDef) $ transRecordT recordt
@@ -281,7 +82,7 @@ transEnumConstr x = case x of
   Abs.EnumConstr identifier  -> transIdentifier identifier
 
 
-transEnumT :: Abs.EnumT -> Result (TypeId, EnumT)
+transEnumT :: Abs.EnumT -> Result (TypeAlias, EnumT)
 transEnumT x = case x of
   Abs.EnumT identifier enumconstrs  ->
     (,) <$> (transIdentifier identifier) <*> (fmap EnumT $ mapM transEnumConstr enumconstrs)
@@ -289,14 +90,10 @@ transEnumT x = case x of
 
 transRecordField :: Abs.RecordField -> Result (RecordField, Type)
 transRecordField x = case x of
-  Abs.RecordField identifier t -> do
-    ident <- transIdentifier identifier
-    t' <- transType t
-    typeExists t'
-    return (ident, t')
+  Abs.RecordField identifier t ->
+    (,) <$> (transIdentifier identifier) <*> (transType t)
 
-
-transRecordT :: Abs.RecordT -> Result (TypeId, RecordT)
+transRecordT :: Abs.RecordT -> Result (TypeAlias, RecordT)
 transRecordT x = case x of
   Abs.RecordT identifier recordfields  -> do
     ident <- transIdentifier identifier
@@ -328,10 +125,9 @@ transConstantDefs x = case x of
 
 transConstantDef :: Abs.ConstantDef -> Result (Identifier, Constant)
 transConstantDef x = case x of
-  Abs.ConstantDef identifier constant -> do
-    ident <- transIdentifier identifier
-    c <- transConstant constant
-    return (ident, c)
+  Abs.ConstantDef identifier constant ->
+    (,) <$> transIdentifier identifier <*> transConstant constant
+
 
 transNatural :: Abs.Natural -> Result Natural
 transNatural x = case x of
@@ -345,39 +141,22 @@ transIntegerConst x = case x of
 
 
 transConstant :: Abs.Constant -> Result Constant
-transConstant x = case x of
-  Abs.BoolConst boolv  -> do
-    v <- transBoolV boolv
-    return $ mkTyped (BoolConst v) boolT
-
-  Abs.IntConst integerconst  -> do
-    v <- transIntegerConst integerconst
-    return $ mkTyped (IntConst v) intT
-
-  Abs.RealConst integerconst0 integerconst  -> do
-    v1 <- transIntegerConst integerconst0
-    v2 <- transIntegerConst integerconst
-    return $ mkTyped (RealConst $ v1 % v2) realT
-
-  Abs.SIntConst natural integerconst  -> do
-    bits <- transNatural natural
-    v <- transIntegerConst integerconst
-    let neededBits = (usedBits $ abs v) + 1 -- extra sign bit
-    when (neededBits > bits)
-      (fail $ show v ++ " (signed) does not fit into " ++ show bits ++ " bits, requires at least " ++ show neededBits)
-    return $ mkTyped (SIntConst v) (GroundType $ SInt bits)
-
-  Abs.UIntConst natural0 natural  -> do
-    bits <- transNatural natural0
-    v <- transNatural natural
-    let neededBits = usedBits $ toInteger v
-    when (neededBits > bits)
-      (fail $ show v ++ " (unsigned) does not fit into " ++ show bits ++ " bits, requires at least " ++ show neededBits)
-    return $ mkTyped (UIntConst v) (GroundType $ UInt bits)
-
+transConstant = fmap Fix . transConstant'
   where
-    usedBits :: Integer -> Natural
-    usedBits = (+ 1) . log2
+    transConstant' x = case x of
+      Abs.BoolConst boolv  -> BoolConst <$> transBoolV boolv
+
+      Abs.IntConst integerconst  -> IntConst <$> (transIntegerConst integerconst)
+
+      Abs.RealConst integerconst0 integerconst  ->
+        RealConst <$>
+          ((%) <$> (transIntegerConst integerconst0) <*> (transIntegerConst integerconst))
+
+      Abs.SIntConst natural integerconst  ->
+        SIntConst <$> (transNatural natural) <*> (transIntegerConst integerconst)
+
+      Abs.UIntConst natural0 natural  ->
+        UIntConst <$> (transNatural natural0) <*> (transNatural natural)
 
 
 transBoolV :: Abs.BoolV -> Result Bool
@@ -407,22 +186,18 @@ transInvariant x = case x of
 transStateInit :: Abs.StateInit -> Result (Identifier, ConstExpr)
 transStateInit x = case x of
   Abs.StateInit identifier constexpr  -> do
-    ident <- transIdentifier identifier
-    t <- envLookupState ident
-    e <- transConstExpr constexpr
-    void $ unify (getGround e) (Ground t)
-    return (ident, e)
+    (,) <$> transIdentifier identifier <*> (transConstExpr constexpr)
 
 
 transConstExpr :: Abs.ConstExpr -> Result ConstExpr
 transConstExpr x = case x of
-  Abs.ConstExpr expr  -> transExpr expr >>= (evalConst . untyped)
+  Abs.ConstExpr expr  -> transExpr expr >>= evalConst . unfix
   where
     evalConst :: GExpr Constant Atom Expr -> Result ConstExpr
-    evalConst (AtExpr (AtomConst c)) = return $ preserveType Const c
+    evalConst (AtExpr (AtomConst c)) = return $ Fix $ Const c
     evalConst (Constr (RecordConstr tid es)) = do
-      cExprs <- mapM (evalConst . untyped) es
-      return $ mkTyped (ConstRecord $ RecordConstr tid cExprs) (NamedType tid)
+      cExprs <- mapM (evalConst . unfix) es
+      return $ Fix $ ConstRecord $ RecordConstr tid cExprs
     evalConst _ = fail $ "Not a constant expression: " ++ Abs.printTree x
 
 
@@ -442,20 +217,16 @@ transMaybeTypedVars x = case x of
 
 transNode :: Abs.Node -> Result Node
 transNode x = case x of
-  Abs.Node identifier maybetypedvars typedvarss declarations flow outputs controlstructure initial -> do
-    name <- transIdentifier identifier
-    inp <- transMaybeTypedVars maybetypedvars
-    outp <- fmap concat $ mapM transTypedVars typedvarss
-    decls <- transDeclarations declarations
-    let vars = (variableMap Input inp)
-                `Map.union` (variableMap Output outp)
-    
-    envAddLocal vars $ envAddDecls decls $
-      Node name inp outp decls <$>
-        (transFlow flow) <*>
-        (transOutputs outputs) <*>
-        (transControlStructure controlstructure) <*>
-        (transInitial initial)
+  Abs.Node identifier maybetypedvars typedvarss declarations flow outputs controlstructure initial ->
+    Node <$>
+      (transIdentifier identifier) <*>
+      (transMaybeTypedVars maybetypedvars) <*>
+      (fmap concat $ mapM transTypedVars typedvarss) <*>
+      (transDeclarations declarations) <*>
+      (transFlow flow) <*>
+      (transOutputs outputs) <*>
+      (transControlStructure controlstructure) <*>
+      (transInitial initial)
 
 transDeclarations :: Abs.Declarations -> Result Declarations
 transDeclarations x = case x of
@@ -519,22 +290,14 @@ transOutputs x = case x of
 
 transInstantDefinition :: Abs.InstantDefinition -> Result InstantDefinition
 transInstantDefinition x = case x of
-  Abs.InstantDef pattern expr  -> do
-    pat <- transPattern pattern
-    e <- transExpr expr
-    ts <- mapM envLookupWritable pat
-    void $ unify (getGround e) (Ground $ makeProductT ts)
-    return $ InstantDef pat e
-  where
+  Abs.InstantDef pattern expr  ->
+    InstantDef <$> (transPattern pattern) <*> (transExpr expr)
+
 
 transTransition :: Abs.Transition -> Result StateTransition
 transTransition x = case x of
-  Abs.Transition stateid expr  -> do
-    s <- transStateId stateid
-    t <- envLookupState s
-    e <- transExpr expr
-    void $ unify (getGround e) (Ground t)
-    return $ StateTransition s e
+  Abs.Transition stateid expr  ->
+    StateTransition <$> (transStateId stateid) <*> (transExpr expr)
 
 
 transPattern :: Abs.Pattern -> Result Pattern
@@ -596,84 +359,54 @@ transEdge locs x = case x of
 
 transAtom :: Abs.Atom -> Result Atom
 transAtom x = case x of
-  Abs.AtomConst constant  -> fmap (preserveType AtomConst) $ transConstant constant
-  Abs.AtomVar identifier  -> do
-    ident <- transIdentifier identifier
-    t <- envLookupReadable ident
-    return $ mkTyped (AtomVar ident) t
+  Abs.AtomConst constant  -> Fix . AtomConst <$> transConstant constant
+  Abs.AtomVar identifier  -> Fix . AtomVar <$> transIdentifier identifier
 
 transExpr :: Abs.Expr -> Result Expr
-transExpr x = case x of
-  Abs.AtExpr atom -> fmap (mapTyped AtExpr) $ transAtom atom
+transExpr = fmap Fix . transExpr'
+  where
+    transExpr' x = case x of
+      Abs.AtExpr atom -> (AtExpr . unfix) <$> transAtom atom
 
-  Abs.Expr1 Abs.Not expr -> do
-    e <- transExpr expr
-    t <- ensureGround =<< unify (getGround e) (Ground boolT)
-    return $ mkTyped (LogNot e) t
+      Abs.Expr1 Abs.Not expr ->
+        LogNot <$> (transExpr expr)
 
-  Abs.Expr2 binop expr0 expr -> do
-    (op, to) <- transBinOp binop
-    e1 <- transExpr expr0
-    e2 <- transExpr expr
-    t <- ensureGround =<< appToArrow (getGround e2) =<< appToArrow (getGround e1) to
-    return $ mkTyped (Expr2 op e1 e2) t
+      Abs.Expr2 binop expr0 expr ->
+        Expr2 <$> transBinOp binop <*> transExpr expr0 <*> transExpr expr
 
-  Abs.Expr3 Abs.Ite expr0 expr1 expr  -> do
-    c <- transExpr expr0
-    _ <- unify (getGround c) (Ground boolT)
-    e1 <- transExpr expr1
-    e2 <- transExpr expr
-    t <- ensureGround =<< unify (getGround e2) (getGround e1)
-    return $ mkTyped (Ite c e1 e2) t
+      Abs.Expr3 Abs.Ite expr0 expr1 expr  ->
+        Ite <$> transExpr expr0 <*> transExpr expr1 <*> transExpr expr
 
-  Abs.Constr identifier exprs  -> do
-    tid <- transIdentifier identifier
-    (RecordT fields) <- envLookupRecordType tid
-    es <- mapM transExpr exprs
-    when ((map snd fields) /= (map getType es))
-      (fail $ "Arguments of record constructor do not match while constructing " ++ prettyIdentifier tid)
-    return $ mkTyped (Constr $ RecordConstr tid es) (NamedType tid)
+      Abs.Constr identifier exprs  ->
+        Constr <$> (RecordConstr <$> transIdentifier identifier <*> mapM transExpr exprs)
 
-  Abs.Project identifier natural  -> do
-    ident <- transIdentifier identifier
-    n <- transNatural natural
-    t <- envLookupReadable ident
-    (ArrayType base size) <- ensureGround =<< unify (Ground t) VarArray
-    when (n >= size)
-      (fail $ "Projection of " ++ prettyIdentifier ident ++ " out of range")
-    return $ mkTyped (Project ident $ n) (GroundType base)
+      Abs.Project identifier natural  ->
+        Project <$> transIdentifier identifier <*> transNatural natural
 
-  Abs.Select identifier0 identifier  -> failure x
-  
-  Abs.NodeUsage identifier exprs  -> do
-    node <- transIdentifier identifier
-    params <- mapM transExpr exprs
+      Abs.Select identifier0 identifier  -> failure x
 
-    let inTypes = map getType params
-    (nInp, nOutp) <- envLookupNodeSignature node
-    checkNodeTypes "input" node nInp inTypes
-
-    return $ mkTyped (NodeUsage node params) (makeProductT $ map varType nOutp)
+      Abs.NodeUsage identifier exprs  ->
+        NodeUsage <$> transIdentifier identifier <*> mapM transExpr exprs
 
 
-transBinOp :: Abs.BinOp -> Result (BinOp, InterType)
+transBinOp :: Abs.BinOp -> Result BinOp
 transBinOp = return . transBinOp'
   where
-    transBinOp' :: Abs.BinOp -> (BinOp, InterType)
+    transBinOp' :: Abs.BinOp -> BinOp
     transBinOp' x = case x of
-      Abs.Or  -> (Or, ArrowT gBool (ArrowT gBool gBool))
-      Abs.And  -> (And, ArrowT gBool (ArrowT gBool gBool))
-      Abs.Xor  -> (Xor, ArrowT gBool (ArrowT gBool gBool))
-      Abs.Implies  -> (Implies, ArrowT gBool (ArrowT gBool gBool))
-      Abs.Equals  -> (Equals, ArrowT VarType (ArrowT VarType gBool))
-      Abs.Less  -> (Less, ArrowT VarType (ArrowT VarType gBool))
-      Abs.Greater  -> (Greater, ArrowT VarType (ArrowT VarType gBool))
-      Abs.LEq  -> (LEq, ArrowT VarType (ArrowT VarType gBool))
-      Abs.GEq  -> (GEq, ArrowT VarType (ArrowT VarType gBool))
-      Abs.Plus  -> (Plus, ArrowT VarType (ArrowT VarType VarType))
-      Abs.Minus  -> (Minus, ArrowT VarType (ArrowT VarType VarType))
-      Abs.Mul  -> (Mul, ArrowT VarType (ArrowT VarType VarType))
-      Abs.RealDiv  -> (RealDiv, ArrowT gReal (ArrowT gReal gReal))
-      Abs.IntDiv  -> (IntDiv, ArrowT gInt (ArrowT gInt gInt))
-      Abs.Mod  -> (Mod, ArrowT gInt (ArrowT gInt gInt))
+      Abs.Or  -> Or
+      Abs.And  -> And
+      Abs.Xor  -> Xor
+      Abs.Implies  -> Implies
+      Abs.Equals  -> Equals
+      Abs.Less  -> Less
+      Abs.Greater  -> Greater
+      Abs.LEq  -> LEq
+      Abs.GEq  -> GEq
+      Abs.Plus  -> Plus
+      Abs.Minus  -> Minus
+      Abs.Mul  -> Mul
+      Abs.RealDiv  -> RealDiv
+      Abs.IntDiv  -> IntDiv
+      Abs.Mod  -> Mod
 

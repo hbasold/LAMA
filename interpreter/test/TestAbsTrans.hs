@@ -58,6 +58,7 @@ checkEqual :: Program -> BL.ByteString -> Test
 checkEqual t inp = case parseLAMA inp of
   Left (ParseError pe) -> TestCase $ assertFailure $ "Parsing failed: " ++ show pe
   Left (StaticError se) -> TestCase $ assertFailure $ "Conversion failed: " ++ show se
+  Left (TypeError te) -> TestCase $ assertFailure $ "Type check failed: " ++ show te
   Right t' -> t ~=? t'
 
 ---------------
@@ -137,8 +138,8 @@ expectedConstants =
         nodeDecls = Declarations [] [] [],
         nodeFlow = Flow [] [],
         nodeOutputDefs = [
-          InstantDef [x] (constAtExpr $ mkTyped (SIntConst (-5)) (GroundType (SInt 32))),
-          InstantDef [y] (constAtExpr $ mkTyped (UIntConst 1322) (GroundType (UInt 16)))
+          InstantDef [x] (constAtExpr $ mkTyped (SIntConst 32 (-5)) (GroundType (SInt 32))),
+          InstantDef [y] (constAtExpr $ mkTyped (UIntConst 16 1322) (GroundType (UInt 16)))
         ],
         nodeAutomata = [], nodeInitial = fromList []
       }],

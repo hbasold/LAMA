@@ -8,7 +8,7 @@ Description:
 Executable test-lama
   default-language: Haskell2010
   build-depends: base, containers, mtl, bytestring, natural-numbers,
-    transformers, pretty, array, HUnit, fgl
+    transformers, pretty, array, HUnit, fgl, placeholders
   hs-source-dirs: test lib
   GHC-Options: -Wall
   other-modules:
@@ -23,7 +23,10 @@ Executable test-lama
     Lang.LAMA.Types
     Lang.LAMA.Structure
     Lang.LAMA.TypedStructure
+    Lang.LAMA.UnTypedStructure
     Lang.LAMA.Transform
+    Lang.LAMA.TypeCheck
+    Lang.LAMA.Environment
     Lang.LAMA.Parse
     Lang.LAMA.Dependencies
   main-is: test-lama.hs
@@ -31,7 +34,7 @@ Executable test-lama
 Executable lamai
   default-language: Haskell2010
   Build-Depends: base, containers, mtl, bytestring, natural-numbers,
-    transformers, pretty, array, fgl, graphviz, text, filepath
+    transformers, pretty, array, fgl, graphviz, text, filepath, placeholders
   Hs-Source-Dirs: . lib
   GHC-Options: -Wall
   other-modules:
@@ -46,7 +49,10 @@ Executable lamai
     Lang.LAMA.Types
     Lang.LAMA.Structure
     Lang.LAMA.TypedStructure
+    Lang.LAMA.UnTypedStructure
     Lang.LAMA.Transform
+    Lang.LAMA.TypeCheck
+    Lang.LAMA.Environment
     Lang.LAMA.Parse
     Lang.LAMA.Dependencies
   Main-Is: Main.hs

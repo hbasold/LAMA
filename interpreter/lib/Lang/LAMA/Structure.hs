@@ -35,7 +35,7 @@ import Lang.LAMA.Types
 --  which will be the target for the given verification
 --  properties ('progInvariant').
 data GProgram c e ce = Program {
-    progTypeDefinitions     :: Map TypeId TypeDef,
+    progTypeDefinitions     :: Map TypeAlias TypeDef,
     progConstantDefinitions :: Map Identifier c,
     progDecls               :: GDeclarations e ce,
     progFlow                :: GFlow e,
@@ -70,8 +70,8 @@ data GConst e
     = BoolConst Bool        -- ^ Boolean constant
     | IntConst Integer      -- ^ Integer constant
     | RealConst Rational    -- ^ Real constant (seen as arbitrary rational number)
-    | SIntConst Integer     -- ^ Bounded signed constant (bit size is to be found in the type)
-    | UIntConst Natural     -- ^ Bounded unsigned constant (bit size is to be found in the type)
+    | SIntConst Natural Integer     -- ^ Bounded signed constant
+    | UIntConst Natural Natural     -- ^ Bounded unsigned constant
     deriving (Eq, Show)
 
 
@@ -137,7 +137,7 @@ data GAtom c e
   deriving (Eq, Show)
 
 -- | Construction of records: requires type and expression for each field
-data GRecordConstr e = RecordConstr TypeId [e] deriving (Eq, Show)
+data GRecordConstr e = RecordConstr TypeAlias [e] deriving (Eq, Show)
 
 -- | Untyped LAMA expressions
 data GExpr c a e

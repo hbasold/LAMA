@@ -54,6 +54,9 @@ run v f inp = case parseLAMA inp of
   Left (StaticError se) -> do
     putStrLn $ "Conversion failed:"
     putStrLn se
+  Left (TypeError te) -> do
+    putStrLn "Type check failed:"
+    putStrLn te
   Right concTree -> case mkDeps concTree of
     Left err -> putStrLn "Dependency error: " >> putStrLn err
     Right deps -> do
