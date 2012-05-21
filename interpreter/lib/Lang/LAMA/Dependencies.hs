@@ -19,7 +19,7 @@ import Control.Monad.Trans.Reader
 
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
-import Lang.LAMA.TypedStructure
+import Lang.LAMA.Typing.TypedStructure
 
 
 

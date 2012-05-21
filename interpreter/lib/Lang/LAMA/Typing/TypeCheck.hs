@@ -1,6 +1,6 @@
 {-# LANGUAGE TupleSections, TemplateHaskell #-}
 
-module Lang.LAMA.TypeCheck (typecheck) where
+module Lang.LAMA.Typing.TypeCheck (typecheck) where
 
 import Data.Map as Map hiding (map)
 import Data.Natural
@@ -19,8 +19,8 @@ import Lang.LAMA.Identifier
 import Lang.LAMA.Types
 import qualified Lang.LAMA.UnTypedStructure as UT
 import Lang.LAMA.UnTypedStructure (Fix(Fix))
-import Lang.LAMA.TypedStructure
-import Lang.LAMA.Environment
+import Lang.LAMA.Typing.TypedStructure
+import Lang.LAMA.Typing.Environment
 
 -- | Intermediate type for type inference
 type TypeId = Int

@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module Lang.LAMA.Environment where
+module Lang.LAMA.Typing.Environment where
 
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -9,7 +9,7 @@ import Control.Monad.Reader.Class
 
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
-import Lang.LAMA.TypedStructure
+import Lang.LAMA.Typing.TypedStructure
 
 data VarUsage = Input | Output | Local | State
 

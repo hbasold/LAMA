@@ -1,5 +1,5 @@
 {-| Structure of LAMA programs with types -}
-module Lang.LAMA.TypedStructure (
+module Lang.LAMA.Typing.TypedStructure (
   module Lang.LAMA.Structure,
   Program,
   Constant,

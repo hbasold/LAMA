@@ -21,12 +21,12 @@ Executable test-lama
     Lang.LAMA.Parser.Print
     Lang.LAMA.Identifier
     Lang.LAMA.Types
+    Lang.LAMA.Typing.TypedStructure
+    Lang.LAMA.Typing.TypeCheck
+    Lang.LAMA.Typing.Environment
     Lang.LAMA.Structure
-    Lang.LAMA.TypedStructure
     Lang.LAMA.UnTypedStructure
     Lang.LAMA.Transform
-    Lang.LAMA.TypeCheck
-    Lang.LAMA.Environment
     Lang.LAMA.Parse
     Lang.LAMA.Dependencies
   main-is: test-lama.hs
@@ -47,12 +47,12 @@ Executable lamai
     Lang.LAMA.Parser.Print
     Lang.LAMA.Identifier
     Lang.LAMA.Types
+    Lang.LAMA.Typing.TypedStructure
+    Lang.LAMA.Typing.TypeCheck
+    Lang.LAMA.Typing.Environment
     Lang.LAMA.Structure
-    Lang.LAMA.TypedStructure
     Lang.LAMA.UnTypedStructure
     Lang.LAMA.Transform
-    Lang.LAMA.TypeCheck
-    Lang.LAMA.Environment
     Lang.LAMA.Parse
     Lang.LAMA.Dependencies
   Main-Is: Main.hs

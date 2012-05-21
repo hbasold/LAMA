@@ -7,7 +7,7 @@ import Data.Map as Map
 
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
-import Lang.LAMA.TypedStructure
+import Lang.LAMA.Typing.TypedStructure
 import Lang.LAMA.Parse
 
 tests :: Test
