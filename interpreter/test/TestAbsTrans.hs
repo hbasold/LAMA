@@ -25,34 +25,34 @@ ident :: String -> Identifier
 ident s = Id (B.pack s) dontcare
 
 false :: Constant
-false = Typed (BoolConst False) boolT
+false = mkTyped (BoolConst False) boolT
 
 varExpr :: Identifier -> Type -> Expr
-varExpr v t = Typed (AtExpr (AtomVar v)) t
+varExpr v t = mkTyped (AtExpr (AtomVar v)) t
 
 constAtExpr :: Constant -> Expr
-constAtExpr c@(Typed _ t) = Typed (AtExpr (AtomConst c)) t
+constAtExpr c = mkTyped (AtExpr (AtomConst c)) (getType c)
 
 intConst :: Integer -> Constant
-intConst c = Typed (IntConst c) intT
+intConst c = mkTyped (IntConst c) intT
 
 intE :: Integer -> Expr
 intE = constAtExpr . intConst
 
 intConstE :: Integer -> ConstExpr
-intConstE c = Typed (Const $ intConst c) intT
+intConstE c = mkTyped (Const $ intConst c) intT
 
 ite :: Expr -> Expr -> Expr -> Expr
-ite c e1 e2 = Typed (Ite c e1 e2) boolT
+ite c e1 e2 = mkTyped (Ite c e1 e2) boolT
 
 eqE :: Expr -> Expr -> Expr
-eqE e1 e2 = Typed (Expr2 Equals e1 e2) boolT
+eqE e1 e2 = mkTyped (Expr2 Equals e1 e2) boolT
 
 leqE :: Expr -> Expr -> Expr
-leqE e1 e2 = Typed (Expr2 LEq e1 e2) boolT
+leqE e1 e2 = mkTyped (Expr2 LEq e1 e2) boolT
 
 notE :: Expr -> Expr
-notE e = Typed (LogNot e) boolT
+notE e = mkTyped (LogNot e) boolT
 
 checkEqual :: Program -> BL.ByteString -> Test
 checkEqual t inp = case parseLAMA inp of
@@ -93,7 +93,7 @@ expectedTypes =
       declsState = [],
       declsLocal = [Variable x (NamedType r2)]
     },
-    progFlow = Flow [InstantDef [x] (Typed (NodeUsage main []) (NamedType r2))] [],
+    progFlow = Flow [InstantDef [x] (mkTyped (NodeUsage main []) (NamedType r2))] [],
     progAssertions = [], progInitial = fromList [], progInvariant = []
   }
   where
@@ -137,8 +137,8 @@ expectedConstants =
         nodeDecls = Declarations [] [] [],
         nodeFlow = Flow [] [],
         nodeOutputDefs = [
-          InstantDef [x] (constAtExpr $ Typed (SIntConst (-5)) (GroundType (SInt 32))),
-          InstantDef [y] (constAtExpr $ Typed (UIntConst 1322) (GroundType (UInt 16)))
+          InstantDef [x] (constAtExpr $ mkTyped (SIntConst (-5)) (GroundType (SInt 32))),
+          InstantDef [y] (constAtExpr $ mkTyped (UIntConst 1322) (GroundType (UInt 16)))
         ],
         nodeAutomata = [], nodeInitial = fromList []
       }],
@@ -204,13 +204,13 @@ expectedSwitch =
         },
         nodeOutputDefs = [InstantDef [so] (varExpr s_ boolT)], 
         nodeAutomata = [],
-        nodeInitial = fromList [(s,(Typed (Const false) boolT))]
+        nodeInitial = fromList [(s,(mkTyped (Const false) boolT))]
       }],
       declsState = [],
       declsLocal = [Variable on boolT, Variable off boolT, Variable so boolT]
     },
     progFlow = Flow {
-      flowDefinitions = [InstantDef [so] (Typed (NodeUsage switchN [varExpr on boolT, varExpr off boolT]) boolT)],
+      flowDefinitions = [InstantDef [so] (mkTyped (NodeUsage switchN [varExpr on boolT, varExpr off boolT]) boolT)],
       flowTransitions = []
     },
     progAssertions = [], progInitial = fromList [], progInvariant = []
@@ -284,11 +284,11 @@ expectedUpDownCounter =
         nodeAutomata = [ Automaton {
           automLocations = [
             Location sA (Flow {
-              flowDefinitions = [InstantDef [x_] (Typed (Expr2 Plus (varExpr x intT) (intE 1)) (GroundType IntT))],
+              flowDefinitions = [InstantDef [x_] (mkTyped (Expr2 Plus (varExpr x intT) (intE 1)) (GroundType IntT))],
               flowTransitions = []
             }),
             Location sB (Flow {
-              flowDefinitions = [InstantDef [x_] (Typed (Expr2 Minus (varExpr x intT) (intE 1)) (GroundType IntT))],
+              flowDefinitions = [InstantDef [x_] (mkTyped (Expr2 Minus (varExpr x intT) (intE 1)) (GroundType IntT))],
               flowTransitions = []
             })
           ],
@@ -306,7 +306,7 @@ expectedUpDownCounter =
       declsLocal = [Variable xo intT]      
     },
     progFlow = Flow {
-      flowDefinitions = [InstantDef [xo] (Typed (NodeUsage main []) intT)],
+      flowDefinitions = [InstantDef [xo] (mkTyped (NodeUsage main []) intT)],
       flowTransitions = []
     },
     progInitial = fromList [],

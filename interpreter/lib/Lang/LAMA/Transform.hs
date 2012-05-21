@@ -348,16 +348,16 @@ transConstant :: Abs.Constant -> Result Constant
 transConstant x = case x of
   Abs.BoolConst boolv  -> do
     v <- transBoolV boolv
-    return $ Typed (BoolConst v) boolT
+    return $ mkTyped (BoolConst v) boolT
 
   Abs.IntConst integerconst  -> do
     v <- transIntegerConst integerconst
-    return $ Typed (IntConst v) intT
+    return $ mkTyped (IntConst v) intT
 
   Abs.RealConst integerconst0 integerconst  -> do
     v1 <- transIntegerConst integerconst0
     v2 <- transIntegerConst integerconst
-    return $ Typed (RealConst $ v1 % v2) realT
+    return $ mkTyped (RealConst $ v1 % v2) realT
 
   Abs.SIntConst natural integerconst  -> do
     bits <- transNatural natural
@@ -365,7 +365,7 @@ transConstant x = case x of
     let neededBits = (usedBits $ abs v) + 1 -- extra sign bit
     when (neededBits > bits)
       (fail $ show v ++ " (signed) does not fit into " ++ show bits ++ " bits, requires at least " ++ show neededBits)
-    return $ Typed (SIntConst v) (GroundType $ SInt bits)
+    return $ mkTyped (SIntConst v) (GroundType $ SInt bits)
 
   Abs.UIntConst natural0 natural  -> do
     bits <- transNatural natural0
@@ -373,7 +373,7 @@ transConstant x = case x of
     let neededBits = usedBits $ toInteger v
     when (neededBits > bits)
       (fail $ show v ++ " (unsigned) does not fit into " ++ show bits ++ " bits, requires at least " ++ show neededBits)
-    return $ Typed (UIntConst v) (GroundType $ UInt bits)
+    return $ mkTyped (UIntConst v) (GroundType $ UInt bits)
 
   where
     usedBits :: Integer -> Natural
@@ -422,7 +422,7 @@ transConstExpr x = case x of
     evalConst (AtExpr (AtomConst c)) = return $ preserveType Const c
     evalConst (Constr (RecordConstr tid es)) = do
       cExprs <- mapM (evalConst . untyped) es
-      return $ Typed (ConstRecord $ RecordConstr tid cExprs) (NamedType tid)
+      return $ mkTyped (ConstRecord $ RecordConstr tid cExprs) (NamedType tid)
     evalConst _ = fail $ "Not a constant expression: " ++ Abs.printTree x
 
 
@@ -600,7 +600,7 @@ transAtom x = case x of
   Abs.AtomVar identifier  -> do
     ident <- transIdentifier identifier
     t <- envLookupReadable ident
-    return $ Typed (AtomVar ident) t
+    return $ mkTyped (AtomVar ident) t
 
 transExpr :: Abs.Expr -> Result Expr
 transExpr x = case x of
@@ -609,14 +609,14 @@ transExpr x = case x of
   Abs.Expr1 Abs.Not expr -> do
     e <- transExpr expr
     t <- ensureGround =<< unify (getGround e) (Ground boolT)
-    return $ Typed (LogNot e) t
+    return $ mkTyped (LogNot e) t
 
   Abs.Expr2 binop expr0 expr -> do
     (op, to) <- transBinOp binop
     e1 <- transExpr expr0
     e2 <- transExpr expr
     t <- ensureGround =<< appToArrow (getGround e2) =<< appToArrow (getGround e1) to
-    return $ Typed (Expr2 op e1 e2) t
+    return $ mkTyped (Expr2 op e1 e2) t
 
   Abs.Expr3 Abs.Ite expr0 expr1 expr  -> do
     c <- transExpr expr0
@@ -624,7 +624,7 @@ transExpr x = case x of
     e1 <- transExpr expr1
     e2 <- transExpr expr
     t <- ensureGround =<< unify (getGround e2) (getGround e1)
-    return $ Typed (Ite c e1 e2) t
+    return $ mkTyped (Ite c e1 e2) t
 
   Abs.Constr identifier exprs  -> do
     tid <- transIdentifier identifier
@@ -632,7 +632,7 @@ transExpr x = case x of
     es <- mapM transExpr exprs
     when ((map snd fields) /= (map getType es))
       (fail $ "Arguments of record constructor do not match while constructing " ++ prettyIdentifier tid)
-    return $ Typed (Constr $ RecordConstr tid es) (NamedType tid)
+    return $ mkTyped (Constr $ RecordConstr tid es) (NamedType tid)
 
   Abs.Project identifier natural  -> do
     ident <- transIdentifier identifier
@@ -641,7 +641,7 @@ transExpr x = case x of
     (ArrayType base size) <- ensureGround =<< unify (Ground t) VarArray
     when (n >= size)
       (fail $ "Projection of " ++ prettyIdentifier ident ++ " out of range")
-    return $ Typed (Project ident $ n) (GroundType base)
+    return $ mkTyped (Project ident $ n) (GroundType base)
 
   Abs.Select identifier0 identifier  -> failure x
   
@@ -653,7 +653,7 @@ transExpr x = case x of
     (nInp, nOutp) <- envLookupNodeSignature node
     checkNodeTypes "input" node nInp inTypes
 
-    return $ Typed (NodeUsage node params) (makeProductT $ map varType nOutp)
+    return $ mkTyped (NodeUsage node params) (makeProductT $ map varType nOutp)
 
 
 transBinOp :: Abs.BinOp -> Result (BinOp, InterType)

@@ -8,7 +8,7 @@ module Lang.LAMA.Types(
   BaseType(..),
   boolT, intT, realT,
   -- * Typing structures
-  Typed(..),
+  Typed, mkTyped, untyped, getType,
   mapTyped, preserveType,
   EqFunctor(..), ShowFunctor(..)
 ) where
@@ -17,6 +17,7 @@ import Control.Arrow (first, (&&&))
 import Data.Natural
 
 import Lang.LAMA.Identifier
+import Lang.LAMA.Fix
 
 -- | Naming user declared types like enums and records
 type TypeId = Identifier
@@ -54,29 +55,32 @@ realT = GroundType RealT
 ----- Structure typing ------
 
 -- | Add type to an arbitrary structure
-data Typed e = Typed {
-    untyped :: (e (Typed e)),
-    getType :: Type
+data Typed0 e x = Typed {
+    untyped0 :: e x,
+    getType0 :: Type
   }
+
+instance EqFunctor e => EqFunctor (Typed0 e) where
+  eqF (Typed e1 t1) (Typed e2 t2) = (e1 `eqF` e2) && (t1 == t2)
+
+instance ShowFunctor e => ShowFunctor (Typed0 e) where
+  showF (Typed e t) = "(Typed (" ++ showF e ++ ") (" ++ show t ++ "))"
+
+type Typed e = Fix (Typed0 e)
+
+mkTyped :: e (Typed e) -> Type -> Typed e
+mkTyped e t = Fix $ Typed e t
+
+untyped :: Typed e -> e (Typed e)
+untyped = untyped0 . unfix
+
+getType :: Typed e -> Type
+getType = getType0 . unfix
 
 -- | fmap for Typed
 mapTyped :: (e1 (Typed e1) -> e2 (Typed e2)) -> (Typed e1 -> Typed e2)
-mapTyped f (Typed a x) = (Typed (f a) x)
+mapTyped f (Fix (Typed a t)) = Fix (Typed (f a) t)
 
 -- | Construct new typed expression preserving the type
 preserveType :: (Typed e1 -> (e2 (Typed e2))) -> Typed e1 -> Typed e2
-preserveType cons = (uncurry Typed) . (first cons) . (id &&& getType)
-
--- | Equality for * -> * kinds
-class EqFunctor f where
-  eqF :: Eq a => f a -> f a -> Bool
-
-instance EqFunctor e => Eq (Typed e) where
-  (Typed e1 t1) == (Typed e2 t2) = eqF e1 e2 && t1 == t2
-
--- | Show for * -> * kinds
-class ShowFunctor f where
-  showF :: Show a => f a -> String
-
-instance ShowFunctor e => Show (Typed e) where
-  show (Typed e t) = "(Typed (" ++ showF e ++ ") (" ++ show t ++ "))"
+preserveType cons = Fix . (uncurry Typed) . (first cons) . (id &&& getType)
