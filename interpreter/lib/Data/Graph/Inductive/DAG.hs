@@ -1,5 +1,5 @@
 module Data.Graph.Inductive.DAG (
-  DAG, mkDAG
+  DAG, mkDAG, dagMapNLab
 ) where
 
 import Data.Graph.Inductive.Graph (Graph(..), Node)
@@ -37,3 +37,9 @@ instance Graph gr => Graph (DAG gr) where
   noNodes = noNodes . getGraph
   nodeRange = nodeRange . getGraph
   labEdges = labEdges . getGraph
+
+-- | Maps the node label of a DAG
+dagMapNLab :: Graph gr => (a -> c) -> DAG gr a b -> DAG gr c b
+dagMapNLab f g =
+  let ns = map (second f) $ labNodes g
+  in mkGraph ns $ labEdges g

@@ -63,18 +63,20 @@ run v f inp = case parseLAMA inp of
       putStrV 2 v $ show concTree
       let progName = takeBaseName f
       -- dependency graph for program
-      void $ runGraphviz (defaultVis $ depsGraph $ progFlowDeps deps) Svg (progName ++ ".svg")
+      void $ runGraphviz (defaultVis $ progDepsFlow deps) Svg (progName ++ ".svg")
       -- dependency graphs for nodes
-      let gs = Map.toList $ fmap (defaultVis . depsGraph) (nodeDeps deps)
-      forM_ gs (\(n, g) -> runGraphviz g Svg (progName ++ "_" ++ n ++ ".svg"))
-      -- putStrV 1 v $ show $ fmap (graphviz' . graph) deps
-      --forM_ deps (preview . graph)
+      forM_ (Map.toList $ progDepsNodes deps) (uncurry $ showNodes progName)
+  where
+    showNodes path n nDeps = do
+      let thisPath = path ++ "_" ++ identString n
+      void $ runGraphviz (defaultVis $ nodeDepsFlow nDeps) Svg (thisPath ++ ".svg")
+      forM_ (Map.toList $ nodeDepsNodes nDeps) (uncurry $ showNodes thisPath)
 
-defaultVis :: (G.Graph gr, Labellable nl) => gr nl el -> DotGraph G.Node
+defaultVis :: (G.Graph gr, Labellable nl) => gr (nl, a) el -> DotGraph G.Node
 defaultVis = graphToDot params
   where params = nonClusteredParams {
           globalAttributes = [GraphAttrs [RankDir FromTop]],
-          fmtNode = \(_, l) -> [Label $ toLabelValue l]
+          fmtNode = \(_, (v, _)) -> [Label $ toLabelValue v]
         }
 
 main :: IO ()

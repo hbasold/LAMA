@@ -38,21 +38,45 @@ declsVarMap d =
 
 data Mode = GlobalMode | LocationMode Identifier deriving (Eq, Ord, Show)
 type Var = (Identifier, VarUsage, Mode)
-data InterNodeDeps = InterNodeDeps {
-    depsGraph :: DAG Gr Var (),
-    depsVars :: G.NodeMap Var,
-    depsExprs :: Map Var Expr
+
+data NodeDeps = NodeDeps {
+    nodeDepsNodes :: Map Identifier NodeDeps,
+    nodeDepsFlow :: DAG Gr (Var, Expr) ()
   }
 
-type NodeDeps = Map String InterNodeDeps
-
 data ProgDeps = ProgDeps {
-    nodeDeps :: Map String InterNodeDeps,
-    progFlowDeps :: InterNodeDeps
+    progDepsNodes :: Map Identifier NodeDeps,
+    progDepsFlow :: DAG Gr (Var, Expr) ()
   }
 
 mkDeps :: Program -> Either String ProgDeps
-mkDeps = mkDepsProgram
+mkDeps p = do
+    d <- mkDepsProgram p
+    let nodes = fmap convNodeGraphs $ ipDepsNodes d
+    let exprDepGr = dagMapNLab (addExpr $ ipDepsExprs d) (ipDepsGraph d)
+    return $ ProgDeps nodes exprDepGr
+  where
+    convNodeGraphs n =
+      let nodes = fmap convNodeGraphs $ inDepsNodes n
+          exprDepGr = dagMapNLab (addExpr $ inDepsExprs n) (inDepsGraph n)
+      in NodeDeps nodes exprDepGr
+
+    addExpr es v = let (Just e) = Map.lookup v es in (v, e)
+
+
+data InterNodeDeps = InterNodeDeps {
+    inDepsNodes :: Map Identifier InterNodeDeps,
+    inDepsGraph :: DAG Gr Var (),
+    inDepsVars :: G.NodeMap Var,
+    inDepsExprs :: Map Var Expr
+  }
+
+data InterProgDeps = InterProgDeps {
+    ipDepsNodes :: Map Identifier InterNodeDeps,
+    ipDepsGraph :: DAG Gr Var (),
+    ipDepsVars :: G.NodeMap Var,
+    ipDepsExprs :: Map Var Expr
+  }
 
 type DepMonad = Either String
 
@@ -64,24 +88,30 @@ checkCycles g = case mkDAG g of
     depList :: Gr Var () -> [G.Node] -> String
     depList h = intercalate " -> " . map (maybe "" id . fmap (\(v, u, m) -> show u ++ " in " ++ show m ++ " " ++ prettyIdentifier v) . G.lab h)
 
-mkDepsProgram :: Program -> DepMonad ProgDeps
+mkDepsProgram :: Program -> DepMonad InterProgDeps
 mkDepsProgram p = do
-  nodeDeps <- (return . Map.unions) =<< mapM (mkDepsNode "" (progConstantDefinitions p)) (declsNode $ progDecls p)
+  nodeDeps <- mkDepsMapNodes (progConstantDefinitions p) (declsNode $ progDecls p)
+
   let vars = declsVarMap $ progDecls p
   let (mes, (vs, progFlowDeps)) = G.run G.empty $ runReaderT (runErrorT $ mkDepsNodeParts (progFlow p) [] []) vars
   es <- mes
   dagProgDeps <- checkCycles progFlowDeps
-  return $ ProgDeps nodeDeps (InterNodeDeps dagProgDeps vs es)
+  return $ InterProgDeps nodeDeps dagProgDeps vs es
 
-mkDepsNode :: String -> Map Identifier Constant -> Node -> DepMonad NodeDeps
-mkDepsNode scope consts node = do
-  let scopedName = scope ++ (identString $ nodeName node)
-  subDeps <- mapM (mkDepsNode (scopedName ++ "_") consts) $ declsNode $ nodeDecls node
+mkDepsNode :: Map Identifier Constant -> Node -> DepMonad InterNodeDeps
+mkDepsNode consts node = do
+  subDeps <- mkDepsMapNodes consts (declsNode $ nodeDecls node)
+
   let vars = varMap node `Map.union` (fmap (const Constant) consts)
   let (mes, (vs, deps)) = G.run G.empty $ runReaderT (runErrorT $ mkDepsNodeParts (nodeFlow node) (nodeOutputDefs node) (nodeAutomata node)) vars
   es <- mes
   dagDeps <- checkCycles deps
-  return $ Map.insert scopedName (InterNodeDeps dagDeps vs es) (Map.unions subDeps)
+  return $ InterNodeDeps subDeps dagDeps vs es
+
+mkDepsMapNodes :: Map Identifier Constant -> [Node] -> DepMonad (Map Identifier InterNodeDeps)
+mkDepsMapNodes consts nodes = do
+  nodeDeps <- mapM (mkDepsNode consts) nodes
+  return $ Map.fromList $ zip (map nodeName nodes) nodeDeps
 
 -- | We redefine 'Data.Graph.Inductive.NodeMap.NodeMapM' here, because
 --    the original type alias does not allow leaving the monadic return type
