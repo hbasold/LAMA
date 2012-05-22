@@ -1,54 +1,59 @@
 {-# LANGUAGE TupleSections #-}
 
-module Lang.LAMA.Dependencies where -- (
---   Assignment, NodeDeps, Dependencies, mkDependencies
--- ) where
+module Lang.LAMA.Dependencies (
+  VarUsage(..), Mode(..), Var,
+  NodeDeps(..), ProgDeps(..),
+  mkDeps
+) where
 
 import Data.Graph.Inductive.PatriciaTree
-import Data.Graph.Inductive.NodeMap as G hiding (insMapNode, insMapNodeM, insMapNodes, insMapNodesM)
 import Data.Graph.Inductive.NodeMapSupport as G
 import Data.Graph.Inductive.DAG
 import qualified Data.Graph.Inductive.Graph as G
 import Data.Map as Map hiding (map)
-import Control.Monad.Trans.Error
-import Control.Monad.Trans.Class
-import Data.Foldable (foldlM)
-import Control.Monad.State.Lazy
 import Data.List (intercalate)
-import Control.Monad.Trans.Reader
+import Data.Foldable (foldlM)
+
+import Control.Monad.Error (ErrorT, runErrorT, throwError)
+import Control.Monad.Trans.Class (lift)
+import Control.Monad (forM_, void)
+import Control.Monad.Trans.Reader (ReaderT, runReaderT, ask)
 
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
 import Lang.LAMA.Typing.TypedStructure
 
+-- | Context in which a variable is used. With this context state variables
+--  can be distinguished if they are use on lhs or rhs of an assignment.
+data VarUsage =
+  Constant
+  | Input | Output
+  | Local | StateIn | StateOut
+  deriving (Show, Eq, Ord)
 
-
-data VarUsage = Constant | Input | Output | Local | StateIn | StateOut deriving (Show, Eq, Ord)
-type VarMap = Map Identifier VarUsage
-varMap :: Node -> VarMap
-varMap n =
-  (Map.fromList $ map ((, Input) . varIdent) $ nodeInputs n) `Map.union`
-  (Map.fromList $ map ((, Output) . varIdent) $ nodeOutputs n) `Map.union`
-  (declsVarMap $ nodeDecls n)
-
-declsVarMap :: Declarations -> VarMap
-declsVarMap d =
-  (Map.fromList $ map ((, Local) . varIdent) $ declsLocal d) `Map.union`
-  (Map.fromList $ map ((, StateIn) . varIdent) $ declsState d)
-
+-- | Characterizes where a variable is defined (in a normal flow
+--  or in a flow a state)
 data Mode = GlobalMode | LocationMode Identifier deriving (Eq, Ord, Show)
+
+-- | Bundle an identifier with its context.
 type Var = (Identifier, VarUsage, Mode)
 
+-- | Dependencies of a node
 data NodeDeps = NodeDeps {
     nodeDepsNodes :: Map Identifier NodeDeps,
     nodeDepsFlow :: DAG Gr (Var, Expr) ()
   }
 
+-- | Dependencies of the program
 data ProgDeps = ProgDeps {
     progDepsNodes :: Map Identifier NodeDeps,
     progDepsFlow :: DAG Gr (Var, Expr) ()
   }
 
+-- | Calculates the dependencies of a given program
+--  and its defined nodes.
+--  May return an error if the dependencies are cyclic
+--  somewhere.
 mkDeps :: Program -> Either String ProgDeps
 mkDeps p = do
     d <- mkDepsProgram p
@@ -63,7 +68,8 @@ mkDeps p = do
 
     addExpr es v = let (Just e) = Map.lookup v es in (v, e)
 
-
+-- | Carries node dependencies with split up
+--  information to ease calculation.
 data InterNodeDeps = InterNodeDeps {
     inDepsNodes :: Map Identifier InterNodeDeps,
     inDepsGraph :: DAG Gr Var (),
@@ -71,6 +77,8 @@ data InterNodeDeps = InterNodeDeps {
     inDepsExprs :: Map Var Expr
   }
 
+-- | Carries program dependencies with split up
+--  information to ease calculation.
 data InterProgDeps = InterProgDeps {
     ipDepsNodes :: Map Identifier InterNodeDeps,
     ipDepsGraph :: DAG Gr Var (),
@@ -78,12 +86,27 @@ data InterProgDeps = InterProgDeps {
     ipDepsExprs :: Map Var Expr
   }
 
+type VarMap = Map Identifier VarUsage
+
+varMap :: Node -> VarMap
+varMap n =
+  (Map.fromList $ map ((, Input) . varIdent) $ nodeInputs n) `Map.union`
+  (Map.fromList $ map ((, Output) . varIdent) $ nodeOutputs n) `Map.union`
+  (declsVarMap $ nodeDecls n)
+
+declsVarMap :: Declarations -> VarMap
+declsVarMap d =
+  (Map.fromList $ map ((, Local) . varIdent) $ declsLocal d) `Map.union`
+  (Map.fromList $ map ((, StateIn) . varIdent) $ declsState d)
+
 type DepMonad = Either String
 
-checkCycles :: Gr Var () -> Either String (DAG Gr Var ())
+-- | Checks of the given graph is a DAG, if not results
+--  in an error containing the found cycle.
+checkCycles :: Gr Var () -> DepMonad (DAG Gr Var ())
 checkCycles g = case mkDAG g of
-  Left c -> Left $ "Cyclic dependency: " ++ depList g c
-  Right dag -> Right dag
+  Left c -> throwError $ "Cyclic dependency: " ++ depList g c
+  Right dag -> return dag
   where
     depList :: Gr Var () -> [G.Node] -> String
     depList h = intercalate " -> " . map (maybe "" id . fmap (\(v, u, m) -> show u ++ " in " ++ show m ++ " " ++ prettyIdentifier v) . G.lab h)
@@ -113,12 +136,7 @@ mkDepsMapNodes consts nodes = do
   nodeDeps <- mapM (mkDepsNode consts) nodes
   return $ Map.fromList $ zip (map nodeName nodes) nodeDeps
 
--- | We redefine 'Data.Graph.Inductive.NodeMap.NodeMapM' here, because
---    the original type alias does not allow leaving the monadic return type
---    unbound.
-type DepNodeMapM = State (NodeMap Var, Gr Var ())
-
-type DepGraphM = ErrorT String (ReaderT VarMap DepNodeMapM)
+type DepGraphM = ErrorT String (ReaderT VarMap (NodeMapM Var () Gr))
 type ExprMap = Map Var Expr
 
 mkDepsNodeParts :: Flow -> [InstantDefinition] -> [Automaton] -> DepGraphM ExprMap
@@ -154,9 +172,6 @@ mkDepsAutomaton = (fmap Map.unions) . (mapM mkDepsLocation) . automLocations
     mkDepsLocation :: Location -> DepGraphM ExprMap
     mkDepsLocation (Location l flow) = mkDepsFlow (LocationMode l) flow
 
-lift2 :: (Monad m, Monad (t1 m), MonadTrans t1, MonadTrans t2) => m a -> t2 (t1 m) a
-lift2 = lift . lift
-
 varUsage :: Identifier -> DepGraphM VarUsage
 varUsage v = do
   vars <- lift ask
@@ -165,13 +180,14 @@ varUsage v = do
     Nothing -> throwError $ "Unknown variable " ++ prettyIdentifier v
 
 insVar :: Var -> DepGraphM ()
-insVar = void . lift2 . insMapNodeM'
+insVar = void . insMapNodeM'
 
 insVars :: [Var] -> DepGraphM ()
-insVars = void . lift2 . insMapNodesM'
+insVars = void . insMapNodesM'
 
 insDep :: Var -> Var -> DepGraphM ()
 insDep from = lift2 . insMapEdgeM . (from, ,())
+  where lift2 = lift . lift
 
 -- | Inserts a dependency from each given identifier
 --  to /x/ to the given variable /v/. /x/ is treated
