@@ -1,7 +1,11 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 {- Translate generated data structures to internal structures
   while checking for undefined automaton locations and
   constant expressions. -}
 module Lang.LAMA.Transform (absToConc) where
+
+import Development.Placeholders
 
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -12,7 +16,7 @@ import Prelude hiding (foldl, concat, any)
 import Data.Foldable
 import Control.Applicative hiding (Const)
 import Control.Arrow (second)
-import Control.Monad.Trans.Error ()
+import Control.Monad.Error (throwError)
 import Control.Monad (when)
 
 import qualified Lang.LAMA.Parser.Abs as Abs
@@ -27,10 +31,6 @@ type Result = Either String
 
 absToConc :: Abs.Program -> Either String Program
 absToConc = transProgram
-
--- | Signals an undefined translation case. To be abandoned when finished.
-failure :: Show a => a -> Result b
-failure x = fail $ "Undefined case: " ++ show x
 
 -- | Create identifier from position information and name
 makeId :: ((Int, Int), BS.ByteString) -> Identifier
@@ -198,7 +198,7 @@ transConstExpr x = case x of
     evalConst (Constr (RecordConstr tid es)) = do
       cExprs <- mapM (evalConst . unfix) es
       return $ Fix $ ConstRecord $ RecordConstr tid cExprs
-    evalConst _ = fail $ "Not a constant expression: " ++ Abs.printTree x
+    evalConst _ = throwError $ "Not a constant expression: " ++ Abs.printTree x
 
 
 transTypedVars :: Abs.TypedVars -> Result [Variable]
@@ -336,7 +336,7 @@ transLocation x = case x of
 isKnownLocation :: [Location] -> LocationId -> Result ()
 isKnownLocation locs loc =
   when (not $ any (\(Location l _) -> l == loc) locs)
-    (fail $ "Unknown location " ++ prettyIdentifier loc)
+    (throwError $ "Unknown location " ++ prettyIdentifier loc)
 
 transInitialLocation :: [Location] -> Abs.InitialLocation -> Result LocationId
 transInitialLocation locs x = case x of
@@ -383,7 +383,7 @@ transExpr = fmap Fix . transExpr'
       Abs.Project identifier natural  ->
         Project <$> transIdentifier identifier <*> transNatural natural
 
-      Abs.Select identifier0 identifier  -> failure x
+      Abs.Select identifier0 identifier  -> $notImplemented
 
       Abs.NodeUsage identifier exprs  ->
         NodeUsage <$> transIdentifier identifier <*> mapM transExpr exprs

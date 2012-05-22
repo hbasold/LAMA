@@ -97,20 +97,20 @@ unify0 t (Named x) = return (t, replaceBy x t)
 unify0 (Named x) t = return (t, replaceBy x t)
 unify0 t@(Ground t1) t'@(Ground t2) =
   if t1 == t2 then return (t, id)
-  else fail $ "Incompatible types: " ++ show t ++ " and " ++ show t'
+  else throwError $ "Incompatible types: " ++ show t ++ " and " ++ show t'
 unify0 (ArrowT t1 t2) (ArrowT t1' t2') = do
   (t1'', s1) <- unify0 t1 t1'
   (t2'', s2) <- unify0 (s1 t2) (s1 t2')
   return (ArrowT t1'' t2'', s2 . s1)
-unify0 t1 t2 = fail $ "Cannot unify " ++ show t1 ++ " and " ++ show t2
+unify0 t1 t2 = throwError $ "Cannot unify " ++ show t1 ++ " and " ++ show t2
 
 unify :: InterType -> InterType -> Result (InterType, Substitution)
 unify (Simple t1) (Simple t2) = first Simple <$> unify0 t1 t2
 unify (Forall x u t0) t1 = do
   (t', s) <- unify t0 t1
   let u' = getUniverse $ s (Named x)
-  if u' <= u then return (t', s) else fail $ "Incompatible universes: " ++ show u' ++ " not contained in " ++ show u
-unify t1 t2 = fail $ "Cannot unify " ++ show t1 ++ " and " ++ show t2
+  if u' <= u then return (t', s) else throwError $ "Incompatible universes: " ++ show u' ++ " not contained in " ++ show u
+unify t1 t2 = throwError $ "Cannot unify " ++ show t1 ++ " and " ++ show t2
 
 appArrow :: Expr -> InterType -> Result InterType
 appArrow e = appArrow' (getGround0 e)
@@ -119,9 +119,9 @@ appArrow' :: InterType0 -> InterType -> Result InterType
 appArrow' c (Simple (ArrowT a b))  = unify0 a c >>= \(_, s) -> return (Simple $ s b)
 appArrow' c a = do
   t0 <- genTypeId
-  (a', _) <- unify a (Simple $ ArrowT c (Named t0)) `catchError` (\e -> fail $ "Could not apply " ++ show a ++ " to " ++ show c ++ ": " ++ e)
+  (a', _) <- unify a (Simple $ ArrowT c (Named t0)) `catchError` (\e -> throwError $ "Could not apply " ++ show a ++ " to " ++ show c ++ ": " ++ e)
   appArrow' c a'
--- appArrow' a b = fail $ "Could not apply type " ++ show b ++ " to " ++ show a
+-- appArrow' a b = throwError $ "Could not apply type " ++ show b ++ " to " ++ show a
 
 getGround0 :: Typed e -> InterType0
 getGround0 = Ground . getType
@@ -133,7 +133,7 @@ getGround = Simple . Ground . getType
 --    return that type.
 ensureGround :: InterType -> Result Type
 ensureGround (Simple (Ground t)) = return t
-ensureGround t = fail $ "Unresolved type: " ++ show t
+ensureGround t = throwError $ "Unresolved type: " ++ show t
 
 typeExists :: Type -> Result ()
 typeExists (NamedType n) = void $ envLookupType n
@@ -306,9 +306,9 @@ checkExpr = checkExpr' . UT.unfix
       case a of
         (ArrayType t n) -> do
           when (i >= n)
-            (fail $ "Projection of " ++ prettyIdentifier x ++ " out of range")
+            (throwError $ "Projection of " ++ prettyIdentifier x ++ " out of range")
           return $ mkTyped (Project x i) (GroundType t)
-        _ -> fail $ prettyIdentifier x ++ " is not an array type"
+        _ -> throwError $ prettyIdentifier x ++ " is not an array type"
 
     checkExpr' (NodeUsage n params) = do
       params' <- mapM checkExpr params
@@ -322,7 +322,7 @@ checkNodeTypes :: String -> Identifier -> [Variable] -> [Type] -> Result ()
 checkNodeTypes kind node namedSig expected =
   case checkTypeList 1 namedSig expected of
     Nothing -> return ()
-    Just e -> fail $ "Could not match " ++ kind ++ " signature of " ++ prettyIdentifier node ++
+    Just e -> throwError $ "Could not match " ++ kind ++ " signature of " ++ prettyIdentifier node ++
       case e of
       (err, True) -> ": number of types did not match (" ++ err ++ ")"
       (err, False) -> ": type mismatch " ++ err
@@ -344,7 +344,7 @@ checkRecordConstr (RecordConstr x es) = do
   (RecordT fields) <- envLookupRecordType x
   es' <- mapM checkExpr es
   when ((map snd fields) /= (map getType es'))
-    (fail $ "Arguments of record constructor do not match while constructing " ++ prettyIdentifier x)
+    (throwError $ "Arguments of record constructor do not match while constructing " ++ prettyIdentifier x)
   return $ (RecordConstr x es', NamedType x)
 
 checkRecordConstrConst :: UT.GRecordConstr UT.ConstExpr -> Result (GRecordConstr ConstExpr, Type)
@@ -352,7 +352,7 @@ checkRecordConstrConst (RecordConstr x es) = do
   (RecordT fields) <- envLookupRecordType x
   es' <- mapM checkConstExpr es
   when ((map snd fields) /= (map getType es'))
-    (fail $ "Arguments of record constructor do not match while constructing " ++ prettyIdentifier x)
+    (throwError $ "Arguments of record constructor do not match while constructing " ++ prettyIdentifier x)
   return $ (RecordConstr x es', NamedType x)
 
 checkConstant :: UT.Constant -> Result Constant
@@ -362,12 +362,12 @@ checkConstant (Fix (RealConst a)) = return $ mkTyped (RealConst a) realT
 checkConstant (Fix (SIntConst bits a)) =
   let neededBits = (usedBits $ abs a) + 1 -- extra sign bit
   in if neededBits > bits
-      then fail $ show a ++ " (signed) does not fit into " ++ show bits ++ " bits, requires at least " ++ show neededBits
+      then throwError $ show a ++ " (signed) does not fit into " ++ show bits ++ " bits, requires at least " ++ show neededBits
       else return $ mkTyped (SIntConst bits a) (GroundType $ SInt bits)
 checkConstant (Fix (UIntConst bits a)) =
   let neededBits = (usedBits $ toInteger a)
   in if neededBits > bits
-      then fail $ show a ++ " (unsigned) does not fit into " ++ show bits ++ " bits, requires at least " ++ show neededBits
+      then throwError $ show a ++ " (unsigned) does not fit into " ++ show bits ++ " bits, requires at least " ++ show neededBits
       else return $ mkTyped (UIntConst bits a) (GroundType $ UInt bits)
 
 usedBits :: Integer -> Natural
