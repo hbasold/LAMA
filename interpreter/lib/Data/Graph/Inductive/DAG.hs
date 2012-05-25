@@ -1,11 +1,15 @@
+{-# LANGUAGE TupleSections #-}
+
 module Data.Graph.Inductive.DAG (
-  DAG, mkDAG, dagMapNLab
+  DAG(..), mkDAG, dagMapNLab, dagMapNLabM
 ) where
 
-import Data.Graph.Inductive.Graph (Graph(..), Node)
+import Data.Graph.Inductive.Graph (Graph(..), DynGraph, Node, nmap)
 import Data.Graph.Inductive.Query.DFS (scc)
+import Data.Graph.Inductive.MonadSupport (gmapM)
 import Data.Foldable (find)
 import Control.Arrow (second)
+import Control.Monad (liftM)
 
 newtype DAG gr a b = DAG { getGraph :: gr a b } deriving (Show, Eq)
 
@@ -39,7 +43,9 @@ instance Graph gr => Graph (DAG gr) where
   labEdges = labEdges . getGraph
 
 -- | Maps the node label of a DAG
-dagMapNLab :: Graph gr => (a -> c) -> DAG gr a b -> DAG gr c b
-dagMapNLab f g =
-  let ns = map (second f) $ labNodes g
-  in mkGraph ns $ labEdges g
+dagMapNLab :: DynGraph gr => (a -> c) -> DAG gr a b -> DAG gr c b
+dagMapNLab f = unsafeMkDAG . nmap f . getGraph
+
+dagMapNLabM :: (DynGraph gr, Monad m) => (a -> m c) -> DAG gr a b -> m (DAG gr c b)
+dagMapNLabM f = liftM unsafeMkDAG . gmapM f' . getGraph
+  where f' (i, n, l, o) = f l >>= \l' -> return (i, n, l', o)
