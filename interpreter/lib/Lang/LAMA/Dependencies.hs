@@ -1,18 +1,26 @@
 {-# LANGUAGE TupleSections #-}
 
 module Lang.LAMA.Dependencies (
-  VarUsage(..), Mode(..), Var,
+  VarUsage(..), Mode(..), ExprCtx(..),
+  IdentCtx, ctxGetIdent,
   NodeDeps(..), ProgDeps(..),
   mkDeps
 ) where
+
+import Prelude hiding (mapM)
 
 import Data.Graph.Inductive.PatriciaTree
 import Data.Graph.Inductive.NodeMapSupport as G
 import Data.Graph.Inductive.DAG
 import qualified Data.Graph.Inductive.Graph as G
-import Data.Map as Map hiding (map)
+import qualified Data.Graph.Inductive.UnlabeledGraph as U
+import Data.Graph.Inductive.MonadSupport
+import Data.Graph.Inductive.Graph (Context, ufold, insEdges, pre)
+import Data.Map as Map hiding (map, null)
 import Data.List (intercalate)
 import Data.Foldable (foldlM)
+import Data.Traversable (mapM)
+import qualified Data.ByteString.Char8 as BS
 
 import Control.Monad.Error (ErrorT, runErrorT, throwError)
 import Control.Monad.Trans.Class (lift)
@@ -22,6 +30,8 @@ import Control.Monad.Trans.Reader (ReaderT, runReaderT, ask)
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
 import Lang.LAMA.Typing.TypedStructure
+
+import Data.Graph.Inductive.GenShow
 
 -- | Context in which a variable is used. With this context state variables
 --  can be distinguished if they are use on lhs or rhs of an assignment.
@@ -33,21 +43,30 @@ data VarUsage =
 
 -- | Characterizes where a variable is defined (in a normal flow
 --  or in a flow a state)
-data Mode = GlobalMode | LocationMode Identifier deriving (Eq, Ord, Show)
+data Mode = GlobalMode | LocationRefMode | LocationMode Identifier deriving (Eq, Ord, Show)
 
 -- | Bundle an identifier with its context.
-type Var = (Identifier, VarUsage, Mode)
+type IdentCtx = (BS.ByteString, VarUsage, Mode)
+
+ctxGetIdent :: IdentCtx -> BS.ByteString
+ctxGetIdent (i, _, _) = i
+
+-- | Puts an expression (if any) into its context. A variable may
+--  be not defined at all, have one global expression or
+--  one for each location in the automaton.
+data ExprCtx = NoExpr | GlobalExpr Expr | LocalExpr (Map BS.ByteString Expr)
 
 -- | Dependencies of a node
 data NodeDeps = NodeDeps {
     nodeDepsNodes :: Map Identifier NodeDeps,
-    nodeDepsFlow :: DAG Gr (Var, Expr) ()
+    nodeDepsFlow :: DAG Gr (IdentCtx, ExprCtx) ()
   }
 
 -- | Dependencies of the program
+--  TODO: and nodes
 data ProgDeps = ProgDeps {
     progDepsNodes :: Map Identifier NodeDeps,
-    progDepsFlow :: DAG Gr (Var, Expr) ()
+    progDepsFlow :: DAG Gr (IdentCtx, ExprCtx) ()
   }
 
 -- | Calculates the dependencies of a given program
@@ -57,14 +76,113 @@ data ProgDeps = ProgDeps {
 mkDeps :: Program -> Either String ProgDeps
 mkDeps p = do
     d <- mkDepsProgram p
-    let nodes = fmap convNodeGraphs $ ipDepsNodes d
-    let exprDepGr = dagMapNLab (addExpr $ ipDepsExprs d) (ipDepsGraph d)
+    nodes <- mapM convNodeDeps $ ipDepsNodes d
+    (dg, refs) <- mergeLocationNodes $ ipDepsGraph d
+    exprDepGr <- dagMapNLabM (fmap dropLocInfo . (addExprFV refs $ ipDepsExprs d)) dg
     return $ ProgDeps nodes exprDepGr
+
   where
-    convNodeGraphs n =
-      let nodes = fmap convNodeGraphs $ inDepsNodes n
-          exprDepGr = dagMapNLab (addExpr $ inDepsExprs n) (inDepsGraph n)
-      in NodeDeps nodes exprDepGr
+    convNodeDeps :: InterNodeDeps -> Either String NodeDeps
+    convNodeDeps n = do
+      nodes <- mapM convNodeDeps $ inDepsNodes n
+      (dg, refs) <- mergeLocationNodes $ inDepsGraph n
+      exprDepGr <- dagMapNLabM (fmap dropLocInfo . (addExprNoFV refs $ inDepsExprs n)) dg
+      return $ NodeDeps nodes exprDepGr
+
+    dropLocInfo ((i, u, m), e) = ((identBS i, u, m), e)
+
+    -- | Allow variables to be free
+    addExprFV :: RefMap -> Map InterIdentCtx Expr -> InterIdentCtx -> Either String (InterIdentCtx, ExprCtx)
+    addExprFV refs es v@(x, _, m) = case m of
+      GlobalMode -> case Map.lookup v es of
+        Nothing -> return (v, NoExpr)
+        Just e -> return (v, GlobalExpr e)
+      LocationRefMode -> case Map.lookup v refs of
+        Nothing -> throwError $ prettyIdentifier x ++ " references to a definition in location which does not exist"
+        Just refVars -> lookupExprs es refVars >>= \refExprs -> return (v, LocalExpr refExprs)
+      LocationMode _ -> error "Remaining location mode" -- should no longer be present here
+
+    addExprNoFV :: RefMap -> Map InterIdentCtx Expr -> InterIdentCtx -> Either String (InterIdentCtx, ExprCtx)
+    addExprNoFV refs es v@(x, u, _) = case u of
+      Constant -> return (v, NoExpr)
+      Input -> return (v, NoExpr)
+      StateIn -> return (v, NoExpr)
+      _ -> addExprFV refs es v >>= \(v', e) ->
+        case e of
+          NoExpr -> throwError $ prettyIdentifier x ++ " (" ++ show u ++ ")" ++ " not defined"
+          _ -> return (v', e)
+
+    lookupExprs es rs = case mapM (flip Map.lookup es) rs of
+      Nothing -> throwError $ "Variable in location undefined"
+      Just res -> return $ Map.fromList $ zip (map (identBS . interCtxGetIdent) rs) res
+
+
+type RefMap = Map InterIdentCtx [InterIdentCtx]
+
+mergeLocationNodes :: InterDepDAG -> Either String (InterDepDAG, RefMap)
+mergeLocationNodes dg =
+  let (g', nodeVarMap, refs) = ufold (mergeLs dg) (G.empty, Map.empty, Map.empty) (getGraph dg)
+      g'' = setVarLabels nodeVarMap g'
+      mdg' = mkDAG g''
+  in case mdg' of
+    Left cycl -> throwError $ "Merging lead to cycle: " ++ show cycl -- should not happen!
+    Right dg' -> return (dg', refs)
+  where
+    mergeLs :: InterDepDAG -> Context InterIdentCtx () ->
+                (Gr () (), Map G.Node InterIdentCtx, RefMap) -> (Gr () (), Map G.Node InterIdentCtx, RefMap)
+    -- x is not local to a location and does not refer to variable inside a
+    -- location, it is set in global flow.
+    -- If its successors are set in a location then it is a reference node. In that
+    -- case its label is updated and all successors (which are set in a location)
+    -- are dropped.
+    -- Edges coming from a locally set variable have to be changed, so that
+    -- they come now from the corresponding reference node (see last case of
+    -- mergeLs.
+    mergeLs deps (i, n, v@(x, u, GlobalMode), o) (g, nodeVarMap, refs) =
+      let isRef = locations deps o
+          i' = redirect deps i
+          g' = if isRef
+                  then U.merge' (i', n, (), []) g
+                  else U.merge' (i', n, (), o) g
+          v' = if isRef then (x, u, LocationRefMode) else v
+      in (g', Map.insert n v' nodeVarMap, refs)
+    -- Should not be present in the given graph
+    mergeLs _ (_, _, (_, _, LocationRefMode), _) _ = undefined
+    -- If x is set in a location, its incoming edges will be attached to its unique
+    -- predecessor which is then a reference node. Additionally a mapping from the
+    -- reference to x is set so that the expressions can be recovered.
+    -- This should form a graph homomorphism.
+    mergeLs deps (_, n, v@(x, u, LocationMode _), o) (g, nodeVarMap, refs) =
+      case pre deps n of
+        [r] -> (insEdges (edgesFromTo r o) $ U.insNode' r g , nodeVarMap, alter (addRef v) (x, u, LocationRefMode) refs)
+        ps -> error $ "Predecessor should be unique (at " ++ show v ++ "), "
+                        ++ " but has " ++ show ps ++ " in : " ++ show deps
+
+    edgesFromTo r = map (r,,()) . map snd
+
+    redirect deps =
+      map (\((), n) -> case G.lab deps n of
+            Just (_, _, LocationMode _) -> ((), head $ pre deps n)
+            _ -> ((), n)
+          )
+
+    -- if one successor is defined in a location
+    -- by construction all are so.
+    locations _ [] = False
+    locations deps (((), d):_) = case G.lab deps d of
+      Nothing -> False -- should not happen
+      Just (_, _, m) -> case m of
+        LocationMode _ -> True
+        _ -> False
+
+    addRef l = maybe (Just [l]) (Just . (l:))
+
+    setVarLabels nodeVarMap = G.gmap (setVarLabel nodeVarMap)
+      where
+        setVarLabel nvm (i, n, (), o) = case Map.lookup n nvm of
+          Nothing -> error $ "could not find variable for " ++ show n ++ " in " ++ show nvm
+          Just v -> (i, n, v, o)
+
 
 type InterIdentCtx = (Identifier, VarUsage, Mode)
 
@@ -203,6 +321,7 @@ insDeps ds xu = do
   insVar xu
   ds' <- mapM (\v -> varUsage v >>= return . (v,,GlobalMode)) ds
   insVars ds'
+  forM_ ds' (\(v, u, m) -> case u of { StateIn -> insVar (v, StateOut, m) ; _-> return () })
   mapM_ (insDep xu) ds'
   insGlobLocDeps xu
 
