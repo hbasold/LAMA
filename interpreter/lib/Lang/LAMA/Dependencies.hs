@@ -66,24 +66,29 @@ mkDeps p = do
           exprDepGr = dagMapNLab (addExpr $ inDepsExprs n) (inDepsGraph n)
       in NodeDeps nodes exprDepGr
 
-    addExpr es v = let (Just e) = Map.lookup v es in (v, e)
+type InterIdentCtx = (Identifier, VarUsage, Mode)
+
+interCtxGetIdent :: InterIdentCtx -> Identifier
+interCtxGetIdent (x, _, _) = x
+
+type InterDepDAG = DAG Gr InterIdentCtx ()
 
 -- | Carries node dependencies with split up
 --  information to ease calculation.
 data InterNodeDeps = InterNodeDeps {
     inDepsNodes :: Map Identifier InterNodeDeps,
-    inDepsGraph :: DAG Gr Var (),
-    inDepsVars :: G.NodeMap Var,
-    inDepsExprs :: Map Var Expr
+    inDepsGraph :: InterDepDAG,
+    inDepsVars :: G.NodeMap InterIdentCtx,
+    inDepsExprs :: Map InterIdentCtx Expr
   }
 
 -- | Carries program dependencies with split up
 --  information to ease calculation.
 data InterProgDeps = InterProgDeps {
     ipDepsNodes :: Map Identifier InterNodeDeps,
-    ipDepsGraph :: DAG Gr Var (),
-    ipDepsVars :: G.NodeMap Var,
-    ipDepsExprs :: Map Var Expr
+    ipDepsGraph :: InterDepDAG,
+    ipDepsVars :: G.NodeMap InterIdentCtx,
+    ipDepsExprs :: Map InterIdentCtx Expr
   }
 
 type VarMap = Map Identifier VarUsage
@@ -103,12 +108,12 @@ type DepMonad = Either String
 
 -- | Checks of the given graph is a DAG, if not results
 --  in an error containing the found cycle.
-checkCycles :: Gr Var () -> DepMonad (DAG Gr Var ())
+checkCycles :: Gr InterIdentCtx () -> DepMonad (InterDepDAG)
 checkCycles g = case mkDAG g of
   Left c -> throwError $ "Cyclic dependency: " ++ depList g c
   Right dag -> return dag
   where
-    depList :: Gr Var () -> [G.Node] -> String
+    depList :: Gr InterIdentCtx () -> [G.Node] -> String
     depList h = intercalate " -> " . map (maybe "" id . fmap (\(v, u, m) -> show u ++ " in " ++ show m ++ " " ++ prettyIdentifier v) . G.lab h)
 
 mkDepsProgram :: Program -> DepMonad InterProgDeps
@@ -136,8 +141,8 @@ mkDepsMapNodes consts nodes = do
   nodeDeps <- mapM (mkDepsNode consts) nodes
   return $ Map.fromList $ zip (map nodeName nodes) nodeDeps
 
-type DepGraphM = ErrorT String (ReaderT VarMap (NodeMapM Var () Gr))
-type ExprMap = Map Var Expr
+type DepGraphM = ErrorT String (ReaderT VarMap (NodeMapM InterIdentCtx () Gr))
+type ExprMap = Map InterIdentCtx Expr
 
 mkDepsNodeParts :: Flow -> [InstantDefinition] -> [Automaton] -> DepGraphM ExprMap
 mkDepsNodeParts f o a = do
@@ -179,13 +184,13 @@ varUsage v = do
     Just u -> return u
     Nothing -> throwError $ "Unknown variable " ++ prettyIdentifier v
 
-insVar :: Var -> DepGraphM ()
+insVar :: InterIdentCtx -> DepGraphM ()
 insVar = void . insMapNodeM'
 
-insVars :: [Var] -> DepGraphM ()
+insVars :: [InterIdentCtx] -> DepGraphM ()
 insVars = void . insMapNodesM'
 
-insDep :: Var -> Var -> DepGraphM ()
+insDep :: InterIdentCtx -> InterIdentCtx -> DepGraphM ()
 insDep from = lift2 . insMapEdgeM . (from, ,())
   where lift2 = lift . lift
 
@@ -193,7 +198,7 @@ insDep from = lift2 . insMapEdgeM . (from, ,())
 --  to /x/ to the given variable /v/. /x/ is treated
 --  as non-state-local variable, since we don't bother
 --  where it is written, but only that it is readable.
-insDeps :: [Identifier] -> Var -> DepGraphM ()
+insDeps :: [Identifier] -> InterIdentCtx -> DepGraphM ()
 insDeps ds xu = do
   insVar xu
   ds' <- mapM (\v -> varUsage v >>= return . (v,,GlobalMode)) ds
@@ -206,7 +211,7 @@ insDeps ds xu = do
 --    With this we can treat a variable as non-local
 --    for reading but distinguish writing in the
 --    respective states (see 'insDeps').
-insGlobLocDeps :: Var -> DepGraphM ()
+insGlobLocDeps :: InterIdentCtx -> DepGraphM ()
 insGlobLocDeps (_, _, GlobalMode) = return ()
 insGlobLocDeps v@(x, u, _) = do
     let vG = (x, u, GlobalMode)
