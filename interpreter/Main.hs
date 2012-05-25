@@ -14,8 +14,7 @@ import Data.Text.Lazy (pack)
 import Data.Foldable (forM_)
 import Lang.LAMA.Identifier
 import Data.Map as Map
-import Data.Graph.Inductive.PatriciaTree
-import qualified Data.Graph.Inductive.Tree as GTree
+import Data.Graph.Inductive.GenShow ()
 import Control.Monad (void, when, MonadPlus(..))
 import Control.Monad.Trans.Maybe
 import Control.Monad.IO.Class
@@ -47,9 +46,9 @@ runFile v f = putStrLn f >> BL.readFile f >>= runMaybeT' . run v f
 
 run :: Verbosity -> FilePath -> BL.ByteString -> MaybeT IO ()
 run v f inp = do
-  concTree <- checkErrors $ parseLAMA inp
-  liftIO $ putStrV 2 v $ show concTree
-  deps <- checkDeps $ mkDeps concTree
+  prog <- checkErrors $ parseLAMA inp
+  liftIO $ putStrV 2 v $ show prog
+  deps <- checkDeps $ mkDeps prog
   liftIO $ whenV 1 v (showDeps f deps)
 
 checkErrors :: Either Error Program -> MaybeT IO Program
@@ -87,19 +86,13 @@ defaultVis = graphToDot params
           fmtNode = \(_, (v, _)) -> [Label $ toLabelValue v]
         }
 
-instance forall a b. (Show a, Show b) => Show (Gr a b) where
-  show g =
-    let n = G.labNodes g
-        e = G.labEdges g
-        g' = G.mkGraph n e :: GTree.Gr a b
-    in show g'
-
 instance Labellable () where
   toLabelValue = const $ textLabelValue $ pack ""
 
-instance Labellable Var where
+instance Labellable IdentCtx where
   toLabelValue = textLabelValue . pack . prettyVar
     where
-      prettyVar ((Id x _), u, m) = BS.unpack x ++ "(" ++ show u ++ prettyMode m ++ ")"
+      prettyVar (x, u, m) = BS.unpack x ++ "(" ++ show u ++ prettyMode m ++ ")"
       prettyMode GlobalMode = ""
+      prettyMode LocationRefMode = " (ref)"
       prettyMode (LocationMode (Id l _)) = " in " ++ BS.unpack l
