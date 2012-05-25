@@ -14,6 +14,9 @@ Executable test-lama
   other-modules:
     Data.Graph.Inductive.DAG
     Data.Graph.Inductive.NodeMapSupport
+    Data.Graph.Inductive.MonadSupport
+    Data.Graph.Inductive.GenShow
+    Data.Graph.Inductive.UnlabeledGraph
     Lang.LAMA.Parser.Abs
     Lang.LAMA.Parser.ErrM
     Lang.LAMA.Parser.Lex
@@ -40,6 +43,9 @@ Executable lamai
   other-modules:
     Data.Graph.Inductive.DAG
     Data.Graph.Inductive.NodeMapSupport
+    Data.Graph.Inductive.MonadSupport
+    Data.Graph.Inductive.GenShow
+    Data.Graph.Inductive.UnlabeledGraph
     Lang.LAMA.Parser.Abs
     Lang.LAMA.Parser.ErrM
     Lang.LAMA.Parser.Lex
