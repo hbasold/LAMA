@@ -224,11 +224,20 @@ checkFlow (Flow definitions transitions) =
     mapM checkStateTransition transitions
 
 checkInstantDef :: UT.InstantDefinition -> Result InstantDefinition
-checkInstantDef (InstantDef xs e) = do
-    e' <- checkExpr e
+checkInstantDef (InstantDef xs i) = do
+    i' <- checkInstant i
     ts <- mapM envLookupWritable xs
-    void $ unify (getGround e') (mkGround $ mkProductT ts)
-    return $ InstantDef xs e'
+    void $ unify (getGround i') (mkGround $ mkProductT ts)
+    return $ InstantDef xs i'
+
+checkInstant :: UT.Instant -> Result Instant
+checkInstant (Fix (InstantExpr e)) = preserveType InstantExpr <$> checkExpr e
+checkInstant (Fix (NodeUsage n params)) = do
+  params' <- mapM checkExpr params
+  let inTypes = map getType params'
+  (nInp, nOutp) <- envLookupNodeSignature n
+  checkNodeTypes "input" n nInp inTypes
+  return $ mkTyped (NodeUsage n params') (mkProductT $ map varType nOutp)
 
 checkStateTransition :: UT.StateTransition -> Result StateTransition
 checkStateTransition (StateTransition x e) = do
@@ -314,13 +323,6 @@ checkExpr = checkExpr' . UT.unfix
             (throwError $ "Projection of " ++ prettyIdentifier x ++ " out of range")
           return $ mkTyped (Project x i) (GroundType t)
         _ -> throwError $ prettyIdentifier x ++ " is not an array type"
-
-    checkExpr' (NodeUsage n params) = do
-      params' <- mapM checkExpr params
-      let inTypes = map getType params'
-      (nInp, nOutp) <- envLookupNodeSignature n
-      checkNodeTypes "input" n nInp inTypes
-      return $ mkTyped (NodeUsage n params') (mkProductT $ map varType nOutp)
 
 -- | Checks the signature of a used node
 checkNodeTypes :: String -> Identifier -> [Variable] -> [Type] -> Result ()

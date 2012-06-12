@@ -290,8 +290,14 @@ transOutputs x = case x of
 
 transInstantDefinition :: Abs.InstantDefinition -> Result InstantDefinition
 transInstantDefinition x = case x of
-  Abs.InstantDef pattern expr  ->
-    InstantDef <$> (transPattern pattern) <*> (transExpr expr)
+  Abs.InstantDef pattern instant  -> InstantDef <$> (transPattern pattern) <*> (transInstant instant)
+
+
+transInstant :: Abs.Instant -> Result Instant
+transInstant x = case x of
+  Abs.InstantExpr expr  -> Fix . InstantExpr <$> transExpr expr
+  Abs.NodeUsage identifier exprs  ->
+    Fix <$> (NodeUsage <$> transIdentifier identifier <*> mapM transExpr exprs)
 
 
 transTransition :: Abs.Transition -> Result StateTransition
@@ -384,9 +390,6 @@ transExpr = fmap Fix . transExpr'
         Project <$> transIdentifier identifier <*> transNatural natural
 
       Abs.Select identifier0 identifier  -> $notImplemented
-
-      Abs.NodeUsage identifier exprs  ->
-        NodeUsage <$> transIdentifier identifier <*> mapM transExpr exprs
 
 
 transBinOp :: Abs.BinOp -> Result BinOp

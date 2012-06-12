@@ -160,7 +160,12 @@ data Outputs =
   deriving (Eq,Ord,Show)
 
 data InstantDefinition =
-   InstantDef Pattern Expr
+   InstantDef Pattern Instant
+  deriving (Eq,Ord,Show)
+
+data Instant =
+   InstantExpr Expr
+ | NodeUsage Identifier [Expr]
   deriving (Eq,Ord,Show)
 
 data Transition =
@@ -210,7 +215,6 @@ data Expr =
  | Constr Identifier [Expr]
  | Project Identifier Natural
  | Select Identifier Identifier
- | NodeUsage Identifier [Expr]
   deriving (Eq,Ord,Show)
 
 data UnOp =

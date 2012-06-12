@@ -7,6 +7,8 @@ module Lang.LAMA.Parser.Lex where
 
 import qualified Data.ByteString.Lazy.Char8 as BS
 import qualified Data.ByteString.Char8 as B
+import qualified Data.Bits
+import Data.Word (Word8)
 }
 
 
@@ -118,29 +120,55 @@ alexMove (Pn a l c) '\t' = Pn (a+1)  l     (((c+7) `div` 8)*8+1)
 alexMove (Pn a l c) '\n' = Pn (a+1) (l+1)   1
 alexMove (Pn a l c) _    = Pn (a+1)  l     (c+1)
 
+type Byte = Word8
+
 type AlexInput = (Posn,     -- current position,
                   Char,     -- previous char
+                  [Byte],   -- pending bytes on the current char
                   BS.ByteString)   -- current input string
 
 tokens :: BS.ByteString -> [Token]
-tokens str = go (alexStartPos, '\n', str)
+tokens str = go (alexStartPos, '\n', [], str)
     where
       go :: AlexInput -> [Token]
-      go inp@(pos, _, str) =
+      go inp@(pos, _, _, str) =
                case alexScan inp 0 of
-                AlexEOF                -> []
-                AlexError (pos, _, _)  -> [Err pos]
-                AlexSkip  inp' len     -> go inp'
-                AlexToken inp' len act -> act pos (BS.take (toEnum len) str) : (go inp')
+                AlexEOF                   -> []
+                AlexError (pos, _, _, _)  -> [Err pos]
+                AlexSkip  inp' len        -> go inp'
+                AlexToken inp' len act    -> act pos (BS.take (toEnum len) str) : (go inp')
 
-alexGetChar :: AlexInput -> Maybe (Char,AlexInput)
-alexGetChar (p, _, s) =
+alexGetByte :: AlexInput -> Maybe (Byte,AlexInput)
+alexGetByte (p, c, (b:bs), s) = Just (b, (p, c, bs, s))
+alexGetByte (p, _, [], s) =
   case BS.uncons s of
     Nothing  -> Nothing
     Just (c,s) ->
-             let p' = alexMove p c
-              in p' `seq` Just (c, (p', c, s))
+             let p'     = alexMove p c
+                 (b:bs) = utf8Encode c
+              in p' `seq` Just (b, (p', c, bs, s))
 
 alexInputPrevChar :: AlexInput -> Char
-alexInputPrevChar (p, c, s) = c
+alexInputPrevChar (p, c, bs, s) = c
+
+  -- | Encode a Haskell String to a list of Word8 values, in UTF8 format.
+utf8Encode :: Char -> [Word8]
+utf8Encode = map fromIntegral . go . ord
+ where
+  go oc
+   | oc <= 0x7f       = [oc]
+
+   | oc <= 0x7ff      = [ 0xc0 + (oc `Data.Bits.shiftR` 6)
+                        , 0x80 + oc Data.Bits..&. 0x3f
+                        ]
+
+   | oc <= 0xffff     = [ 0xe0 + (oc `Data.Bits.shiftR` 12)
+                        , 0x80 + ((oc `Data.Bits.shiftR` 6) Data.Bits..&. 0x3f)
+                        , 0x80 + oc Data.Bits..&. 0x3f
+                        ]
+   | otherwise        = [ 0xf0 + (oc `Data.Bits.shiftR` 18)
+                        , 0x80 + ((oc `Data.Bits.shiftR` 12) Data.Bits..&. 0x3f)
+                        , 0x80 + ((oc `Data.Bits.shiftR` 6) Data.Bits..&. 0x3f)
+                        , 0x80 + oc Data.Bits..&. 0x3f
+                        ]
 }

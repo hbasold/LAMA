@@ -14,7 +14,7 @@ module Lang.LAMA.Structure (
   -- * Data flow
   GFlow(..),
   -- ** Definition of local and output variables
-  Pattern, GInstantDefinition(..),
+  Pattern, GInstantDefinition(..), GInstant(..),
   -- ** Definition of state variables
   GStateTransition(..), GStateInit,
   -- * Automata
@@ -34,11 +34,11 @@ import Lang.LAMA.Types
 -- | A LAMA program needs at least a top level node ('progMainNode')
 --  which will be the target for the given verification
 --  properties ('progInvariant').
-data GProgram c e ce = Program {
+data GProgram c e ce i = Program {
     progTypeDefinitions     :: Map TypeAlias TypeDef,
     progConstantDefinitions :: Map Identifier c,
-    progDecls               :: GDeclarations e ce,
-    progFlow                :: GFlow e,
+    progDecls               :: GDeclarations e ce i,
+    progFlow                :: GFlow e i,
     progInitial             :: GStateInit ce,
     progAssertions          :: [e],
     progInvariant           :: [e]
@@ -77,13 +77,13 @@ data GConst e
 
 ---- Nodes -----
 
-data GNode e ce = Node {
+data GNode e ce i = Node {
     nodeInputs      :: [Variable],
     nodeOutputs     :: [Variable],
-    nodeDecls       :: GDeclarations e ce,
-    nodeFlow        :: GFlow e,
-    nodeOutputDefs  :: [GInstantDefinition e],
-    nodeAutomata    :: [GAutomaton e],
+    nodeDecls       :: GDeclarations e ce i,
+    nodeFlow        :: GFlow e i,
+    nodeOutputDefs  :: [GInstantDefinition i],
+    nodeAutomata    :: [GAutomaton e i],
     nodeInitial     :: GStateInit ce
   } deriving (Eq, Show)
   
@@ -95,21 +95,25 @@ varIdent (Variable x _) = x
 varType :: Variable -> Type
 varType (Variable _ t) = t
 
-data GDeclarations e ce = Declarations {
-    declsNode   :: Map Identifier (GNode e ce),
+data GDeclarations e ce i = Declarations {
+    declsNode   :: Map Identifier (GNode e ce i),
     declsState  :: [Variable],
     declsLocal  :: [Variable]
   } deriving (Eq, Show)
 
 ---- Data flow -----
 
-data GFlow e = Flow {
-    flowDefinitions :: [GInstantDefinition e],
+data GFlow e i = Flow {
+    flowDefinitions :: [GInstantDefinition i],
     flowTransitions :: [GStateTransition e]
   } deriving (Eq, Show)
 
 type Pattern = [Identifier]
-data GInstantDefinition e = InstantDef Pattern e deriving (Eq, Show)
+data GInstantDefinition i = InstantDef Pattern i deriving (Eq, Show)
+data GInstant e f
+  = InstantExpr e
+  | NodeUsage Identifier [e]     -- ^ Using a node
+  deriving (Eq, Show)
 
 data GStateTransition e = StateTransition Identifier e deriving (Eq, Show)
 type GStateInit ce = Map Identifier ce
@@ -118,10 +122,10 @@ type GStateInit ce = Map Identifier ce
 ---- Automaton -----
 
 type LocationId = Identifier
-data GLocation e = Location LocationId (GFlow e) deriving (Eq, Show)
+data GLocation e i = Location LocationId (GFlow e i) deriving (Eq, Show)
 data GEdge e = Edge LocationId LocationId e deriving (Eq, Show)
-data GAutomaton e = Automaton {
-    automLocations :: [GLocation e],
+data GAutomaton e i = Automaton {
+    automLocations :: [GLocation e i],
     automInitial :: LocationId,
     automEdges :: [GEdge e]
   } deriving (Eq, Show)
@@ -149,7 +153,6 @@ data GExpr c a e
   | Constr (GRecordConstr e)         -- ^ Record construtor
   | Select Identifier RecordField   -- ^ Record selection
   | Project Identifier Natural      -- ^ Array projection
-  | NodeUsage Identifier [e]     -- ^ Using a node
   deriving (Eq, Show)
 
 -- | Binary operators
@@ -177,6 +180,9 @@ instance EqFunctor GTuple where
 
 instance EqFunctor GConst where
   eqF = (==)
+
+instance Eq e => EqFunctor (GInstant e) where
+  eqF = (==)
   
 instance Eq c => EqFunctor (GConstExpr c) where
   eqF = (==)
@@ -195,6 +201,9 @@ instance ShowFunctor GTuple where
   showF = show
 
 instance ShowFunctor GConst where
+  showF = show
+
+instance Show e => ShowFunctor (GInstant e) where
   showF = show
   
 instance Show c => ShowFunctor (GConstExpr c) where

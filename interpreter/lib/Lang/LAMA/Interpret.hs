@@ -95,47 +95,47 @@ evalProg s p d =
 
 assign :: (Environment, NodeState) -> (IdentCtx, ExprCtx) -> EvalM (Environment, NodeState)
 assign (env, nState) (v, NoExpr) = return (env, nState)
-assign (env, nState) (v, GlobalExpr expr) = do
-  (r, nState') <- evalExpr (State env nState) expr
+assign (env, nState) (v, GlobalExpr inst) = do
+  (r, nState') <- evalInstant (State env nState) inst
   env' <- updateM env (ctxGetIdent v) r
   return (env', nState')
 assign (env, nState) (v, LocalExpr refs) = $notImplemented
 
-evalExpr :: State -> Expr -> EvalM (ConstExpr, NodeState)
+evalInstant :: State -> Instant -> EvalM (ConstExpr, NodeState)
+evalInstant s@(State env ns) i = case untyped i of
+  InstantExpr e -> (,ns) <$> evalExpr s e
+  NodeUsage n params -> do
+    let nBS = identBS n
+    params' <- evalExprs s params
+    (nDecl, nDeps) <- lookupNode n
+    let nState = Map.findWithDefault emptyState nBS ns
+    (r, nState') <- evalNode nDecl nDeps nState params'
+    return (r, Map.alter (const $ Just nState') nBS ns)
+
+  where
+    evalExprs :: State -> [Expr] -> EvalM [ConstExpr]
+    evalExprs s = foldrM (evalExprs' s) []
+
+    evalExprs' :: State -> Expr -> [ConstExpr] -> EvalM [ConstExpr]
+    evalExprs' s e rs = (:rs) <$> evalExpr s e
+
+evalExpr :: State -> Expr -> EvalM ConstExpr
 evalExpr s@(State env ns) expr = case untyped expr of
-  AtExpr a -> (,ns) <$> evalAtom env a
+  AtExpr a -> evalAtom env a
   LogNot e -> do
-    (e', ns1) <- evalExpr  s e
-    return (negate e', ns1)
+    e' <- evalExpr s e
+    return $ negate e'
   Expr2 o e1 e2 -> $notImplemented
   Ite c e1 e2 -> do
-    (c', ns1) <- evalExpr s c
-    let s1 = State env ns1
-    (e1', ns2) <- evalExpr s1 e1
-    let s2 = State env ns2
-    (e2', ns3) <- evalExpr s2 e2
-    let r = if isTrue c' then e1' else e2'
-    return (r, ns3)
+    c' <- evalExpr s c
+    e1' <- evalExpr s e1
+    e2' <- evalExpr s e2
+    return $ if isTrue c' then e1' else e2'
   Constr ctr -> $notImplemented
   Select _ _ -> $notImplemented
   Project x i -> $notImplemented
-  NodeUsage n params -> do
-    let nBS = identBS n
-    (params', ns') <- evalExprs s params
-    (nDecl, nDeps) <- lookupNode n
-    let nState = Map.findWithDefault emptyState nBS ns'
-    (r, nState') <- evalNode nDecl nDeps nState params'
-    return (r, Map.alter (const $ Just nState') nBS ns')
   
   where
-    evalExprs :: State -> [Expr] -> EvalM ([ConstExpr], NodeState)
-    evalExprs s = foldrM (evalExprs' (stateEnv s)) ([], stateNodes s)
-    
-    evalExprs' :: Environment -> Expr -> ([ConstExpr], NodeState) -> EvalM ([ConstExpr], NodeState)
-    evalExprs' env e (rs, nEnv) = do
-      (r, nEnv') <- evalExpr (State env nEnv) e
-      return (r : rs, nEnv')
-    
     negate ce = case untyped ce of
       Const c -> case untyped c of
         BoolConst v -> mkTyped (Const $ mkTyped (BoolConst $ not v) boolT) boolT

@@ -9,7 +9,7 @@ module Lang.LAMA.UnTypedStructure (
   -- * Data flow
   Flow,
   -- ** Definition of local and output variables
-  InstantDefinition,
+  InstantDefinition, Instant,
   -- ** Definition of state variables
   StateTransition, StateInit,
   -- * Automata
@@ -29,15 +29,16 @@ type Expr = Fix (GExpr Constant Atom)         -- ^ expression
 type Atom = Fix (GAtom Constant)              -- ^ atom
 type ConstExpr = Fix (GConstExpr Constant)    -- ^ constant expression
 
-type Program = GProgram Constant Expr ConstExpr
-type Node = GNode Expr ConstExpr
-type Declarations = GDeclarations Expr ConstExpr
-type Flow = GFlow Expr
-type InstantDefinition = GInstantDefinition Expr
+type Program = GProgram Constant Expr ConstExpr Instant
+type Node = GNode Expr ConstExpr Instant
+type Declarations = GDeclarations Expr ConstExpr Instant
+type Flow = GFlow Expr Instant
+type InstantDefinition = GInstantDefinition Instant
+type Instant = Fix (GInstant Expr)
 type StateTransition = GStateTransition Expr
 type StateInit = GStateInit ConstExpr
-type Location = GLocation Expr
+type Location = GLocation Expr Instant
 type Edge = GEdge Expr
-type Automaton = GAutomaton Expr
+type Automaton = GAutomaton Expr Instant
 
 

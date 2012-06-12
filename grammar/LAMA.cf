@@ -2,7 +2,7 @@ position token Identifier (letter (letter | digit | '_')*) ;
 position token StateId (letter (letter | digit | '_')* '\'') ;
 comment "--" ;
 
-entrypoints Program ;
+entrypoints Program, ConstExpr ;
 
 Program. Program  ::= TypeDefs ConstantDefs
                       Declarations Flow Initial
@@ -110,7 +110,9 @@ JustOutputs. Outputs    ::= "output" [InstantDefinition] ;
 
 terminator nonempty InstantDefinition ";" ;
 terminator nonempty Transition ";" ;
-InstantDef. InstantDefinition ::= Pattern "=" Expr ;
+InstantDef. InstantDefinition ::= Pattern "=" Instant ;
+InstantExpr. Instant ::= Expr ;
+NodeUsage. Instant ::= "(" "use" Identifier [Expr] ")" ;
 Transition. Transition ::= StateId "=" Expr ;
 
 SinglePattern. Pattern ::= Identifier ;
@@ -142,7 +144,6 @@ Expr3. Expr ::= "(" TernOp Expr Expr Expr ")" ;
 Constr. Expr ::= "(" "constr" Identifier [Expr] ")" ;
 Project. Expr ::= "(" "project" Identifier Natural ")" ;
 Select. Expr ::= "(" "select" Identifier Identifier ")" ;
-NodeUsage. Expr ::= "(" "use" Identifier [Expr] ")" ;
 separator Expr "" ;
 
 Not. UnOp ::= "not" ;

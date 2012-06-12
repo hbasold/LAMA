@@ -53,7 +53,7 @@ ctxGetIdent (i, _, _) = i
 -- | Puts an expression (if any) into its context. A variable may
 --  be not defined at all, have one global expression or
 --  one for each location in the automaton.
-data ExprCtx = NoExpr | GlobalExpr Expr | LocalExpr (Map BS.ByteString Expr) deriving Show
+data ExprCtx = NoExpr | GlobalExpr Instant | LocalExpr (Map BS.ByteString Instant) deriving Show
 
 -- | Dependencies of a node
 data NodeDeps = NodeDeps {
@@ -97,7 +97,7 @@ mkDeps p = do
     dropLocInfo ((i, u, m), e) = ((identBS i, u, m), e)
 
     -- | Allow variables to be free
-    addExprFV :: RefMap -> Map InterIdentCtx Expr -> InterIdentCtx -> Either String (InterIdentCtx, ExprCtx)
+    addExprFV :: RefMap -> InstantMap -> InterIdentCtx -> Either String (InterIdentCtx, ExprCtx)
     addExprFV refs es v@(x, _, m) = case m of
       GlobalMode -> case Map.lookup v es of
         Nothing -> return (v, NoExpr)
@@ -107,7 +107,7 @@ mkDeps p = do
         Just refVars -> lookupExprs es refVars >>= \refExprs -> return (v, LocalExpr refExprs)
       LocationMode _ -> error "Remaining location mode" -- should no longer be present here
 
-    addExprNoFV :: RefMap -> Map InterIdentCtx Expr -> InterIdentCtx -> Either String (InterIdentCtx, ExprCtx)
+    addExprNoFV :: RefMap -> InstantMap -> InterIdentCtx -> Either String (InterIdentCtx, ExprCtx)
     addExprNoFV refs es v@(x, u, _) = case u of
       Constant -> return (v, NoExpr)
       Input -> return (v, NoExpr)
@@ -195,6 +195,7 @@ interCtxGetIdent :: InterIdentCtx -> Identifier
 interCtxGetIdent (x, _, _) = x
 
 type InterDepDAG = DAG Gr InterIdentCtx ()
+type InstantMap = Map InterIdentCtx Instant
 
 -- | Carries node dependencies with split up
 --  information to ease calculation.
@@ -202,7 +203,7 @@ data InterNodeDeps = InterNodeDeps {
     inDepsNodes :: Map Identifier InterNodeDeps,
     inDepsGraph :: InterDepDAG,
     inDepsVars :: G.NodeMap InterIdentCtx,
-    inDepsExprs :: Map InterIdentCtx Expr
+    inDepsExprs :: InstantMap
   }
 
 -- | Carries program dependencies with split up
@@ -211,7 +212,7 @@ data InterProgDeps = InterProgDeps {
     ipDepsNodes :: Map Identifier InterNodeDeps,
     ipDepsGraph :: InterDepDAG,
     ipDepsVars :: G.NodeMap InterIdentCtx,
-    ipDepsExprs :: Map InterIdentCtx Expr
+    ipDepsExprs :: InstantMap
   }
 
 type VarMap = Map Identifier VarUsage
@@ -266,39 +267,38 @@ mkDepsMapNodes consts nodes = do
   return $ Map.fromAscList $ zip nNames nodeDeps
 
 type DepGraphM = ErrorT String (ReaderT VarMap (NodeMapM InterIdentCtx () Gr))
-type ExprMap = Map InterIdentCtx Expr
 
-mkDepsNodeParts :: Flow -> [InstantDefinition] -> [Automaton] -> DepGraphM ExprMap
+mkDepsNodeParts :: Flow -> [InstantDefinition] -> [Automaton] -> DepGraphM InstantMap
 mkDepsNodeParts f o a = do
   e1 <- mkDepsFlow GlobalMode f
   e2 <- foldlM (mkDepsInstant GlobalMode) e1 o
   e3s <- mapM mkDepsAutomaton a
   return $ foldl Map.union e2 e3s
 
-mkDepsFlow :: Mode -> Flow -> DepGraphM ExprMap
+mkDepsFlow :: Mode -> Flow -> DepGraphM InstantMap
 mkDepsFlow m (Flow d s) = do
   e1 <- foldlM (mkDepsInstant m) Map.empty d
   foldlM (mkDepsState m) e1 s
 
-mkDepsInstant :: Mode -> ExprMap -> InstantDefinition -> DepGraphM ExprMap
-mkDepsInstant m boundExprs (InstantDef xs e) = do
+mkDepsInstant :: Mode -> InstantMap -> InstantDefinition -> DepGraphM InstantMap
+mkDepsInstant m boundExprs (InstantDef xs i) = do
   us <- mapM varUsage xs
   let xus = zipWith (, , m) xs us
-  let ds = getDeps $ untyped e
+  let ds = getDepsInstant $ untyped i
   forM_ xus (insDeps ds)
-  return $ foldl (\boundExprs' xu -> Map.insert xu e boundExprs') boundExprs xus
+  return $ foldl (\boundExprs' xu -> Map.insert xu i boundExprs') boundExprs xus
 
-mkDepsState :: Mode -> ExprMap -> StateTransition -> DepGraphM ExprMap
+mkDepsState :: Mode -> InstantMap -> StateTransition -> DepGraphM InstantMap
 mkDepsState m boundExprs (StateTransition x e) = do
   let xu = (x, StateOut, m)
   let ds = getDeps $ untyped e
   insDeps ds xu
-  return $ Map.insert xu e boundExprs
+  return $ Map.insert xu (preserveType InstantExpr e) boundExprs
 
-mkDepsAutomaton :: Automaton -> DepGraphM ExprMap
+mkDepsAutomaton :: Automaton -> DepGraphM InstantMap
 mkDepsAutomaton = (fmap Map.unions) . (mapM mkDepsLocation) . automLocations
   where
-    mkDepsLocation :: Location -> DepGraphM ExprMap
+    mkDepsLocation :: Location -> DepGraphM InstantMap
     mkDepsLocation (Location l flow) = mkDepsFlow (LocationMode l) flow
 
 varUsage :: Identifier -> DepGraphM VarUsage
@@ -343,6 +343,10 @@ insGlobLocDeps v@(x, u, _) = do
     insVar vG
     insDep vG v
 
+getDepsInstant :: GInstant Expr Instant -> [Identifier]
+getDepsInstant (InstantExpr e) = getDeps $ untyped e
+getDepsInstant (NodeUsage _ es) = concat $ map (getDeps . untyped) es
+
 getDeps :: GExpr Constant Atom Expr -> [Identifier]
 getDeps (AtExpr (AtomVar ident)) = [ident]
 getDeps (AtExpr _) = []
@@ -352,4 +356,3 @@ getDeps (Ite c e1 e2) = (getDeps $ untyped c) ++ (getDeps $ untyped e1) ++ (getD
 getDeps (Constr (RecordConstr _ es)) = concat $ map (getDeps . untyped) es
 getDeps (Select x _) = [x]
 getDeps (Project x _) = [x]
-getDeps (NodeUsage _ es) = concat $ map (getDeps . untyped) es

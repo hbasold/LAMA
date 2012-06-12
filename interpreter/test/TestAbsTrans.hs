@@ -136,8 +136,8 @@ expectedConstants =
         nodeDecls = Declarations Map.empty [] [],
         nodeFlow = Flow [] [],
         nodeOutputDefs = [
-          InstantDef [x] (constAtExpr $ mkTyped (SIntConst 32 (-5)) (GroundType (SInt 32))),
-          InstantDef [y] (constAtExpr $ mkTyped (UIntConst 16 1322) (GroundType (UInt 16)))
+          InstantDef [x] (preserveType InstantExpr $ constAtExpr $ mkTyped (SIntConst 32 (-5)) (GroundType (SInt 32))),
+          InstantDef [y] (preserveType InstantExpr $ constAtExpr $ mkTyped (UIntConst 16 1322) (GroundType (UInt 16)))
         ],
         nodeAutomata = [], nodeInitial = fromList []
       })],
@@ -192,7 +192,7 @@ expectedSwitch =
         },
         nodeFlow = Flow {
           flowDefinitions = [
-            InstantDef [s_] (
+            InstantDef [s_] $ preserveType InstantExpr $ (
               ite (varExpr s boolT)
                   (notE (varExpr off boolT))
                   (varExpr on boolT)
@@ -200,7 +200,7 @@ expectedSwitch =
           ],
           flowTransitions = [StateTransition s (varExpr s_ boolT)]
         },
-        nodeOutputDefs = [InstantDef [so] (varExpr s_ boolT)], 
+        nodeOutputDefs = [InstantDef [so] $ preserveType InstantExpr $ (varExpr s_ boolT)],
         nodeAutomata = [],
         nodeInitial = fromList [(s,(mkTyped (Const false) boolT))]
       })],
@@ -277,15 +277,15 @@ expectedUpDownCounter =
           flowDefinitions = [],
           flowTransitions = [StateTransition x (varExpr x_ intT)]
         },
-        nodeOutputDefs = [InstantDef [xo] (varExpr x_ intT)],
+        nodeOutputDefs = [InstantDef [xo] $ preserveType InstantExpr $ (varExpr x_ intT)],
         nodeAutomata = [ Automaton {
           automLocations = [
             Location sA (Flow {
-              flowDefinitions = [InstantDef [x_] (mkTyped (Expr2 Plus (varExpr x intT) (intE 1)) (GroundType IntT))],
+              flowDefinitions = [InstantDef [x_] $ preserveType InstantExpr $ (mkTyped (Expr2 Plus (varExpr x intT) (intE 1)) (GroundType IntT))],
               flowTransitions = []
             }),
             Location sB (Flow {
-              flowDefinitions = [InstantDef [x_] (mkTyped (Expr2 Minus (varExpr x intT) (intE 1)) (GroundType IntT))],
+              flowDefinitions = [InstantDef [x_] $ preserveType InstantExpr $ (mkTyped (Expr2 Minus (varExpr x intT) (intE 1)) (GroundType IntT))],
               flowTransitions = []
             })
           ],
