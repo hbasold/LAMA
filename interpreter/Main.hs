@@ -54,10 +54,10 @@ run v f inp = do
   liftIO $ whenV 1 v (showDeps f deps)
   let fv = getFreeVariables deps
   i <- askValues fv
-  r <- checkInterpret $ evalProg (addToState emptyState i) prog deps
+  r <- checkInterpret $ eval (addToState emptyState i) prog deps
   liftIO $ putStrLn $ render $ prettyState r
   i' <- askValues fv
-  r' <- checkInterpret $ evalProg (addToState r i') prog deps
+  r' <- checkInterpret $ eval (addToState r i') prog deps
   liftIO $ putStrLn $ render $ prettyState r'
 
 checkErrors :: Either Error a -> MaybeT IO a

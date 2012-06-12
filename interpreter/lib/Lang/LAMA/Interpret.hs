@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, TupleSections #-}
+{-# LANGUAGE TemplateHaskell, TupleSections, FlexibleContexts #-}
 
 module Lang.LAMA.Interpret where
 
@@ -12,7 +12,8 @@ import Prelude hiding (lookup)
 
 import Data.Graph.Inductive.Query.DFS (topsort')
 
-import Control.Monad.Error (MonadError(..))
+import Control.Monad.Error (MonadError(..), ErrorT(..))
+import Control.Monad.Reader (MonadReader(..), Reader, runReader)
 import Data.Foldable (foldlM, foldrM)
 import Control.Applicative ((<$>))
 
@@ -52,7 +53,7 @@ emptyState = State emptyEnv Map.empty
 addToState :: State -> Map Ident ConstExpr -> State
 addToState (State env ns) vs = State (Map.union env vs) ns
 
-type EvalM = Either String
+type EvalM = ErrorT String (Reader NodeEnv)
 
 update :: Environment -> Ident -> ConstExpr -> Environment
 update e x v = Map.alter (const (Just v)) x e
@@ -68,8 +69,8 @@ lookup e x = case Map.lookup x e of
 lookupNodeState :: State -> Ident -> EvalM State
 lookupNodeState s n = lookupErr ("No state for node " ++ BS.unpack n) (stateNodes s) n
 
-lookupNode :: NodeEnv -> Identifier -> EvalM (Node, NodeDeps)
-lookupNode s n = lookupErr ("Unknown node" ++ identString n) s n
+lookupNode :: (MonadReader NodeEnv m, MonadError String m) => Identifier -> m (Node, NodeDeps)
+lookupNode n = ask >>= \s -> lookupErr ("Unknown node" ++ identString n) s n
 
 lookupErr :: (MonadError e m, Ord k) => e -> Map k v -> k -> m v
 lookupErr err m k = case Map.lookup k m of
@@ -81,35 +82,38 @@ addParams (Node {nodeInputs = inp}) (State env ns) es =
   let env' = foldl (\env'' (x, c) -> update env'' (identBS $ varIdent x) c) env (zip inp es)
   in State env' ns
 
+eval :: State -> Program -> ProgDeps -> Either String State
+eval s p d = runReader (runErrorT $ evalProg s p d) Map.empty
+
 evalProg :: State -> Program -> ProgDeps -> EvalM State
 evalProg s p d =
   let e = stateEnv s
       e' = e `Map.union` (Map.mapKeys identBS $ progInitial p) -- only adds initial values if not already present
       vs = reverse $ topsort' $ progDepsFlow d
       nodes = declsNode $ progDecls p
-  in uncurry State <$> foldlM (assign (zipMaps nodes $ progDepsNodes d)) (e', (stateNodes s)) vs
+  in uncurry State <$> (local (const (zipMaps nodes $ progDepsNodes d)) $ foldlM assign (e', (stateNodes s)) vs)
 
-assign :: NodeEnv -> (Environment, NodeState) -> (IdentCtx, ExprCtx) -> EvalM (Environment, NodeState)
-assign _ (env, nState) (v, NoExpr) = return (env, nState)
-assign nodes (env, nState) (v, GlobalExpr expr) = do
-  (r, nState') <- evalExpr nodes (State env nState) expr
+assign :: (Environment, NodeState) -> (IdentCtx, ExprCtx) -> EvalM (Environment, NodeState)
+assign (env, nState) (v, NoExpr) = return (env, nState)
+assign (env, nState) (v, GlobalExpr expr) = do
+  (r, nState') <- evalExpr (State env nState) expr
   env' <- updateM env (ctxGetIdent v) r
   return (env', nState')
-assign nodes (env, nState) (v, LocalExpr refs) = $notImplemented
+assign (env, nState) (v, LocalExpr refs) = $notImplemented
 
-evalExpr :: NodeEnv -> State -> Expr -> EvalM (ConstExpr, NodeState)
-evalExpr nodes s@(State env ns) expr = case untyped expr of
+evalExpr :: State -> Expr -> EvalM (ConstExpr, NodeState)
+evalExpr s@(State env ns) expr = case untyped expr of
   AtExpr a -> (,ns) <$> evalAtom env a
   LogNot e -> do
-    (e', ns1) <- evalExpr nodes s e
+    (e', ns1) <- evalExpr  s e
     return (negate e', ns1)
   Expr2 o e1 e2 -> $notImplemented
   Ite c e1 e2 -> do
-    (c', ns1) <- evalExpr nodes s c
+    (c', ns1) <- evalExpr s c
     let s1 = State env ns1
-    (e1', ns2) <- evalExpr nodes s1 e1
+    (e1', ns2) <- evalExpr s1 e1
     let s2 = State env ns2
-    (e2', ns3) <- evalExpr nodes s2 e2
+    (e2', ns3) <- evalExpr s2 e2
     let r = if isTrue c' then e1' else e2'
     return (r, ns3)
   Constr ctr -> $notImplemented
@@ -117,19 +121,19 @@ evalExpr nodes s@(State env ns) expr = case untyped expr of
   Project x i -> $notImplemented
   NodeUsage n params -> do
     let nBS = identBS n
-    (params', ns') <- evalExprs nodes s params
-    (nDecl, nDeps) <- lookupNode nodes n
+    (params', ns') <- evalExprs s params
+    (nDecl, nDeps) <- lookupNode n
     let nState = Map.findWithDefault emptyState nBS ns'
     (r, nState') <- evalNode nDecl nDeps nState params'
     return (r, Map.alter (const $ Just nState') nBS ns')
   
   where
-    evalExprs :: NodeEnv -> State -> [Expr] -> EvalM ([ConstExpr], NodeState)
-    evalExprs nodes s = foldrM (evalExprs' nodes (stateEnv s)) ([], stateNodes s)
+    evalExprs :: State -> [Expr] -> EvalM ([ConstExpr], NodeState)
+    evalExprs s = foldrM (evalExprs' (stateEnv s)) ([], stateNodes s)
     
-    evalExprs' :: NodeEnv -> Environment -> Expr -> ([ConstExpr], NodeState) -> EvalM ([ConstExpr], NodeState)
-    evalExprs' nodes env e (rs, nEnv) = do
-      (r, nEnv') <- evalExpr nodes (State env nEnv) e
+    evalExprs' :: Environment -> Expr -> ([ConstExpr], NodeState) -> EvalM ([ConstExpr], NodeState)
+    evalExprs' env e (rs, nEnv) = do
+      (r, nEnv') <- evalExpr (State env nEnv) e
       return (r : rs, nEnv')
     
     negate ce = case untyped ce of
@@ -156,7 +160,7 @@ evalNode nDecl nDeps s params =
       vs = reverse $ topsort' $ nodeDepsFlow nDeps
       nodes = declsNode $ nodeDecls nDecl
   in do
-    (env'', ns) <- foldlM (assign (zipMaps nodes $ nodeDepsNodes nDeps)) (env', (stateNodes s)) vs
+    (env'', ns) <- local (const $ zipMaps nodes $ nodeDepsNodes nDeps) $ foldlM assign (env', (stateNodes s)) vs
     r <- fmap mkTuple $ mapM (lookup env'' . identBS . varIdent) (nodeOutputs nDecl)
     return (r, State env'' ns)
 
