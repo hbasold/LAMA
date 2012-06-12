@@ -11,17 +11,19 @@ import Data.GraphViz as GV
 import Data.GraphViz.Attributes.Complete as GV
 import qualified Data.Graph.Inductive.Graph as G
 import Data.Text.Lazy (pack)
-import Data.Foldable (forM_)
+import Data.Foldable (forM_, foldlM)
 import Lang.LAMA.Identifier
 import Data.Map as Map
 import Data.Graph.Inductive.GenShow ()
 import Control.Monad (void, when, MonadPlus(..))
 import Control.Monad.Trans.Maybe
 import Control.Monad.IO.Class
+import Text.PrettyPrint (render)
 
 import Lang.LAMA.Parse
 import Lang.LAMA.Dependencies
 import Lang.LAMA.Typing.TypedStructure
+import Lang.LAMA.Interpret
 
 main :: IO ()
 main = do args <- getArgs
@@ -50,8 +52,15 @@ run v f inp = do
   liftIO $ putStrV 2 v $ show prog
   deps <- checkDeps $ mkDeps prog
   liftIO $ whenV 1 v (showDeps f deps)
+  let fv = getFreeVariables deps
+  i <- askValues fv
+  r <- checkInterpret $ evalProg (addToState emptyState i) prog deps
+  liftIO $ putStrLn $ render $ prettyState r
+  i' <- askValues fv
+  r' <- checkInterpret $ evalProg (addToState r i') prog deps
+  liftIO $ putStrLn $ render $ prettyState r'
 
-checkErrors :: Either Error Program -> MaybeT IO Program
+checkErrors :: Either Error a -> MaybeT IO a
 checkErrors r = case r of
   Left (ParseError pe) -> printAndFail $ "Parse failed:\n" ++ pe
   Left (StaticError se) -> printAndFail $ "Conversion failed:\n" ++ se
@@ -62,6 +71,11 @@ checkDeps :: Either String ProgDeps -> MaybeT IO ProgDeps
 checkDeps d = case d of
   Left err -> printAndFail $ "Dependency error:\n" ++ err
   Right deps -> return deps
+
+checkInterpret :: Either String State -> MaybeT IO State
+checkInterpret e = case e of
+  Left err -> printAndFail $ "Interpretation error:\n" ++ err
+  Right env -> return env
 
 printAndFail :: String -> MaybeT IO a
 printAndFail e = liftIO (putStrLn e) >> mzero
@@ -96,3 +110,12 @@ instance Labellable IdentCtx where
       prettyMode GlobalMode = ""
       prettyMode LocationRefMode = " (ref)"
       prettyMode (LocationMode (Id l _)) = " in " ++ BS.unpack l
+
+askValues :: [Ident] -> MaybeT IO (Map Ident ConstExpr)
+askValues = foldlM (\vs x -> do
+    liftIO $ putStr "Please input value for " >> BS.putStr x >> BS.putStr (BS.pack ": ")
+    e <- liftIO $ fmap (BL.pack . BS.unpack) BS.getLine
+    v <- checkErrors $ parseLAMAConstExpr e
+    return $ Map.insert x v vs)
+  Map.empty
+  

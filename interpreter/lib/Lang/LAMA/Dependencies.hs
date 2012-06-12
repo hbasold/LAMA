@@ -4,21 +4,20 @@ module Lang.LAMA.Dependencies (
   VarUsage(..), Mode(..), ExprCtx(..),
   IdentCtx, ctxGetIdent,
   NodeDeps(..), ProgDeps(..),
-  mkDeps
+  mkDeps, getFreeVariables
 ) where
 
-import Prelude hiding (mapM)
+import Prelude hiding (mapM, foldl)
 
 import Data.Graph.Inductive.PatriciaTree
 import Data.Graph.Inductive.NodeMapSupport as G
 import Data.Graph.Inductive.DAG
 import qualified Data.Graph.Inductive.Graph as G
 import qualified Data.Graph.Inductive.UnlabeledGraph as U
-import Data.Graph.Inductive.MonadSupport
 import Data.Graph.Inductive.Graph (Context, ufold, insEdges, pre)
-import Data.Map as Map hiding (map, null)
+import Data.Map as Map hiding (map, null, foldl)
 import Data.List (intercalate)
-import Data.Foldable (foldlM)
+import Data.Foldable (foldl, foldlM)
 import Data.Traversable (mapM)
 import qualified Data.ByteString.Char8 as BS
 
@@ -54,7 +53,7 @@ ctxGetIdent (i, _, _) = i
 -- | Puts an expression (if any) into its context. A variable may
 --  be not defined at all, have one global expression or
 --  one for each location in the automaton.
-data ExprCtx = NoExpr | GlobalExpr Expr | LocalExpr (Map BS.ByteString Expr)
+data ExprCtx = NoExpr | GlobalExpr Expr | LocalExpr (Map BS.ByteString Expr) deriving Show
 
 -- | Dependencies of a node
 data NodeDeps = NodeDeps {
@@ -68,6 +67,12 @@ data ProgDeps = ProgDeps {
     progDepsNodes :: Map Identifier NodeDeps,
     progDepsFlow :: DAG Gr (IdentCtx, ExprCtx) ()
   }
+
+getFreeVariables :: ProgDeps -> [BS.ByteString]
+getFreeVariables d = ufold putIfFree [] $ progDepsFlow d
+  where putIfFree (_, _, ((x, _, _), e), _) vs = case e of
+          NoExpr -> x : vs
+          _ -> vs
 
 -- | Calculates the dependencies of a given program
 --  and its defined nodes.

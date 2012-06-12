@@ -33,6 +33,7 @@ Executable test-lama
     Lang.LAMA.Transform
     Lang.LAMA.Parse
     Lang.LAMA.Dependencies
+    Lang.LAMA.Interpret
   main-is: test-lama.hs
 
 Executable lamai
@@ -63,4 +64,5 @@ Executable lamai
     Lang.LAMA.Transform
     Lang.LAMA.Parse
     Lang.LAMA.Dependencies
+    Lang.LAMA.Interpret
   Main-Is: Main.hs
