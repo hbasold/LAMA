@@ -1,4 +1,4 @@
-module Lang.LAMA.Parse (Error(..), parseLAMA) where
+module Lang.LAMA.Parse (Error(..), parseLAMA, parseLAMAConstExpr) where
 
 import qualified Data.ByteString.Lazy.Char8 as BS
 
@@ -26,5 +26,16 @@ parseLAMA inp =
     Ok tree -> case absToConc tree of
         Left s -> Left $ StaticError s
         Right concTree -> case typecheck concTree of
+          Left s -> Left $ TypeError s
+          Right typedTree -> Right typedTree
+
+parseLAMAConstExpr :: BS.ByteString -> Either Error ConstExpr
+parseLAMAConstExpr inp =
+  let ts = lexer inp
+  in case Par.pConstExpr ts of
+    Bad s   -> Left $ ParseError s
+    Ok tree -> case transConstExpr tree of
+        Left s -> Left $ StaticError s
+        Right concTree -> case typecheckConstExpr concTree of
           Left s -> Left $ TypeError s
           Right typedTree -> Right typedTree

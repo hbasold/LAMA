@@ -3,7 +3,7 @@
 {- Translate generated data structures to internal structures
   while checking for undefined automaton locations and
   constant expressions. -}
-module Lang.LAMA.Transform (absToConc) where
+module Lang.LAMA.Transform (absToConc, transConstExpr) where
 
 import Development.Placeholders
 

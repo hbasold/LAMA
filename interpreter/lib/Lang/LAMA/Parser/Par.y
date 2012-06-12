@@ -9,6 +9,7 @@ import qualified Data.ByteString.Lazy.Char8 as BS
 }
 
 %name pProgram Program
+%name pConstExpr ConstExpr
 
 -- no lexer declaration
 %monad { Err } { thenM } { returnM }

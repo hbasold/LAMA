@@ -1,6 +1,6 @@
 {-# LANGUAGE TupleSections, TemplateHaskell #-}
 
-module Lang.LAMA.Typing.TypeCheck (typecheck) where
+module Lang.LAMA.Typing.TypeCheck (typecheck, typecheckConstExpr) where
 
 import Data.Map as Map hiding (map)
 import Data.Natural
@@ -147,6 +147,9 @@ typeExists _ = return ()
 
 typecheck :: UT.Program -> Either String Program
 typecheck p = runReader (evalStateT (runErrorT $ checkProgram p) 0) emptyEnv
+
+typecheckConstExpr :: UT.ConstExpr -> Either String ConstExpr
+typecheckConstExpr e = runReader (evalStateT (runErrorT $ checkConstExpr e) 0) emptyEnv
 
 -- | Monad for the transformation process
 --    Carries possible errors, an environment
