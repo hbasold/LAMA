@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, TupleSections, FlexibleContexts #-}
+{-# LANGUAGE TemplateHaskell, TupleSections, FlexibleContexts, Rank2Types #-}
 
 module Lang.LAMA.Interpret where
 
@@ -141,10 +141,8 @@ evalInstant i = case untyped i of
 evalExpr :: Expr -> EvalM ConstExpr
 evalExpr expr = case untyped expr of
   AtExpr a -> evalAtom a
-  LogNot e -> do
-    e' <- evalExpr e
-    return $ negate e'
-  Expr2 o e1 e2 -> $notImplemented
+  LogNot e -> negate <$> evalExpr e
+  Expr2 o e1 e2 -> evalExpr e1 >>= \e1' -> evalExpr e2 >>= \e2' -> return $ evalBinOp o e1' e2'
   Ite c e1 e2 -> do
     c' <- evalExpr c
     e1' <- evalExpr e1
@@ -155,21 +153,96 @@ evalExpr expr = case untyped expr of
   Project x i -> $notImplemented
   
   where
-    negate ce = case untyped ce of
-      Const c -> case untyped c of
-        BoolConst v -> mkTyped (Const $ mkTyped (BoolConst $ not v) boolT) boolT
-        _ -> ce
-      _ -> ce
-    
-    isTrue ce = case untyped ce of
-      Const c -> case untyped c of
-        BoolConst True -> True
-        _ -> False
-      _ -> False
+    negate = mapBoolConst not
+    isTrue = getBoolConst
 
 evalAtom :: GAtom Constant Atom -> EvalM ConstExpr
 evalAtom (AtomConst c) = return $ preserveType Const c
 evalAtom (AtomVar x) = lookup (identBS x)
+
+mapConst :: (GConst Constant -> GConst Constant) -> ConstExpr -> ConstExpr
+mapConst f = mapTyped f'
+  where
+    f' ce = case ce of
+      Const c -> Const $ mapTyped f c
+      x -> x
+
+mapBoolConst :: (Bool -> Bool) -> ConstExpr -> ConstExpr
+mapBoolConst f = mapConst f'
+  where
+    f' (BoolConst v) = BoolConst $ f v
+    f' x = x
+
+getBoolConst :: ConstExpr -> Bool
+getBoolConst ce = case untyped ce of
+  Const c -> case untyped c of
+    BoolConst v -> v
+    _ -> error "not a boolean const"
+  _ -> error "not a boolean const"
+
+liftBool :: (Bool -> Bool -> Bool) -> ConstExpr -> ConstExpr -> ConstExpr
+liftBool f c1 = mapBoolConst (f $ getBoolConst c1)
+
+getNumConst :: ConstExpr -> Either Integer Rational
+getNumConst ce = case untyped ce of
+  Const c -> case untyped c of
+    IntConst v -> Left v
+    RealConst v -> Right v
+    SIntConst _ v -> Left v
+    UIntConst _ v -> Left $ toInteger v
+    _ -> error "not a numeric const"
+  _ -> error "not a numeric const"
+
+liftOrd :: (forall a. Ord a => a -> a -> Bool) -> ConstExpr -> ConstExpr -> ConstExpr
+liftOrd g c1 = either (mapIntPredicate . g) (mapRealPredicate . g) $ getNumConst c1
+  where
+    mapIntPredicate f = mapConst f'
+      where
+        f' (IntConst v) = BoolConst $ f v
+        f' (SIntConst _ v) = BoolConst $ f v
+        f' (UIntConst _ v) = BoolConst $ f $ toInteger v
+        f' _ = error "not an int valued const"
+
+    mapRealPredicate f = mapConst f'
+      where
+        f' (RealConst v) = BoolConst $ f v
+        f' _ = error "not a real valued const"
+
+liftNum :: (forall a. Num a => a -> a -> a) -> ConstExpr -> ConstExpr -> ConstExpr
+liftNum g c1 = either (mapIntLikeConst . g) (mapRealConst . g) $ getNumConst c1
+  where
+    mapIntLikeConst f = mapConst f'
+      where
+        f' (IntConst v) = IntConst $ f v
+        f' (SIntConst s v) = SIntConst s $ f v -- TODO: range check
+        f' (UIntConst s v) = UIntConst s $ fromInteger $ f (toInteger v) -- TODO: range check
+        f' _ = error "not an int valued const"
+
+    mapRealConst f = mapConst f'
+      where
+        f' (RealConst v) = RealConst $ f v
+        f' _ = error "not a real valued const"
+
+evalBinOp :: BinOp -> ConstExpr -> ConstExpr -> ConstExpr
+evalBinOp o = case o of
+  Or  -> liftBool (||)
+  And  -> liftBool (&&)
+  Xor  -> liftBool xor
+  Implies  -> liftBool implies
+  Equals  -> liftOrd (==)
+  Less  -> liftOrd (<)
+  Greater  -> liftOrd (>)
+  LEq  -> liftOrd (<=)
+  GEq  -> liftOrd (>=)
+  Plus  -> liftNum (+)
+  Minus  -> liftNum (-)
+  Mul  -> liftNum (*)
+  RealDiv  -> $notImplemented
+  IntDiv  -> $notImplemented
+  Mod  -> $notImplemented
+  where
+    xor a b = not (a == b)
+    implies a b = not a || b
 
 evalNode :: Node -> NodeDeps -> [ConstExpr] -> EvalM (ConstExpr, State)
 evalNode nDecl nDeps params =
