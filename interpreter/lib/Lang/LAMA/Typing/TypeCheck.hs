@@ -76,11 +76,6 @@ gBool = mkGround boolT
 gInt = mkGround intT
 gReal = mkGround realT
 
-makeProductT :: [Type] -> Type
-makeProductT [] = error "emtpy type list"
-makeProductT [t] = t
-makeProductT ts = Prod ts
-
 -- | Type unification
 
 type Substitution = InterType0 -> InterType0
@@ -232,7 +227,7 @@ checkInstantDef :: UT.InstantDefinition -> Result InstantDefinition
 checkInstantDef (InstantDef xs e) = do
     e' <- checkExpr e
     ts <- mapM envLookupWritable xs
-    void $ unify (getGround e') (mkGround $ makeProductT ts)
+    void $ unify (getGround e') (mkGround $ mkProductT ts)
     return $ InstantDef xs e'
 
 checkStateTransition :: UT.StateTransition -> Result StateTransition
@@ -275,6 +270,7 @@ checkConstExpr (Fix (Const c)) = preserveType Const <$> checkConstant c
 checkConstExpr (Fix (ConstRecord ctr)) = do
    ctr' <- checkRecordConstrConst ctr :: Result (GRecordConstr ConstExpr, Type)
    return $ (uncurry mkTyped) $ (first ConstRecord) ctr'
+checkConstExpr (Fix (ConstTuple t)) = $notImplemented
 
 checkExpr :: UT.Expr -> Result Expr
 checkExpr = checkExpr' . UT.unfix
@@ -324,7 +320,7 @@ checkExpr = checkExpr' . UT.unfix
       let inTypes = map getType params'
       (nInp, nOutp) <- envLookupNodeSignature n
       checkNodeTypes "input" n nInp inTypes
-      return $ mkTyped (NodeUsage n params') (makeProductT $ map varType nOutp)
+      return $ mkTyped (NodeUsage n params') (mkProductT $ map varType nOutp)
 
 -- | Checks the signature of a used node
 checkNodeTypes :: String -> Identifier -> [Variable] -> [Type] -> Result ()

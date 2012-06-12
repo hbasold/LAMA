@@ -6,7 +6,7 @@ module Lang.LAMA.Types(
   TypeAlias,
   Type (..),
   BaseType(..),
-  boolT, intT, realT,
+  boolT, intT, realT, mkProductT,
   -- * Typing structures
   Typed, mkTyped, untyped, getType,
   mapTyped, preserveType,
@@ -50,6 +50,11 @@ intT = GroundType IntT
 -- | Construct ground real type
 realT :: Type
 realT = GroundType RealT
+
+mkProductT :: [Type] -> Type
+mkProductT [] = error "emtpy type list"
+mkProductT [t] = t
+mkProductT ts = Prod ts
 
 
 ----- Structure typing ------

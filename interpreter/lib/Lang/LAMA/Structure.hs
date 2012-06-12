@@ -22,7 +22,7 @@ module Lang.LAMA.Structure (
   -- * Expressions
   -- ** Untyped expressions
   -- $untyped-doc
-  GAtom(..), GExpr(..), GConstExpr(..), BinOp(..), GRecordConstr(..)
+  GAtom(..), GExpr(..), GConstExpr(..), BinOp(..), GRecordConstr(..), GTuple(..)
 ) where
 
 import Data.Natural
@@ -138,6 +138,8 @@ data GAtom c e
 -- | Construction of records: requires type and expression for each field
 data GRecordConstr e = RecordConstr TypeAlias [e] deriving (Eq, Show)
 
+data GTuple e = Tuple [e] deriving (Eq, Show)
+
 -- | Untyped LAMA expressions
 data GExpr c a e
   = AtExpr (GAtom c a)                    -- ^ Atomic expression (see GAtom)
@@ -161,12 +163,16 @@ data BinOp
 data GConstExpr c e
   = Const c                       -- ^ Simple constant
   | ConstRecord (GRecordConstr e)  -- ^ Record constructed from constant expressions
+  | ConstTuple (GTuple e)
   deriving (Eq, Show)
 
 
 ---- Instances -----
 
 instance EqFunctor GRecordConstr where
+  eqF = (==)
+
+instance EqFunctor GTuple where
   eqF = (==)
 
 instance EqFunctor GConst where
@@ -183,6 +189,9 @@ instance (Eq c, Eq a) => EqFunctor (GExpr c a) where
 
 
 instance ShowFunctor GRecordConstr where
+  showF = show
+
+instance ShowFunctor GTuple where
   showF = show
 
 instance ShowFunctor GConst where

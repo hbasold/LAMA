@@ -43,5 +43,3 @@ type StateInit = GStateInit ConstExpr
 type Location = GLocation Expr
 type Edge = GEdge Expr
 type Automaton = GAutomaton Expr
-
-
