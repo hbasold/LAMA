@@ -215,18 +215,18 @@ transMaybeTypedVars x = case x of
   Abs.JustTypedVars typedvarss  -> fmap concat $ mapM transTypedVars typedvarss
 
 
-transNode :: Abs.Node -> Result Node
+transNode :: Abs.Node -> Result (Identifier, Node)
 transNode x = case x of
   Abs.Node identifier maybetypedvars typedvarss declarations flow outputs controlstructure initial ->
-    Node <$>
-      (transIdentifier identifier) <*>
-      (transMaybeTypedVars maybetypedvars) <*>
-      (fmap concat $ mapM transTypedVars typedvarss) <*>
-      (transDeclarations declarations) <*>
-      (transFlow flow) <*>
-      (transOutputs outputs) <*>
-      (transControlStructure controlstructure) <*>
-      (transInitial initial)
+    (,) <$> (transIdentifier identifier) <*>
+      (Node <$>
+        (transMaybeTypedVars maybetypedvars) <*>
+        (fmap concat $ mapM transTypedVars typedvarss) <*>
+        (transDeclarations declarations) <*>
+        (transFlow flow) <*>
+        (transOutputs outputs) <*>
+        (transControlStructure controlstructure) <*>
+        (transInitial initial))
 
 transDeclarations :: Abs.Declarations -> Result Declarations
 transDeclarations x = case x of
@@ -245,10 +245,10 @@ transVarDecls x = case x of
     return $ vs ++ vss
 
 
-transNodeDecls :: Abs.NodeDecls -> Result [Node]
+transNodeDecls :: Abs.NodeDecls -> Result (Map Identifier Node)
 transNodeDecls x = case x of
-  Abs.NoNodes  -> return []
-  Abs.JustNodeDecls nodes  -> mapM transNode nodes
+  Abs.NoNodes  -> return Map.empty
+  Abs.JustNodeDecls nodes  -> fmap Map.fromList $ mapM transNode nodes
 
 
 transStateDecls :: Abs.StateDecls -> Result [Variable]

@@ -254,10 +254,11 @@ mkDepsNode consts node = do
   dagDeps <- checkCycles deps
   return $ InterNodeDeps subDeps dagDeps vs es
 
-mkDepsMapNodes :: Map Identifier Constant -> [Node] -> DepMonad (Map Identifier InterNodeDeps)
+mkDepsMapNodes :: Map Identifier Constant -> Map Identifier Node -> DepMonad (Map Identifier InterNodeDeps)
 mkDepsMapNodes consts nodes = do
-  nodeDeps <- mapM (mkDepsNode consts) nodes
-  return $ Map.fromList $ zip (map nodeName nodes) nodeDeps
+  let (nNames, nDefs) = unzip $ Map.toAscList nodes
+  nodeDeps <- mapM (mkDepsNode consts) nDefs
+  return $ Map.fromAscList $ zip nNames nodeDeps
 
 type DepGraphM = ErrorT String (ReaderT VarMap (NodeMapM InterIdentCtx () Gr))
 type ExprMap = Map InterIdentCtx Expr

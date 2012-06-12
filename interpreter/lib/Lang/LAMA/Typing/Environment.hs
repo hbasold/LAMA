@@ -163,7 +163,7 @@ envAddNodes ns = local $ (\env -> addNodes env ns)
 envAddDecls :: (DynEnvironment e, MonadReader e m) => Declarations -> m a -> m a
 envAddDecls decls =
   let vars = (variableMap State $ declsState decls) `Map.union` (variableMap Local $ declsLocal decls)
-      localNodes = Map.fromList $ map (\n -> (nodeName n, n)) (declsNode decls)
+      localNodes = declsNode decls
   in (envAddLocal vars) . (envAddNodes localNodes)
 
 envEmptyDecls :: (DynEnvironment e, MonadReader e m) => m a -> m a

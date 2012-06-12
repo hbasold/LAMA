@@ -11,7 +11,7 @@ import Control.Monad.Error
 import Control.Monad.Reader
 import Control.Monad.State.Lazy
 import Control.Applicative hiding (Const)
-import Control.Arrow (first)
+import Control.Arrow (first, second, Kleisli(..))
 
 import Text.PrettyPrint
 
@@ -21,6 +21,12 @@ import qualified Lang.LAMA.UnTypedStructure as UT
 import Lang.LAMA.UnTypedStructure (Fix(Fix))
 import Lang.LAMA.Typing.TypedStructure
 import Lang.LAMA.Typing.Environment
+
+firstM :: Monad m => (a -> m b) -> (a, c) -> m (b, c)
+firstM f = runKleisli $ first (Kleisli f)
+
+secondM :: Monad m => (a -> m b) -> (c, a) -> m (c, b)
+secondM f = runKleisli $ second (Kleisli f)
 
 -- | Intermediate type for type inference
 type TypeId = Int
@@ -186,25 +192,24 @@ checkConstantDefs :: Map Identifier UT.Constant -> Result (Map Identifier Consta
 checkConstantDefs = fmap Map.fromList . checkConstantDefs' . Map.toList
   where
     checkConstantDefs' = mapM (secondM checkConstant)
-    secondM f = \(x, y) -> f y >>= \y' -> return (x, y')
 
 checkDeclarations :: UT.Declarations -> Result Declarations
 checkDeclarations (UT.Declarations nodes states locals) =
   envEmptyDecls $
     Declarations <$>
-      (mapM checkNode nodes) <*>
+      (fmap Map.fromAscList $ mapM (secondM checkNode) $ Map.toAscList nodes) <*>
       (mapM checkVarDecl states) <*>
       (mapM checkVarDecl locals)
 
 checkNode :: UT.Node -> Result Node
-checkNode (Node name inp outp decls flow outpDef automata initial) = do
+checkNode (Node inp outp decls flow outpDef automata initial) = do
   inp' <- mapM checkVarDecl inp
   outp' <- mapM checkVarDecl outp
   decls' <- checkDeclarations decls
   envAddLocal (variableMap Input inp') $
     envAddLocal (variableMap Output outp') $
     envAddDecls decls' $
-      Node name inp' outp' decls' <$>
+      Node inp' outp' decls' <$>
         (checkFlow flow) <*>
         (mapM checkInstantDef outpDef) <*>
         (mapM checkAutomaton automata) <*>

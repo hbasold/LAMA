@@ -78,7 +78,6 @@ data GConst e
 ---- Nodes -----
 
 data GNode e ce = Node {
-    nodeName        :: Identifier,
     nodeInputs      :: [Variable],
     nodeOutputs     :: [Variable],
     nodeDecls       :: GDeclarations e ce,
@@ -97,7 +96,7 @@ varType :: Variable -> Type
 varType (Variable _ t) = t
 
 data GDeclarations e ce = Declarations {
-    declsNode   :: [GNode e ce],
+    declsNode   :: Map Identifier (GNode e ce),
     declsState  :: [Variable],
     declsLocal  :: [Variable]
   } deriving (Eq, Show)
