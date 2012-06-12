@@ -28,9 +28,9 @@ import Lang.LAMA.Interpret
 main :: IO ()
 main = do args <- getArgs
           case args of
-            [] -> BL.hGetContents stdin >>= void . runMaybeT . run 2 "stdin"
-            "-v":v:fs -> mapM_ (runFile $ read v) fs
-            fs -> mapM_ (runFile 0) fs
+            [] -> BL.hGetContents stdin >>= void . runMaybeT . run 2 25 "stdin"
+            "-v":v:fs -> mapM_ (runFile (read v) 25) fs
+            fs -> mapM_ (runFile 0 25) fs
 
 type Verbosity = Int
 
@@ -40,25 +40,28 @@ whenV atLeast v = when (v >= atLeast)
 putStrV :: Verbosity -> Verbosity -> String -> IO ()
 putStrV atLeast v s = whenV atLeast v (putStrLn s)
 
-runFile :: Verbosity -> FilePath -> IO ()
-runFile v f = putStrLn f >> BL.readFile f >>= runMaybeT' . run v f
+runFile :: Verbosity -> Int -> FilePath -> IO ()
+runFile v r f = putStrLn f >> BL.readFile f >>= runMaybeT' . run v r f
   where
     runMaybeT' :: Functor m => MaybeT m () -> m ()
     runMaybeT' = void . runMaybeT
 
-run :: Verbosity -> FilePath -> BL.ByteString -> MaybeT IO ()
-run v f inp = do
+run :: Verbosity -> Int -> FilePath -> BL.ByteString -> MaybeT IO ()
+run v r f inp = do
   prog <- checkErrors $ parseLAMA inp
   liftIO $ putStrV 2 v $ show prog
   deps <- checkDeps $ mkDeps prog
   liftIO $ whenV 1 v (showDeps f deps)
   let fv = getFreeVariables deps
-  i <- askValues fv
-  r <- checkInterpret $ eval (addToState emptyState i) prog deps
-  liftIO $ putStrLn $ render $ prettyState r
-  i' <- askValues fv
-  r' <- checkInterpret $ eval (addToState r i') prog deps
-  liftIO $ putStrLn $ render $ prettyState r'
+  void $ go prog deps fv emptyState r
+  where
+    go prog deps fv s i
+      | i <= 0 = return ()
+      | otherwise = do
+          userInp <- askValues fv
+          s' <- checkInterpret $ eval (addToState s userInp) prog deps
+          liftIO $ putStrLn $ render $ prettyState s'
+          void $ go prog deps fv s' (i-1)
 
 checkErrors :: Either Error a -> MaybeT IO a
 checkErrors r = case r of
