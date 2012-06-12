@@ -83,14 +83,13 @@ expectedTypes =
     ],
     progConstantDefinitions = fromList [],
     progDecls = Declarations {
-      declsNode = [Node {
-        nodeName = ident "main",
+      declsNode = Map.fromList [(ident "main", Node {
         nodeInputs = [],
         nodeOutputs = [Variable x (NamedType r2)],
-        nodeDecls = Declarations [] [] [],
+        nodeDecls = Declarations Map.empty [] [],
         nodeFlow = Flow {flowDefinitions = [], flowTransitions = []},
         nodeOutputDefs = [], nodeAutomata = [], nodeInitial = fromList []
-      }],
+      })],
       declsState = [],
       declsLocal = [Variable x (NamedType r2)]
     },
@@ -128,21 +127,20 @@ expectedConstants =
     progTypeDefinitions = fromList [],
     progConstantDefinitions = fromList [],
     progDecls = Declarations {
-      declsNode = [Node {
-        nodeName = ident "main",
+      declsNode = Map.fromList [(ident "main", Node {
         nodeInputs = [],
         nodeOutputs = [
           Variable x (GroundType (SInt 32)),
           Variable y (GroundType (UInt 16))
         ],
-        nodeDecls = Declarations [] [] [],
+        nodeDecls = Declarations Map.empty [] [],
         nodeFlow = Flow [] [],
         nodeOutputDefs = [
           InstantDef [x] (constAtExpr $ mkTyped (SIntConst 32 (-5)) (GroundType (SInt 32))),
           InstantDef [y] (constAtExpr $ mkTyped (UIntConst 16 1322) (GroundType (UInt 16)))
         ],
         nodeAutomata = [], nodeInitial = fromList []
-      }],
+      })],
       declsState = [],
       declsLocal = []
     },
@@ -184,12 +182,11 @@ expectedSwitch =
     progTypeDefinitions = fromList [],
     progConstantDefinitions = fromList [],
     progDecls = Declarations {
-      declsNode = [Node {
-        nodeName = ident "Switch",
+      declsNode = Map.fromList [(ident "Switch", Node {
         nodeInputs = [Variable on boolT, Variable off boolT],
         nodeOutputs = [Variable so boolT],
         nodeDecls = Declarations {
-          declsNode = [],
+          declsNode = Map.empty,
           declsState = [Variable s boolT],
           declsLocal = [Variable s_ boolT]
         },
@@ -206,7 +203,7 @@ expectedSwitch =
         nodeOutputDefs = [InstantDef [so] (varExpr s_ boolT)], 
         nodeAutomata = [],
         nodeInitial = fromList [(s,(mkTyped (Const false) boolT))]
-      }],
+      })],
       declsState = [],
       declsLocal = [Variable on boolT, Variable off boolT, Variable so boolT]
     },
@@ -268,12 +265,11 @@ expectedUpDownCounter =
   Program {
     progTypeDefinitions = fromList [], progConstantDefinitions = fromList [],
     progDecls = Declarations {
-      declsNode = [Node {
-        nodeName = ident "main",
+      declsNode = Map.fromList [(ident "main", Node {
         nodeInputs = [],
         nodeOutputs = [Variable xo intT],
         nodeDecls = Declarations {
-          declsNode = [],
+          declsNode = Map.empty,
           declsState = [Variable x intT],
           declsLocal = [Variable x_ intT]
         },
@@ -302,7 +298,7 @@ expectedUpDownCounter =
           ]
         }],
         nodeInitial = fromList [(x, intConstE (-1))]
-      }],
+      })],
       declsState = [],
       declsLocal = [Variable xo intT]      
     },
