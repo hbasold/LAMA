@@ -6,7 +6,6 @@ module Lang.LAMA.Types(
   TypeAlias,
   Type (..),
   BaseType(..),
-  prettyType,
   boolT, intT, realT,
   -- * Typing structures
   Typed, mkTyped, untyped, getType,
@@ -16,8 +15,6 @@ module Lang.LAMA.Types(
 
 import Control.Arrow (first, (&&&))
 import Data.Natural
-
-import Text.PrettyPrint
 
 import Lang.LAMA.Identifier
 import Lang.LAMA.Fix
@@ -41,22 +38,6 @@ data BaseType
   | SInt Natural  -- ^ Bounded signed integer type (bounded by bit size)
   | UInt Natural  -- ^ Bounded unsigned integer type (bounded by bit size)
   deriving (Eq, Show)
-
-prettyType :: Type -> Doc
-prettyType (GroundType t) = prettyBaseType t
-prettyType (NamedType x) = text $ prettyIdentifier x
-prettyType (ArrayType t n) = prettyBaseType t <> (brackets $ integer $ toInteger n)
-prettyType (Prod ts) = case ts of
-  [] -> text "1"
-  [t] -> prettyType t
-  (t':ts') -> foldr (\t doc -> doc <> text " X " <> prettyType t) (prettyType t') ts'
-
-prettyBaseType :: BaseType -> Doc
-prettyBaseType BoolT = text "bool"
-prettyBaseType IntT = text "int"
-prettyBaseType RealT = text "real"
-prettyBaseType (SInt n) = text "sint" <> (brackets $ integer $ toInteger n)
-prettyBaseType (UInt n) = text "uint" <> (brackets $ integer $ toInteger n)
 
 -- | Construct ground bool type
 boolT :: Type

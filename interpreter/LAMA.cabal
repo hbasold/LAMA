@@ -27,6 +27,7 @@ Executable test-lama
     Lang.LAMA.Typing.TypedStructure
     Lang.LAMA.Typing.TypeCheck
     Lang.LAMA.Typing.Environment
+    Lang.LAMA.PrettyTyped
     Lang.LAMA.Structure
     Lang.LAMA.UnTypedStructure
     Lang.LAMA.Transform
@@ -56,6 +57,7 @@ Executable lamai
     Lang.LAMA.Typing.TypedStructure
     Lang.LAMA.Typing.TypeCheck
     Lang.LAMA.Typing.Environment
+    Lang.LAMA.PrettyTyped
     Lang.LAMA.Structure
     Lang.LAMA.UnTypedStructure
     Lang.LAMA.Transform

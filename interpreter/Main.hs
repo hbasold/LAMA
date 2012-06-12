@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances, ScopedTypeVariables #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, ScopedTypeVariables #-}
 
 module Main (main) where
 

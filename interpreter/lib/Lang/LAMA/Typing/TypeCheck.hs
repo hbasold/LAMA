@@ -21,6 +21,7 @@ import qualified Lang.LAMA.UnTypedStructure as UT
 import Lang.LAMA.UnTypedStructure (Fix(Fix))
 import Lang.LAMA.Typing.TypedStructure
 import Lang.LAMA.Typing.Environment
+import Lang.LAMA.PrettyTyped
 
 firstM :: Monad m => (a -> m b) -> (a, c) -> m (b, c)
 firstM f = runKleisli $ first (Kleisli f)
