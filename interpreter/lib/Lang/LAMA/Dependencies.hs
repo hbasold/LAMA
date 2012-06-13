@@ -120,7 +120,7 @@ mkDeps p = do
 
     lookupExprs es rs = case mapM (flip Map.lookup es) rs of
       Nothing -> throwError $ "Variable in location undefined"
-      Just res -> return $ Map.fromList $ zip (map (identBS . interCtxGetIdent) rs) res
+      Just res -> return $ Map.fromList $ zip (map (identBS . interCtxGetLocation) rs) res
 
 
 type RefMap = Map InterIdentCtx [InterIdentCtx]
@@ -197,6 +197,12 @@ type InterIdentCtx = (Identifier, VarUsage, Mode)
 
 interCtxGetIdent :: InterIdentCtx -> Identifier
 interCtxGetIdent (x, _, _) = x
+
+-- | Beware: should only be used if the context is
+--    known to be from a location.
+interCtxGetLocation :: InterIdentCtx -> Identifier
+interCtxGetLocation (_, _, (LocationMode _ l)) = l
+interCtxGetLocation _ = error "cannot get location from context"
 
 type InterDepDAG = DAG Gr InterIdentCtx ()
 type InstantMap = Map InterIdentCtx Instant
