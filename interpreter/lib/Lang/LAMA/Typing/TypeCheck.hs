@@ -7,11 +7,15 @@ import Data.Natural
 
 import Development.Placeholders
 
-import Control.Monad.Error
-import Control.Monad.Reader
-import Control.Monad.State.Lazy
+import Control.Monad (when, void)
+import Control.Monad.Error (MonadError(..), ErrorT(..))
+import Control.Monad.Reader (Reader, runReader)
+import Control.Monad.State.Lazy (MonadState(..), StateT, evalStateT)
 import Control.Applicative hiding (Const)
 import Control.Arrow (first, second, Kleisli(..))
+
+import Prelude hiding (mapM)
+import Data.Traversable (mapM)
 
 import Text.PrettyPrint
 

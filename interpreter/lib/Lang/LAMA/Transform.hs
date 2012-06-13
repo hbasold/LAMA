@@ -9,6 +9,8 @@ import Development.Placeholders
 
 import qualified Data.Map as Map
 import Data.Map (Map)
+import qualified Data.IntMap as IMap
+import Data.IntMap (IntMap)
 import Data.Natural
 import Data.Ratio
 import qualified Data.ByteString.Char8 as BS
@@ -17,7 +19,7 @@ import Data.Foldable
 import Control.Applicative hiding (Const)
 import Control.Arrow (second)
 import Control.Monad.Error (throwError)
-import Control.Monad (when)
+import Control.Monad (when, liftM)
 
 import qualified Lang.LAMA.Parser.Abs as Abs
 import qualified Lang.LAMA.Parser.Print as Abs (printTree)
@@ -320,9 +322,9 @@ transList2Id x = case x of
   Abs.ConsId identifier list2id  -> (:) <$> (transIdentifier identifier) <*> (transList2Id list2id)
 
 
-transControlStructure :: Abs.ControlStructure -> Result [Automaton]
+transControlStructure :: Abs.ControlStructure -> Result (IntMap Automaton)
 transControlStructure x = case x of
-  Abs.ControlStructure automatons  -> mapM transAutomaton automatons
+  Abs.ControlStructure automatons  -> liftM (IMap.fromDistinctAscList . zip (iterate (+1) 0)) $ mapM transAutomaton automatons
 
 
 transAutomaton :: Abs.Automaton -> Result Automaton

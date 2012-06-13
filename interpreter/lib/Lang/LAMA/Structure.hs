@@ -27,6 +27,7 @@ module Lang.LAMA.Structure (
 
 import Data.Natural
 import Data.Map
+import Data.IntMap
 
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
@@ -83,7 +84,7 @@ data GNode e ce i = Node {
     nodeDecls       :: GDeclarations e ce i,
     nodeFlow        :: GFlow e i,
     nodeOutputDefs  :: [GInstantDefinition i],
-    nodeAutomata    :: [GAutomaton e i],
+    nodeAutomata    :: IntMap (GAutomaton e i),
     nodeInitial     :: GStateInit ce
   } deriving (Eq, Show)
   

@@ -4,6 +4,7 @@ import Test.HUnit
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as B
 import Data.Map as Map
+import qualified Data.IntMap as IMap
 
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
@@ -88,7 +89,7 @@ expectedTypes =
         nodeOutputs = [Variable x (NamedType r2)],
         nodeDecls = Declarations Map.empty [] [],
         nodeFlow = Flow {flowDefinitions = [], flowTransitions = []},
-        nodeOutputDefs = [], nodeAutomata = [], nodeInitial = fromList []
+        nodeOutputDefs = [], nodeAutomata = IMap.fromList [], nodeInitial = fromList []
       })],
       declsState = [],
       declsLocal = [Variable x (NamedType r2)]
@@ -139,7 +140,7 @@ expectedConstants =
           InstantDef [x] (preserveType InstantExpr $ constAtExpr $ mkTyped (SIntConst 32 (-5)) (GroundType (SInt 32))),
           InstantDef [y] (preserveType InstantExpr $ constAtExpr $ mkTyped (UIntConst 16 1322) (GroundType (UInt 16)))
         ],
-        nodeAutomata = [], nodeInitial = fromList []
+        nodeAutomata = IMap.fromList [], nodeInitial = fromList []
       })],
       declsState = [],
       declsLocal = []
@@ -201,7 +202,7 @@ expectedSwitch =
           flowTransitions = [StateTransition s (varExpr s_ boolT)]
         },
         nodeOutputDefs = [InstantDef [so] $ preserveType InstantExpr $ (varExpr s_ boolT)],
-        nodeAutomata = [],
+        nodeAutomata = IMap.fromList [],
         nodeInitial = fromList [(s,(mkTyped (Const false) boolT))]
       })],
       declsState = [],
@@ -278,7 +279,7 @@ expectedUpDownCounter =
           flowTransitions = [StateTransition x (varExpr x_ intT)]
         },
         nodeOutputDefs = [InstantDef [xo] $ preserveType InstantExpr $ (varExpr x_ intT)],
-        nodeAutomata = [ Automaton {
+        nodeAutomata = IMap.fromList [ (0, Automaton {
           automLocations = [
             Location sA (Flow {
               flowDefinitions = [InstantDef [x_] $ preserveType InstantExpr $ (mkTyped (Expr2 Plus (varExpr x intT) (intE 1)) (GroundType IntT))],
@@ -296,7 +297,7 @@ expectedUpDownCounter =
             Edge sA sA (notE (eqE (varExpr x intT) (intE 10))),
             Edge sB sB (notE (eqE (varExpr x intT) (intE 0)))
           ]
-        }],
+        })],
         nodeInitial = fromList [(x, intConstE (-1))]
       })],
       declsState = [],

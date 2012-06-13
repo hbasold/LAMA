@@ -16,6 +16,7 @@ import qualified Data.Graph.Inductive.Graph as G
 import qualified Data.Graph.Inductive.UnlabeledGraph as U
 import Data.Graph.Inductive.Graph (Context, ufold, insEdges, pre)
 import Data.Map as Map hiding (map, null, foldl)
+import qualified Data.IntMap as IMap
 import Data.List (intercalate)
 import Data.Foldable (foldl, foldlM)
 import Data.Traversable (mapM)
@@ -255,7 +256,7 @@ mkDepsNode consts node = do
   subDeps <- mkDepsMapNodes consts (declsNode $ nodeDecls node)
 
   let vars = varMap node `Map.union` (fmap (const Constant) consts)
-  let (mes, (vs, deps)) = G.run G.empty $ runReaderT (runErrorT $ mkDepsNodeParts (nodeFlow node) (nodeOutputDefs node) (nodeAutomata node)) vars
+  let (mes, (vs, deps)) = G.run G.empty $ runReaderT (runErrorT $ mkDepsNodeParts (nodeFlow node) (nodeOutputDefs node) (IMap.elems $ nodeAutomata node)) vars
   es <- mes
   dagDeps <- checkCycles deps
   return $ InterNodeDeps subDeps dagDeps vs es
