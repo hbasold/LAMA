@@ -128,7 +128,7 @@ assign (v, GlobalExpr inst) = do
   env' <- updateM (ctxGetIdent v) r
   s <- askState
   return $ s { stateEnv = env', stateNodes = nState' }
-assign (v, LocalExpr refs) = $notImplemented
+assign (v, LocalExpr autom refs) = $notImplemented
 
 evalInstant :: Instant -> EvalM (ConstExpr, NodeStates)
 evalInstant i = case untyped i of

@@ -21,6 +21,7 @@ import Data.List (intercalate)
 import Data.Foldable (foldl, foldlM)
 import Data.Traversable (mapM)
 import qualified Data.ByteString.Char8 as BS
+import Data.Maybe (isJust)
 
 import Control.Monad.Error (ErrorT, runErrorT, throwError)
 import Control.Monad.Trans.Class (lift)
@@ -43,7 +44,7 @@ data VarUsage =
 
 -- | Characterizes where a variable is defined (in a normal flow
 --  or in a flow a state)
-data Mode = GlobalMode | LocationRefMode | LocationMode Identifier deriving (Eq, Ord, Show)
+data Mode = GlobalMode | LocationRefMode Int | LocationMode Int Identifier deriving (Eq, Ord, Show)
 
 -- | Bundle an identifier with its context.
 type IdentCtx = (BS.ByteString, VarUsage, Mode)
@@ -54,7 +55,7 @@ ctxGetIdent (i, _, _) = i
 -- | Puts an expression (if any) into its context. A variable may
 --  be not defined at all, have one global expression or
 --  one for each location in the automaton.
-data ExprCtx = NoExpr | GlobalExpr Instant | LocalExpr (Map BS.ByteString Instant) deriving Show
+data ExprCtx = NoExpr | GlobalExpr Instant | LocalExpr Int (Map BS.ByteString Instant) deriving Show
 
 -- | Dependencies of a node
 data NodeDeps = NodeDeps {
@@ -103,10 +104,10 @@ mkDeps p = do
       GlobalMode -> case Map.lookup v es of
         Nothing -> return (v, NoExpr)
         Just e -> return (v, GlobalExpr e)
-      LocationRefMode -> case Map.lookup v refs of
+      LocationRefMode autom -> case Map.lookup v refs of
         Nothing -> throwError $ prettyIdentifier x ++ " references to a definition in location which does not exist"
-        Just refVars -> lookupExprs es refVars >>= \refExprs -> return (v, LocalExpr refExprs)
-      LocationMode _ -> error "Remaining location mode" -- should no longer be present here
+        Just refVars -> lookupExprs es refVars >>= \refExprs -> return (v, LocalExpr autom refExprs)
+      LocationMode _ _ -> error "Remaining location mode" -- should no longer be present here
 
     addExprNoFV :: RefMap -> InstantMap -> InterIdentCtx -> Either String (InterIdentCtx, ExprCtx)
     addExprNoFV refs es v@(x, u, _) = case u of
@@ -145,22 +146,25 @@ mergeLocationNodes dg =
     -- they come now from the corresponding reference node (see last case of
     -- mergeLs.
     mergeLs deps (i, n, v@(x, u, GlobalMode), o) (g, nodeVarMap, refs) =
-      let isRef = locations deps o
+      let ref = locations deps o
+          isRef = isJust ref
           i' = redirect deps i
           g' = if isRef
                   then U.merge' (i', n, (), []) g
                   else U.merge' (i', n, (), o) g
-          v' = if isRef then (x, u, LocationRefMode) else v
+          v' = case ref of
+                Just autom -> (x, u, LocationRefMode autom)
+                Nothing -> v
       in (g', Map.insert n v' nodeVarMap, refs)
     -- Should not be present in the given graph
-    mergeLs _ (_, _, (_, _, LocationRefMode), _) _ = undefined
+    mergeLs _ (_, _, (_, _, LocationRefMode _), _) _ = undefined
     -- If x is set in a location, its incoming edges will be attached to its unique
     -- predecessor which is then a reference node. Additionally a mapping from the
     -- reference to x is set so that the expressions can be recovered.
     -- This should form a graph homomorphism.
-    mergeLs deps (_, n, v@(x, u, LocationMode _), o) (g, nodeVarMap, refs) =
+    mergeLs deps (_, n, v@(x, u, LocationMode autom _), o) (g, nodeVarMap, refs) =
       case pre deps n of
-        [r] -> (insEdges (edgesFromTo r o) $ U.insNode' r g , nodeVarMap, alter (addRef v) (x, u, LocationRefMode) refs)
+        [r] -> (insEdges (edgesFromTo r o) $ U.insNode' r g , nodeVarMap, alter (addRef v) (x, u, LocationRefMode autom) refs)
         ps -> error $ "Predecessor should be unique (at " ++ show v ++ "), "
                         ++ " but has " ++ show ps ++ " in : " ++ show deps
 
@@ -168,18 +172,18 @@ mergeLocationNodes dg =
 
     redirect deps =
       map (\((), n) -> case G.lab deps n of
-            Just (_, _, LocationMode _) -> ((), head $ pre deps n)
+            Just (_, _, LocationMode _ _) -> ((), head $ pre deps n)
             _ -> ((), n)
           )
 
     -- if one successor is defined in a location
     -- by construction all are so.
-    locations _ [] = False
+    locations _ [] = Nothing
     locations deps (((), d):_) = case G.lab deps d of
-      Nothing -> False -- should not happen
+      Nothing -> Nothing -- should not happen
       Just (_, _, m) -> case m of
-        LocationMode _ -> True
-        _ -> False
+        LocationMode autom _ -> Just autom
+        _ -> Nothing
 
     addRef l = maybe (Just [l]) (Just . (l:))
 
@@ -256,7 +260,7 @@ mkDepsNode consts node = do
   subDeps <- mkDepsMapNodes consts (declsNode $ nodeDecls node)
 
   let vars = varMap node `Map.union` (fmap (const Constant) consts)
-  let (mes, (vs, deps)) = G.run G.empty $ runReaderT (runErrorT $ mkDepsNodeParts (nodeFlow node) (nodeOutputDefs node) (IMap.elems $ nodeAutomata node)) vars
+  let (mes, (vs, deps)) = G.run G.empty $ runReaderT (runErrorT $ mkDepsNodeParts (nodeFlow node) (nodeOutputDefs node) (IMap.toList $ nodeAutomata node)) vars
   es <- mes
   dagDeps <- checkCycles deps
   return $ InterNodeDeps subDeps dagDeps vs es
@@ -269,7 +273,7 @@ mkDepsMapNodes consts nodes = do
 
 type DepGraphM = ErrorT String (ReaderT VarMap (NodeMapM InterIdentCtx () Gr))
 
-mkDepsNodeParts :: Flow -> [InstantDefinition] -> [Automaton] -> DepGraphM InstantMap
+mkDepsNodeParts :: Flow -> [InstantDefinition] -> [(Int, Automaton)] -> DepGraphM InstantMap
 mkDepsNodeParts f o a = do
   e1 <- mkDepsFlow GlobalMode f
   e2 <- foldlM (mkDepsInstant GlobalMode) e1 o
@@ -304,9 +308,9 @@ mkDepsState m boundExprs (StateTransition x e) = do
   insDeps ds xu
   return $ Map.insert xu (preserveType InstantExpr e) boundExprs
 
-mkDepsAutomaton :: Automaton -> DepGraphM InstantMap
-mkDepsAutomaton (Automaton locs _ edges) = do
-  im <- (fmap Map.unions) $ mapM mkDepsLocation locs
+mkDepsAutomaton :: (Int, Automaton) -> DepGraphM InstantMap
+mkDepsAutomaton (autom, (Automaton locs _ edges)) = do
+  im <- (fmap Map.unions) $ mapM (mkDepsLocation autom) locs
   mapM_ (mkDepsEdge (map fst $ Map.toList im)) edges
   return im
   where
@@ -320,8 +324,8 @@ mkDepsAutomaton (Automaton locs _ edges) = do
       let ds = getDeps $ untyped e
       mapM_ (insDeps ds) vs
 
-    mkDepsLocation :: Location -> DepGraphM InstantMap
-    mkDepsLocation (Location l flow) = mkDepsFlow (LocationMode l) flow
+    mkDepsLocation :: Int -> Location -> DepGraphM InstantMap
+    mkDepsLocation a (Location l flow) = mkDepsFlow (LocationMode a l) flow
 
 varUsage :: Identifier -> DepGraphM VarUsage
 varUsage v = do

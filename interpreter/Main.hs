@@ -111,8 +111,8 @@ instance Labellable IdentCtx where
     where
       prettyVar (x, u, m) = BS.unpack x ++ "(" ++ show u ++ prettyMode m ++ ")"
       prettyMode GlobalMode = ""
-      prettyMode LocationRefMode = " (ref)"
-      prettyMode (LocationMode (Id l _)) = " in " ++ BS.unpack l
+      prettyMode (LocationRefMode _) = " (ref)"
+      prettyMode (LocationMode _ (Id l _)) = " in " ++ BS.unpack l
 
 askValues :: [Ident] -> MaybeT IO (Map Ident ConstExpr)
 askValues = foldlM (\vs x -> do
