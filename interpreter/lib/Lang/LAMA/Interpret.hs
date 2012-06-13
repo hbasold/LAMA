@@ -15,10 +15,10 @@ import Data.Graph.Inductive.Query.DFS (topsort')
 import Control.Monad.Error (MonadError(..), ErrorT(..))
 import Control.Monad.Reader (MonadReader(..), Reader, runReader)
 import Control.Monad (liftM)
-import Data.Foldable (foldlM)
+import Data.Foldable (foldlM, find)
 import Control.Applicative ((<$>), (<*>))
 
-import Text.PrettyPrint
+import Text.PrettyPrint as PP
 
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
@@ -34,29 +34,39 @@ zipMaps m1 = Map.foldlWithKey (\m k x -> maybe m (\y -> Map.insert k (y, x) m) $
 type Ident = BS.ByteString
 
 type NodeEnv = Map Ident ConstExpr
-type ActiveLocations = IntMap Ident
+type ActiveLocations = Map Int Ident
 data State = State { stateEnv :: NodeEnv, stateActiveLocs :: ActiveLocations, stateNodes :: NodeStates } deriving Show
 type NodeStates = Map Ident State
 
 type NodeDecls = Map Identifier (Node, NodeDeps)
+type AutomatonDecls = Map Int Automaton
 
-data Environment = Environment { envNodeDecls :: NodeDecls, envState :: State }
+data Environment = Environment { envNodeDecls :: NodeDecls, envAutomDecls :: AutomatonDecls, envState :: State }
+
+prettyMap :: (k -> Doc) -> (v -> Doc) -> Map k v -> Doc
+prettyMap pk pv = Map.foldlWithKey (\d x v -> d $+$ (pk x) <+> text "->" <+> (pv v)) empty
 
 prettyNodeEnv :: NodeEnv -> Doc
-prettyNodeEnv = Map.foldlWithKey (\d x v -> d $+$ (ptext $ BS.unpack x) <+> text "->" <+> prettyConstExpr v) empty
+prettyNodeEnv = prettyMap (ptext . BS.unpack) prettyConstExpr
+
+prettyActiveLocs :: ActiveLocations -> Doc
+prettyActiveLocs = prettyMap PP.int (ptext . BS.unpack)
 
 prettyState :: State -> Doc
-prettyState s = (prettyNodeEnv $ stateEnv s) $+$ (prettyStates $ stateNodes s)
+prettyState s = (prettyNodeEnv $ stateEnv s) $+$ (prettyActiveLocs $ stateActiveLocs s) $+$ (prettyStates $ stateNodes s)
   where prettyStates = Map.foldlWithKey (\d x s' -> d $+$ (ptext $ BS.unpack x) <> colon <> (braces $ prettyState s')) empty
 
 emptyNodeEnv :: NodeEnv
 emptyNodeEnv = Map.empty
 
 emptyState :: State
-emptyState = State emptyNodeEnv IMap.empty Map.empty
+emptyState = State emptyNodeEnv Map.empty Map.empty
 
 emptyNodeDecls :: NodeDecls
 emptyNodeDecls = Map.empty
+
+emptyEnv :: Environment
+emptyEnv = Environment Map.empty Map.empty emptyState
 
 addToState :: State -> Map Ident ConstExpr -> State
 addToState s vs = s { stateEnv = Map.union (stateEnv s) vs }
@@ -68,6 +78,12 @@ askNodeDecls = reader envNodeDecls
 
 localNodeDecls :: MonadReader Environment m => (NodeDecls -> NodeDecls) -> m a -> m a
 localNodeDecls f = local (\env -> env { envNodeDecls = f $ envNodeDecls env })
+
+askAutomDecls :: MonadReader Environment m => m AutomatonDecls
+askAutomDecls = reader envAutomDecls
+
+localAutomDecls :: MonadReader Environment m => (AutomatonDecls -> AutomatonDecls) -> m a -> m a
+localAutomDecls f = local (\env -> env { envAutomDecls = f $ envAutomDecls env })
 
 askState :: MonadReader Environment m => m State
 askState = reader envState
@@ -88,11 +104,14 @@ lookup x = do
     Nothing -> throwError $ BS.unpack x ++ " undefined in environment: \n" ++ (render $ nest 1 $ prettyNodeEnv e)
     Just v -> return v
 
-lookupNodeState ::(MonadReader Environment m, MonadError String m) => Ident -> m State
+lookupNodeState :: (MonadReader Environment m, MonadError String m) => Ident -> m State
 lookupNodeState n = askState >>= \s -> lookupErr ("No state for node " ++ BS.unpack n) (stateNodes s) n
 
 lookupNode :: (MonadReader Environment m, MonadError String m) => Identifier -> m (Node, NodeDeps)
 lookupNode n = askNodeDecls >>= \s -> lookupErr ("Unknown node" ++ identString n) s n
+
+lookupAutomaton :: (MonadReader Environment m, MonadError String m) => Int -> m Automaton
+lookupAutomaton a = askAutomDecls >>= \s -> lookupErr ("Unknown automaton " ++ show a) s a
 
 lookupErr :: (MonadError e m, Ord k) => e -> Map k v -> k -> m v
 lookupErr err m k = case Map.lookup k m of
@@ -104,7 +123,7 @@ addParams (Node {nodeInputs = inp}) es env =
   foldl (\env'' (x, c) -> update (identBS $ varIdent x) c env'') env (zip inp es)
 
 eval :: State -> Program -> ProgDeps -> Either String State
-eval s p d = runReader (runErrorT $ evalProg p d) (Environment emptyNodeDecls s)
+eval s p d = runReader (runErrorT $ evalProg p d) (emptyEnv{ envState = s})
 
 evalProg :: Program -> ProgDeps -> EvalM State
 evalProg p d =
@@ -120,13 +139,36 @@ evalProg p d =
     return s''
 
 assign :: (IdentCtx, ExprCtx) -> EvalM State
-assign (_, NoExpr) = askState
-assign (v, GlobalExpr inst) = do
-  (r, nState') <- evalInstant inst
-  env' <- updateM (ctxGetIdent v) r
-  s <- askState
-  return $ s { stateEnv = env', stateNodes = nState' }
-assign (v, LocalExpr autom refs) = $notImplemented
+assign (v, e) = case e of
+  NoExpr -> askState
+  GlobalExpr inst -> assignInstant v inst
+  LocalExpr autom refs -> do
+    l <- takeEdge autom -- get next state
+    inst <- lookupErr ("Unknown location " ++ BS.unpack l ++ " in expressions " ++ show refs) refs l
+    localState (\s -> s {stateActiveLocs = Map.alter (const $ Just l) autom (stateActiveLocs s)}) $
+      assignInstant v inst
+  where
+    assignInstant v inst = do
+      (r, nState') <- evalInstant inst
+      env' <- updateM (ctxGetIdent v) r
+      s <- askState
+      return $ s { stateEnv = env', stateNodes = nState' }
+
+-- | Takes an edge in the given automaton and returns the new location
+takeEdge :: Int -> EvalM Ident
+takeEdge a = do
+    aDecl <- lookupAutomaton a
+    al <- liftM stateActiveLocs askState
+    let l = Map.findWithDefault (identBS $ automInitial aDecl) a al
+    -- TODO: take transition if we just started from an initial state?
+    let sucs = suc (automEdges aDecl) l
+    sucs' <- mapM (\(t, c) -> evalExpr c >>= \c' -> return (t, c')) sucs
+    let s = find (isTrue . snd) sucs'
+    case s of
+      Nothing -> throwError $ "Transition relation is not total at location " ++ BS.unpack l
+      Just (t, _) -> return t
+  where
+    suc es l = foldr (\(Edge h t c) s -> if identBS h == l then (identBS t, c) : s else s) [] es
 
 evalInstant :: Instant -> EvalM (ConstExpr, NodeStates)
 evalInstant i = case untyped i of
@@ -156,7 +198,6 @@ evalExpr expr = case untyped expr of
   
   where
     negate = mapBoolConst not
-    isTrue = getBoolConst
 
 evalAtom :: GAtom Constant Atom -> EvalM ConstExpr
 evalAtom (AtomConst c) = return $ preserveType Const c
@@ -181,6 +222,9 @@ getBoolConst ce = case untyped ce of
     BoolConst v -> v
     _ -> error "not a boolean const"
   _ -> error "not a boolean const"
+
+isTrue :: ConstExpr -> Bool
+isTrue = getBoolConst
 
 liftBool :: (Bool -> Bool -> Bool) -> ConstExpr -> ConstExpr -> ConstExpr
 liftBool f c1 = mapBoolConst (f $ getBoolConst c1)
@@ -257,6 +301,7 @@ evalNode nDecl nDeps params =
     let e'' = addParams nDecl params e'
     let s' = s { stateEnv = e'' }
     s'' <- localNodeDecls (const $ zipMaps nodes $ nodeDepsNodes nDeps) $
+            localAutomDecls (const $ nodeAutomata nDecl) $
               foldlM (\s'' -> localState (const s'') . assign) s' defs
     r <- localState (const s'') $ fmap mkTuple $ mapM (lookup . identBS . varIdent) (nodeOutputs nDecl)
     return (r, s'')
