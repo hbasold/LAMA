@@ -53,7 +53,12 @@ prettyActiveLocs :: ActiveLocations -> Doc
 prettyActiveLocs = prettyMap PP.int (ptext . BS.unpack)
 
 prettyState :: State -> Doc
-prettyState s = (prettyNodeEnv $ stateEnv s) $+$ (prettyActiveLocs $ stateActiveLocs s) $+$ (prettyStates $ stateNodes s)
+prettyState s =
+  text "variables:" $+$
+  (prettyNodeEnv $ stateEnv s) $+$
+  (if not (Map.null $ stateActiveLocs s) then text "active locations:" else empty) $+$
+  (prettyActiveLocs $ stateActiveLocs s) $+$
+  (prettyStates $ stateNodes s)
   where prettyStates = Map.foldlWithKey (\d x s' -> d $+$ (ptext $ BS.unpack x) <> colon <> (braces $ prettyState s')) empty
 
 emptyNodeEnv :: NodeEnv
