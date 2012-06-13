@@ -9,8 +9,6 @@ import Development.Placeholders
 
 import qualified Data.Map as Map
 import Data.Map (Map)
-import qualified Data.IntMap as IMap
-import Data.IntMap (IntMap)
 import Data.Natural
 import Data.Ratio
 import qualified Data.ByteString.Char8 as BS
@@ -322,9 +320,9 @@ transList2Id x = case x of
   Abs.ConsId identifier list2id  -> (:) <$> (transIdentifier identifier) <*> (transList2Id list2id)
 
 
-transControlStructure :: Abs.ControlStructure -> Result (IntMap Automaton)
+transControlStructure :: Abs.ControlStructure -> Result (Map Int Automaton)
 transControlStructure x = case x of
-  Abs.ControlStructure automatons  -> liftM (IMap.fromDistinctAscList . zip (iterate (+1) 0)) $ mapM transAutomaton automatons
+  Abs.ControlStructure automatons  -> liftM (Map.fromDistinctAscList . zip (iterate (+1) 0)) $ mapM transAutomaton automatons
 
 
 transAutomaton :: Abs.Automaton -> Result Automaton

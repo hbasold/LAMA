@@ -6,8 +6,6 @@ import Development.Placeholders
 
 import qualified Data.Map as Map
 import Data.Map (Map)
-import qualified Data.IntMap as IMap
-import Data.IntMap (IntMap)
 import qualified Data.ByteString.Char8 as BS
 
 import Prelude hiding (lookup)
