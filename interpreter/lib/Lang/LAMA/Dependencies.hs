@@ -275,11 +275,19 @@ mkDepsNodeParts f o a = do
   e3s <- mapM mkDepsAutomaton a
   return $ foldl Map.union e2 e3s
 
+-- | Calculates the dependencies of the definitions
+--    and the state changes and gives back a map
+--    from variables to the defining statement.
 mkDepsFlow :: Mode -> Flow -> DepGraphM InstantMap
 mkDepsFlow m (Flow d s) = do
   e1 <- foldlM (mkDepsInstant m) Map.empty d
   foldlM (mkDepsState m) e1 s
 
+-- | Inserts a dependency from the assigned variables to each
+--    variable used in the statement on the rhs. Additionally
+--    adds each assigned variable to the given statement map
+--    so that it maps to the rhs.
+--    The variables are being put in the requested mode.
 mkDepsInstant :: Mode -> InstantMap -> InstantDefinition -> DepGraphM InstantMap
 mkDepsInstant m boundExprs (InstantDef xs i) = do
   us <- mapM varUsage xs
@@ -296,8 +304,21 @@ mkDepsState m boundExprs (StateTransition x e) = do
   return $ Map.insert xu (preserveType InstantExpr e) boundExprs
 
 mkDepsAutomaton :: Automaton -> DepGraphM InstantMap
-mkDepsAutomaton = (fmap Map.unions) . (mapM mkDepsLocation) . automLocations
+mkDepsAutomaton (Automaton locs _ edges) = do
+  im <- (fmap Map.unions) $ mapM mkDepsLocation locs
+  mapM_ (mkDepsEdge (map fst $ Map.toList im)) edges
+  return im
   where
+    -- Insert a dependency for each variable used in some
+    -- location to each variable used in the conditions
+    -- of the edges of an automaton. This ensures that no
+    -- condition depends on a variable that could change
+    -- the condition after a transition.
+    mkDepsEdge :: [InterIdentCtx] -> Edge -> DepGraphM ()
+    mkDepsEdge vs (Edge _ _ e) = do
+      let ds = getDeps $ untyped e
+      mapM_ (insDeps ds) vs
+
     mkDepsLocation :: Location -> DepGraphM InstantMap
     mkDepsLocation (Location l flow) = mkDepsFlow (LocationMode l) flow
 
@@ -314,12 +335,14 @@ insVar = void . insMapNodeM'
 insVars :: [InterIdentCtx] -> DepGraphM ()
 insVars = void . insMapNodesM'
 
+-- | Inserts a dependency from the first to the
+--    second context.
 insDep :: InterIdentCtx -> InterIdentCtx -> DepGraphM ()
 insDep from = lift2 . insMapEdgeM' . (from, ,())
   where lift2 = lift . lift
 
--- | Inserts a dependency from each given identifier
---  to /x/ to the given variable /v/. /x/ is treated
+-- | Inserts a dependency to each given identifier
+--  from /x/ to the given variable /v/. /x/ is treated
 --  as non-state-local variable, since we don't bother
 --  where it is written, but only that it is readable.
 insDeps :: [Identifier] -> InterIdentCtx -> DepGraphM ()
