@@ -6,6 +6,8 @@ import Development.Placeholders
 
 import qualified Data.Map as Map
 import Data.Map (Map)
+import qualified Data.IntMap as IMap
+import Data.IntMap (IntMap)
 import qualified Data.ByteString.Char8 as BS
 
 import Prelude hiding (lookup)
@@ -34,7 +36,8 @@ zipMaps m1 = Map.foldlWithKey (\m k x -> maybe m (\y -> Map.insert k (y, x) m) $
 type Ident = BS.ByteString
 
 type NodeEnv = Map Ident ConstExpr
-data State = State { stateEnv :: NodeEnv, stateNodes :: NodeStates } deriving Show
+type ActiveLocations = IntMap Ident
+data State = State { stateEnv :: NodeEnv, stateActiveLocs :: ActiveLocations, stateNodes :: NodeStates } deriving Show
 type NodeStates = Map Ident State
 
 type NodeDecls = Map Identifier (Node, NodeDeps)
@@ -45,20 +48,20 @@ prettyNodeEnv :: NodeEnv -> Doc
 prettyNodeEnv = Map.foldlWithKey (\d x v -> d $+$ (ptext $ BS.unpack x) <+> text "->" <+> prettyConstExpr v) empty
 
 prettyState :: State -> Doc
-prettyState (State env ns) = prettyNodeEnv env $+$ (prettyStates ns)
-  where prettyStates = Map.foldlWithKey (\d x s -> d $+$ (ptext $ BS.unpack x) <> colon <> (braces $ prettyState s)) empty
+prettyState s = (prettyNodeEnv $ stateEnv s) $+$ (prettyStates $ stateNodes s)
+  where prettyStates = Map.foldlWithKey (\d x s' -> d $+$ (ptext $ BS.unpack x) <> colon <> (braces $ prettyState s')) empty
 
 emptyNodeEnv :: NodeEnv
 emptyNodeEnv = Map.empty
 
 emptyState :: State
-emptyState = State emptyNodeEnv Map.empty
+emptyState = State emptyNodeEnv IMap.empty Map.empty
 
 emptyNodeDecls :: NodeDecls
 emptyNodeDecls = Map.empty
 
 addToState :: State -> Map Ident ConstExpr -> State
-addToState (State env ns) vs = State (Map.union env vs) ns
+addToState s vs = s { stateEnv = Map.union (stateEnv s) vs }
 
 type EvalM = ErrorT String (Reader Environment)
 
@@ -123,7 +126,8 @@ assign (_, NoExpr) = askState
 assign (v, GlobalExpr inst) = do
   (r, nState') <- evalInstant inst
   env' <- updateM (ctxGetIdent v) r
-  return $ State env' nState'
+  s <- askState
+  return $ s { stateEnv = env', stateNodes = nState' }
 assign (v, LocalExpr refs) = $notImplemented
 
 evalInstant :: Instant -> EvalM (ConstExpr, NodeStates)
