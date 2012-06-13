@@ -315,7 +315,7 @@ insVars :: [InterIdentCtx] -> DepGraphM ()
 insVars = void . insMapNodesM'
 
 insDep :: InterIdentCtx -> InterIdentCtx -> DepGraphM ()
-insDep from = lift2 . insMapEdgeM . (from, ,())
+insDep from = lift2 . insMapEdgeM' . (from, ,())
   where lift2 = lift . lift
 
 -- | Inserts a dependency from each given identifier

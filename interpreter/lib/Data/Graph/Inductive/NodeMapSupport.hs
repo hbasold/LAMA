@@ -3,12 +3,14 @@
 module Data.Graph.Inductive.NodeMapSupport (
   module Data.Graph.Inductive.NodeMap,
   NodeMapM, insNodeWith, insNode', insMapNode', insMapNodes',
-  insMapNodeM', insMapNodesM'
+  insMapNodeM', insMapNodesM',
+  insEdgeWith, insEdge', insMapEdge', insMapEdgeM'
 ) where
 
 import Data.Graph.Inductive.NodeMap hiding (NodeMapM)
 import Data.Graph.Inductive.Graph
 import Control.Monad.State.Lazy
+import Data.Foldable (find)
 
 -- | We redefine 'Data.Graph.Inductive.NodeMap.NodeMapM' here, because
 --    the original type alias does not allow leaving the monadic return type
@@ -48,3 +50,24 @@ insMapNodesM' n = do
   let (g', m', r) = insMapNodes' m n g
   put (m', g')
   return r
+
+-- | Inserts an edge into a graph combining existing edge labels.
+insEdgeWith :: DynGraph gr => (b -> b -> b) -> LEdge b -> gr a b -> gr a b
+insEdgeWith f le@(h, t, l1) g =
+  let s = lsuc g h
+      t' = find ((t ==) . fst) s
+  in case t' of
+    Just (_, l2) -> insEdge (h, t, f l1 l2) $ delEdge (h, t) g
+    Nothing -> insEdge le g
+
+-- | Inserts an edge only if it does not already exist
+insEdge' :: DynGraph gr => LEdge b -> gr a b -> gr a b
+insEdge' = insEdgeWith (const id)
+
+insMapEdge' :: (Ord a, DynGraph gr) => NodeMap a -> (a, a, b) -> gr a b -> gr a b
+insMapEdge' m e g =
+  let (Just e') = mkEdge m e
+  in insEdge' e' g
+
+insMapEdgeM' :: (Ord a, DynGraph gr, MonadState (NodeMap a, gr a b) m) => (a, a, b) -> m ()
+insMapEdgeM' e = modify $ \(m, g) -> (m, insMapEdge' m e g)
