@@ -1,4 +1,4 @@
-Name:           LAMA
+Name:           LAMASimulator
 Version:        0.1
 Build-Type:     Simple
 Cabal-Version:  >= 1.10
@@ -8,63 +8,19 @@ Description:
 Executable test-lama
   default-language: Haskell2010
   build-depends: base, containers, mtl, bytestring, natural-numbers,
-    transformers, pretty, array, HUnit, fgl, placeholders
+    transformers, pretty, array, HUnit, language-lama
   hs-source-dirs: test lib
   GHC-Options: -Wall
   other-modules:
-    Data.Graph.Inductive.DAG
-    Data.Graph.Inductive.NodeMapSupport
-    Data.Graph.Inductive.MonadSupport
-    Data.Graph.Inductive.GenShow
-    Data.Graph.Inductive.UnlabeledGraph
-    Lang.LAMA.Parser.Abs
-    Lang.LAMA.Parser.ErrM
-    Lang.LAMA.Parser.Lex
-    Lang.LAMA.Parser.Par
-    Lang.LAMA.Parser.Print
-    Lang.LAMA.Identifier
-    Lang.LAMA.Types
-    Lang.LAMA.Typing.TypedStructure
-    Lang.LAMA.Typing.TypeCheck
-    Lang.LAMA.Typing.Environment
-    Lang.LAMA.PrettyTyped
-    Lang.LAMA.Pretty
-    Lang.LAMA.Structure
-    Lang.LAMA.UnTypedStructure
-    Lang.LAMA.Transform
-    Lang.LAMA.Parse
-    Lang.LAMA.Dependencies
-    Lang.LAMA.Interpret
+    TestAbsTrans
   main-is: test-lama.hs
 
 Executable lamai
   default-language: Haskell2010
   Build-Depends: base, containers, mtl, bytestring, natural-numbers,
-    transformers, pretty, array, fgl, graphviz, text, filepath, placeholders
+    transformers, pretty, array, fgl, graphviz, text, filepath, placeholders, language-lama
   Hs-Source-Dirs: . lib
   GHC-Options: -Wall
   other-modules:
-    Data.Graph.Inductive.DAG
-    Data.Graph.Inductive.NodeMapSupport
-    Data.Graph.Inductive.MonadSupport
-    Data.Graph.Inductive.GenShow
-    Data.Graph.Inductive.UnlabeledGraph
-    Lang.LAMA.Parser.Abs
-    Lang.LAMA.Parser.ErrM
-    Lang.LAMA.Parser.Lex
-    Lang.LAMA.Parser.Par
-    Lang.LAMA.Parser.Print
-    Lang.LAMA.Identifier
-    Lang.LAMA.Types
-    Lang.LAMA.Typing.TypedStructure
-    Lang.LAMA.Typing.TypeCheck
-    Lang.LAMA.Typing.Environment
-    Lang.LAMA.PrettyTyped
-    Lang.LAMA.Pretty
-    Lang.LAMA.Structure
-    Lang.LAMA.UnTypedStructure
-    Lang.LAMA.Transform
-    Lang.LAMA.Parse
-    Lang.LAMA.Dependencies
     Lang.LAMA.Interpret
   Main-Is: Main.hs

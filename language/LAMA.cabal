@@ -1,0 +1,38 @@
+Name:           language-lama
+Version:        0.1
+Build-Type:     Simple
+Cabal-Version:  >= 1.10
+Description:
+  Parser, type checker and dependency analysis for LAMA
+
+Library 
+  default-language: Haskell2010
+  Build-Depends: base, containers, mtl, bytestring, natural-numbers,
+    transformers, pretty, array, fgl, text, filepath, placeholders
+  Hs-Source-Dirs: . lib
+  GHC-Options: -Wall
+  exposed-modules:
+    Data.Graph.Inductive.GenShow
+    Lang.LAMA.Identifier
+    Lang.LAMA.Types
+    Lang.LAMA.Structure
+    Lang.LAMA.UnTypedStructure
+    Lang.LAMA.Pretty
+    Lang.LAMA.Typing.TypedStructure
+    Lang.LAMA.Typing.TypeCheck
+    Lang.LAMA.PrettyTyped
+    Lang.LAMA.Parse
+    Lang.LAMA.Dependencies
+  other-modules:
+    Data.Graph.Inductive.DAG
+    Data.Graph.Inductive.NodeMapSupport
+    Data.Graph.Inductive.MonadSupport
+    Data.Graph.Inductive.UnlabeledGraph
+    Lang.LAMA.Parser.Abs
+    Lang.LAMA.Parser.ErrM
+    Lang.LAMA.Parser.Lex
+    Lang.LAMA.Parser.Par
+    Lang.LAMA.Parser.Print
+    Lang.LAMA.Transform
+    Lang.LAMA.Fix
+    Lang.LAMA.Typing.Environment
