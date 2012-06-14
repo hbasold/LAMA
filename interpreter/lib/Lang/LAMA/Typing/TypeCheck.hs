@@ -164,15 +164,15 @@ genTypeId = do
   return current
 
 checkProgram :: UT.Program -> Result Program
-checkProgram (Program typedefs constantdefs declarations flow initial assertions invariants) = do
+checkProgram (Program typedefs constantdefs declarations flow initial assertion invariant) = do
   checkTypeDefs typedefs >>= \types -> envAddTypes types $
     checkConstantDefs constantdefs >>= \consts -> envAddConsts consts $
       checkDeclarations declarations >>= \decls -> envAddDecls decls $ do
         Program types consts decls <$>
           (checkFlow flow) <*>
           (checkInitial initial) <*>
-          (checkAssertions assertions) <*>
-          (checkInvariants invariants)
+          (checkAssertion assertion) <*>
+          (checkInvariant invariant)
 
 checkTypeDefs :: Map TypeAlias UT.TypeDef -> Result (Map TypeAlias TypeDef)
 checkTypeDefs = fmap Map.fromList . checkTypeDefs' . Map.toList
@@ -272,11 +272,11 @@ checkInitial = fmap Map.fromList . mapM checkInit . Map.toList
       void $ unify (getGround c') (mkGround t)
       return (x, c')
 
-checkAssertions :: [UT.Expr] -> Result [Expr]
-checkAssertions = mapM checkExpr
+checkAssertion :: UT.Expr -> Result Expr
+checkAssertion = checkExpr
 
-checkInvariants :: [UT.Expr] -> Result [Expr]
-checkInvariants = mapM checkExpr
+checkInvariant :: UT.Expr -> Result Expr
+checkInvariant = checkExpr
 
 checkConstExpr :: UT.ConstExpr -> Result ConstExpr
 checkConstExpr (Fix (Const c)) = preserveType Const <$> checkConstant c

@@ -165,10 +165,10 @@ transBoolV x = case x of
   Abs.FalseV  -> return False
 
 
-transAssertion :: Abs.Assertion -> Result [Expr]
+transAssertion :: Abs.Assertion -> Result Expr
 transAssertion x = case x of
-  Abs.NoAssertion  -> return []
-  Abs.JustAssertion expr  -> (:[]) <$> (transExpr expr)
+  Abs.NoAssertion  -> return $ constAtExpr $ boolConst True
+  Abs.JustAssertion expr  -> transExpr expr
 
 
 transInitial :: Abs.Initial -> Result (Map Identifier ConstExpr)
@@ -177,10 +177,10 @@ transInitial x = case x of
   Abs.JustInitial stateinits  -> fmap Map.fromList $ mapM transStateInit stateinits
 
 
-transInvariant :: Abs.Invariant -> Result [Expr]
+transInvariant :: Abs.Invariant -> Result Expr
 transInvariant x = case x of
-  Abs.NoInvariant  -> return []
-  Abs.JustInvariant expr  -> fmap (:[]) $ transExpr expr
+  Abs.NoInvariant  -> return $ constAtExpr $ boolConst True
+  Abs.JustInvariant expr  -> transExpr expr
 
 
 transStateInit :: Abs.StateInit -> Result (Identifier, ConstExpr)

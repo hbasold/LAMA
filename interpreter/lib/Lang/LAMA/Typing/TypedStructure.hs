@@ -15,7 +15,9 @@ module Lang.LAMA.Typing.TypedStructure (
   -- * Automata
   Location, Edge, Automaton,
   -- * Expressions
-  Atom, Expr, ConstExpr
+  Atom, Expr, ConstExpr,
+  -- * Constructors
+  boolConst, constAtExpr
 ) where
 
 import Lang.LAMA.Structure
@@ -44,3 +46,9 @@ type StateInit = GStateInit ConstExpr
 type Location = GLocation Expr Instant
 type Edge = GEdge Expr
 type Automaton = GAutomaton Expr Instant
+
+boolConst :: Bool -> Constant
+boolConst c = mkTyped (BoolConst c) boolT
+
+constAtExpr :: Constant -> Expr
+constAtExpr c = mkTyped (AtExpr (AtomConst c)) (getType c)

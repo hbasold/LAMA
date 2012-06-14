@@ -40,8 +40,8 @@ data GProgram c e ce i = Program {
     progDecls               :: GDeclarations e ce i,
     progFlow                :: GFlow e i,
     progInitial             :: GStateInit ce,
-    progAssertions          :: [e],
-    progInvariant           :: [e]
+    progAssertion           :: e,
+    progInvariant           :: e
   } deriving (Eq, Show)
 
 

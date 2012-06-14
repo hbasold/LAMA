@@ -25,13 +25,13 @@ ident :: String -> Identifier
 ident s = Id (B.pack s) dontcare
 
 false :: Constant
-false = mkTyped (BoolConst False) boolT
+false = boolConst False
+
+trueE :: Expr
+trueE = constAtExpr $ boolConst True
 
 varExpr :: Identifier -> Type -> Expr
 varExpr v t = mkTyped (AtExpr (AtomVar v)) t
-
-constAtExpr :: Constant -> Expr
-constAtExpr c = mkTyped (AtExpr (AtomConst c)) (getType c)
 
 intConst :: Integer -> Constant
 intConst c = mkTyped (IntConst c) intT
@@ -94,7 +94,7 @@ expectedTypes =
       declsLocal = [Variable x (NamedType r2)]
     },
     progFlow = Flow [InstantDef [x] (mkTyped (NodeUsage main []) (NamedType r2))] [],
-    progAssertions = [], progInitial = fromList [], progInvariant = []
+    progAssertion = trueE, progInitial = fromList [], progInvariant = trueE
   }
   where
     main = ident "main"
@@ -145,7 +145,7 @@ expectedConstants =
       declsLocal = []
     },
     progFlow = Flow [] [],
-    progAssertions = [], progInitial = fromList [], progInvariant = []
+    progAssertion = trueE, progInitial = fromList [], progInvariant = trueE
   }
   where
     x = ident "x"
@@ -211,7 +211,7 @@ expectedSwitch =
       flowDefinitions = [InstantDef [so] (mkTyped (NodeUsage switchN [varExpr on boolT, varExpr off boolT]) boolT)],
       flowTransitions = []
     },
-    progAssertions = [], progInitial = fromList [], progInvariant = []
+    progAssertion = trueE, progInitial = fromList [], progInvariant = trueE
   }
   where
     on = ident "on"
@@ -307,8 +307,8 @@ expectedUpDownCounter =
       flowTransitions = []
     },
     progInitial = fromList [],
-    progAssertions = [],
-    progInvariant = [leqE (varExpr xo intT) (intE 10)]
+    progAssertion = trueE,
+    progInvariant = leqE (varExpr xo intT) (intE 10)
   }
   where
     main = ident "main"

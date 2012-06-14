@@ -16,6 +16,8 @@ module Lang.LAMA.UnTypedStructure (
   Location, Edge, Automaton,
   -- * Expressions
   Atom, Expr, ConstExpr,
+  -- * Constructors
+  boolConst, constAtExpr,
   module Lang.LAMA.Fix
 ) where
 
@@ -41,4 +43,8 @@ type Location = GLocation Expr Instant
 type Edge = GEdge Expr
 type Automaton = GAutomaton Expr Instant
 
+boolConst :: Bool -> Constant
+boolConst c = Fix (BoolConst c)
 
+constAtExpr :: Constant -> Expr
+constAtExpr c = Fix (AtExpr (AtomConst c))
