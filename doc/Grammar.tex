@@ -293,7 +293,12 @@ All other symbols are terminals.\\
 \end{tabular}\\
 
 \begin{tabular}{lll}
-{\nonterminal{InstantDefinition}} & {\arrow}  &{\nonterminal{Pattern}} {\terminal{{$=$}}} {\nonterminal{Expr}}  \\
+{\nonterminal{InstantDefinition}} & {\arrow}  &{\nonterminal{Pattern}} {\terminal{{$=$}}} {\nonterminal{Instant}}  \\
+\end{tabular}\\
+
+\begin{tabular}{lll}
+{\nonterminal{Instant}} & {\arrow}  &{\nonterminal{Expr}}  \\
+ & {\delimit}  &{\terminal{(}} {\terminal{use}} {\nonterminal{Identifier}} {\nonterminal{ListExpr}} {\terminal{)}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
@@ -358,11 +363,10 @@ All other symbols are terminals.\\
  & {\delimit}  &{\terminal{(}} {\terminal{constr}} {\nonterminal{Identifier}} {\nonterminal{ListExpr}} {\terminal{)}}  \\
  & {\delimit}  &{\terminal{(}} {\terminal{project}} {\nonterminal{Identifier}} {\nonterminal{Natural}} {\terminal{)}}  \\
  & {\delimit}  &{\terminal{(}} {\terminal{select}} {\nonterminal{Identifier}} {\nonterminal{Identifier}} {\terminal{)}}  \\
- & {\delimit}  &{\terminal{(}} {\terminal{use}} {\nonterminal{Identifier}} {\nonterminal{ListExpr}} {\terminal{)}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
-{\nonterminal{ListExpr}} & {\arrow}  &{\nonterminal{Expr}}  \\
+{\nonterminal{ListExpr}} & {\arrow}  &{\emptyP} \\
  & {\delimit}  &{\nonterminal{Expr}} {\nonterminal{ListExpr}}  \\
 \end{tabular}\\
 
