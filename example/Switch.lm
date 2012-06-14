@@ -13,5 +13,11 @@ nodes
       so = s_;
     initial s = false;
   tel
-local on, off, so : bool;
-definition so = (use Switch on off);
+local on, off, s : bool;
+state on_1, off_1, s_1 : bool;
+definition s = (use Switch on off);
+transition
+  on_1' = on;
+  off_1' = off;
+  s_1' = s;
+invariant (and (and (=> on_1 s) (=> off_1 (not s))) (=> (and (not off_1) (not on_1)) (= s s_1)));
