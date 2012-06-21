@@ -22,7 +22,7 @@ import Text.PrettyPrint as PP
 
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
-import Lang.LAMA.Typing.TypedStructure
+import Lang.LAMA.Structure.PosIdentTyped
 import Lang.LAMA.Dependencies
 import Lang.LAMA.PrettyTyped
 
@@ -31,14 +31,12 @@ zipMaps m1 = Map.foldlWithKey (\m k x -> maybe m (\y -> Map.insert k (y, x) m) $
 
 -- | Location information are meaningless here,
 --  so we drop them.
-type Ident = BS.ByteString
-
-type NodeEnv = Map Ident ConstExpr
-type ActiveLocations = Map Int Ident
+type NodeEnv = Map SimpIdent ConstExpr
+type ActiveLocations = Map Int SimpIdent
 data State = State { stateEnv :: NodeEnv, stateActiveLocs :: ActiveLocations, stateNodes :: NodeStates } deriving Show
-type NodeStates = Map Ident State
+type NodeStates = Map SimpIdent State
 
-type NodeDecls = Map Identifier (Node, NodeDeps)
+type NodeDecls = Map PosIdent (Node, NodeDeps PosIdent)
 type AutomatonDecls = Map Int Automaton
 
 data Environment = Environment { envNodeDecls :: NodeDecls, envAutomDecls :: AutomatonDecls, envState :: State }
@@ -47,10 +45,10 @@ prettyMap :: (k -> Doc) -> (v -> Doc) -> Map k v -> Doc
 prettyMap pk pv = Map.foldlWithKey (\d x v -> d $+$ (pk x) <+> text "->" <+> (pv v)) empty
 
 prettyNodeEnv :: NodeEnv -> Doc
-prettyNodeEnv = prettyMap (ptext . BS.unpack) prettyConstExpr
+prettyNodeEnv = prettyMap (ptext . identString) prettyConstExpr
 
 prettyActiveLocs :: ActiveLocations -> Doc
-prettyActiveLocs = prettyMap PP.int (ptext . BS.unpack)
+prettyActiveLocs = prettyMap PP.int (ptext . identString)
 
 prettyState :: State -> Doc
 prettyState s =
@@ -59,7 +57,7 @@ prettyState s =
   (if not (Map.null $ stateActiveLocs s) then text "active locations:" else empty) $+$
   (prettyActiveLocs $ stateActiveLocs s) $+$
   (prettyStates $ stateNodes s)
-  where prettyStates = Map.foldlWithKey (\d x s' -> d $+$ (ptext $ BS.unpack x) <> colon <> (braces $ prettyState s')) empty
+  where prettyStates = Map.foldlWithKey (\d x s' -> d $+$ (ptext $ identString x) <> colon <> (braces $ prettyState s')) empty
 
 emptyNodeEnv :: NodeEnv
 emptyNodeEnv = Map.empty
@@ -73,7 +71,7 @@ emptyNodeDecls = Map.empty
 emptyEnv :: Environment
 emptyEnv = Environment Map.empty Map.empty emptyState
 
-addToState :: State -> Map Ident ConstExpr -> State
+addToState :: State -> Map SimpIdent ConstExpr -> State
 addToState s vs = s { stateEnv = Map.union (stateEnv s) vs }
 
 type EvalM = ErrorT String (Reader Environment)
@@ -96,23 +94,23 @@ askState = reader envState
 localState :: MonadReader Environment m => (State -> State) -> m a -> m a
 localState f = local (\env -> env { envState = f $ envState env })
 
-update :: Ident -> ConstExpr -> NodeEnv -> NodeEnv
+update :: SimpIdent -> ConstExpr -> NodeEnv -> NodeEnv
 update x v = Map.alter (const (Just v)) x
 
-updateM :: MonadReader Environment m => Ident -> ConstExpr -> m NodeEnv
+updateM :: MonadReader Environment m => SimpIdent -> ConstExpr -> m NodeEnv
 updateM x v = askState >>= return . (update x v) . stateEnv
 
-lookup :: (MonadReader Environment m, MonadError String m) => Ident -> m ConstExpr
+lookup :: (MonadReader Environment m, MonadError String m) => SimpIdent -> m ConstExpr
 lookup x = do
   e <- liftM stateEnv askState
   case Map.lookup x e of
-    Nothing -> throwError $ BS.unpack x ++ " undefined in environment: \n" ++ (render $ nest 1 $ prettyNodeEnv e)
+    Nothing -> throwError $ identString x ++ " undefined in environment: \n" ++ (render $ nest 1 $ prettyNodeEnv e)
     Just v -> return v
 
-lookupNodeState :: (MonadReader Environment m, MonadError String m) => Ident -> m State
-lookupNodeState n = askState >>= \s -> lookupErr ("No state for node " ++ BS.unpack n) (stateNodes s) n
+lookupNodeState :: (MonadReader Environment m, MonadError String m) => SimpIdent -> m State
+lookupNodeState n = askState >>= \s -> lookupErr ("No state for node " ++ identString n) (stateNodes s) n
 
-lookupNode :: (MonadReader Environment m, MonadError String m) => Identifier -> m (Node, NodeDeps)
+lookupNode :: (MonadReader Environment m, MonadError String m) => PosIdent -> m (Node, NodeDeps PosIdent)
 lookupNode n = askNodeDecls >>= \s -> lookupErr ("Unknown node" ++ identString n) s n
 
 lookupAutomaton :: (MonadReader Environment m, MonadError String m) => Int -> m Automaton
@@ -125,61 +123,61 @@ lookupErr err m k = case Map.lookup k m of
 
 addParams :: Node -> [ConstExpr] -> NodeEnv -> NodeEnv
 addParams (Node {nodeInputs = inp}) es env =
-  foldl (\env'' (x, c) -> update (identBS $ varIdent x) c env'') env (zip inp es)
+  foldl (\env'' (x, c) -> update (dropPos $ varIdent x) c env'') env (zip inp es)
 
-eval :: State -> Program -> ProgDeps -> Either String State
+eval :: State -> Program -> ProgDeps PosIdent -> Either String State
 eval s p d = runReader (runErrorT $ evalProg p d) (emptyEnv{ envState = s})
 
-evalProg :: Program -> ProgDeps -> EvalM State
+evalProg :: Program -> ProgDeps PosIdent -> EvalM State
 evalProg p d =
   let defs = reverse $ topsort' $ progDepsFlow d
       nodes = declsNode $ progDecls p
   in do
     s <- askState
     let e = stateEnv s
-    let e' = e `Map.union` (Map.mapKeys identBS $ progInitial p) -- only adds initial values if not already present
+    let e' = e `Map.union` (Map.mapKeys dropPos $ progInitial p) -- only adds initial values if not already present
     let s' = s { stateEnv = e' }
     s'' <- localNodeDecls (const (zipMaps nodes $ progDepsNodes d)) $
             foldlM (\s'' -> localState (const s'') . assign) s' defs
     return s''
 
-assign :: (IdentCtx, ExprCtx) -> EvalM State
+assign :: (IdentCtx PosIdent, ExprCtx PosIdent) -> EvalM State
 assign (v, e) = case e of
   NoExpr -> askState
   GlobalExpr inst -> assignInstant v inst
   LocalExpr autom refs -> do
     l <- takeEdge autom -- get next state
-    inst <- lookupErr ("Unknown location " ++ BS.unpack l ++ " in expressions " ++ show refs) refs l
+    inst <- lookupErr ("Unknown location " ++ identString l ++ " in expressions " ++ show refs) refs (identBS l)
     localState (\s -> s {stateActiveLocs = Map.alter (const $ Just l) autom (stateActiveLocs s)}) $
       assignInstant v inst
   where
     assignInstant v inst = do
       (r, nState') <- evalInstant inst
-      env' <- updateM (ctxGetIdent v) r
+      env' <- updateM (SimpIdent $ ctxGetIdent v) r
       s <- askState
       return $ s { stateEnv = env', stateNodes = nState' }
 
 -- | Takes an edge in the given automaton and returns the new location
-takeEdge :: Int -> EvalM Ident
+takeEdge :: Int -> EvalM SimpIdent
 takeEdge a = do
     aDecl <- lookupAutomaton a
     al <- liftM stateActiveLocs askState
-    let l = Map.findWithDefault (identBS $ automInitial aDecl) a al
+    let l = Map.findWithDefault (dropPos $ automInitial aDecl) a al
     -- TODO: take transition if we just started from an initial state?
     let sucs = suc (automEdges aDecl) l
     sucs' <- mapM (\(t, c) -> evalExpr c >>= \c' -> return (t, c')) sucs
     let s = find (isTrue . snd) sucs'
     case s of
-      Nothing -> throwError $ "Transition relation is not total at location " ++ BS.unpack l
+      Nothing -> throwError $ "Transition relation is not total at location " ++ identString l
       Just (t, _) -> return t
   where
-    suc es l = foldr (\(Edge h t c) s -> if identBS h == l then (identBS t, c) : s else s) [] es
+    suc es l = foldr (\(Edge h t c) s -> if dropPos h == l then (dropPos t, c) : s else s) [] es
 
 evalInstant :: Instant -> EvalM (ConstExpr, NodeStates)
 evalInstant i = case untyped i of
   InstantExpr e -> (,) <$> evalExpr e <*> (liftM stateNodes askState)
   NodeUsage n params -> do
-    let nBS = identBS n
+    let nBS = dropPos n
     params' <- mapM evalExpr params
     (nDecl, nDeps) <- lookupNode n
     ns <- liftM stateNodes askState
@@ -204,9 +202,9 @@ evalExpr expr = case untyped expr of
   where
     negate = mapBoolConst not
 
-evalAtom :: GAtom Constant Atom -> EvalM ConstExpr
+evalAtom :: GAtom PosIdent Constant Atom -> EvalM ConstExpr
 evalAtom (AtomConst c) = return $ preserveType Const c
-evalAtom (AtomVar x) = lookup (identBS x)
+evalAtom (AtomVar x) = lookup (dropPos x)
 
 mapConst :: (GConst Constant -> GConst Constant) -> ConstExpr -> ConstExpr
 mapConst f = mapTyped f'
@@ -295,20 +293,20 @@ evalBinOp o = case o of
     xor a b = not (a == b)
     implies a b = not a || b
 
-evalNode :: Node -> NodeDeps -> [ConstExpr] -> EvalM (ConstExpr, State)
+evalNode :: Node -> NodeDeps PosIdent -> [ConstExpr] -> EvalM (ConstExpr, State)
 evalNode nDecl nDeps params =
   let defs = reverse $ topsort' $ nodeDepsFlow nDeps
       nodes = declsNode $ nodeDecls nDecl
   in do
     s <- askState
     let e = stateEnv s
-    let e' = e `Map.union` (Map.mapKeys identBS $ nodeInitial nDecl) -- only adds initial values if not already present
+    let e' = e `Map.union` (Map.mapKeys dropPos $ nodeInitial nDecl) -- only adds initial values if not already present
     let e'' = addParams nDecl params e'
     let s' = s { stateEnv = e'' }
     s'' <- localNodeDecls (const $ zipMaps nodes $ nodeDepsNodes nDeps) $
             localAutomDecls (const $ nodeAutomata nDecl) $
               foldlM (\s'' -> localState (const s'') . assign) s' defs
-    r <- localState (const s'') $ fmap mkTuple $ mapM (lookup . identBS . varIdent) (nodeOutputs nDecl)
+    r <- localState (const s'') $ fmap mkTuple $ mapM (lookup . dropPos . varIdent) (nodeOutputs nDecl)
     return (r, s'')
 
 mkTuple :: [ConstExpr] -> ConstExpr

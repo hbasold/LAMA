@@ -12,32 +12,32 @@ import Lang.LAMA.UnTypedStructure
 import qualified Lang.LAMA.Parser.Abs as Abs
 import Lang.LAMA.Parser.Print (printTree)
 
-prettyLama :: Program -> String
+prettyLama :: Ident i => Program i -> String
 prettyLama = printTree . trProgram
 
-trProgram :: Program -> Abs.Program
+trProgram :: Ident i => Program i -> Abs.Program
 trProgram (Program t c d f i a p) =
   Abs.Program (trTypeDefs t) (trConstantDefs c) (trDecls d)
               (trFlow f) (trInitial i) (trAssertion a) (trInvariant p)
 
-trTypeDefs :: Map TypeAlias TypeDef -> Abs.TypeDefs
+trTypeDefs :: Map (TypeAlias i) (TypeDef i) -> Abs.TypeDefs
 trTypeDefs = $notImplemented
 
-trConstantDefs :: Map Identifier Constant -> Abs.ConstantDefs
+trConstantDefs :: Ident i => Map i Constant -> Abs.ConstantDefs
 trConstantDefs = $notImplemented
 
-trDecls :: Declarations -> Abs.Declarations
+trDecls :: Declarations i -> Abs.Declarations
 trDecls = $notImplemented
 
-trFlow :: Flow -> Abs.Flow
+trFlow :: Flow i -> Abs.Flow
 trFlow = $notImplemented
 
-trInitial :: StateInit -> Abs.Initial
+trInitial :: StateInit i -> Abs.Initial
 trInitial = $notImplemented
 
-trAssertion :: Expr -> Abs.Assertion
+trAssertion :: Expr i -> Abs.Assertion
 trAssertion = $notImplemented
 
-trInvariant :: Expr -> Abs.Invariant
+trInvariant :: Expr i -> Abs.Invariant
 trInvariant = $notImplemented
 

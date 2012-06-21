@@ -43,43 +43,43 @@ data VarUsage =
 
 -- | Characterizes where a variable is defined (in a normal flow
 --  or in a flow a state)
-data Mode = GlobalMode | LocationRefMode Int | LocationMode Int Identifier deriving (Eq, Ord, Show)
+data Mode i = GlobalMode | LocationRefMode Int | LocationMode Int i deriving (Eq, Ord, Show)
 
 -- | Bundle an identifier with its context.
-type IdentCtx = (BS.ByteString, VarUsage, Mode)
+type IdentCtx i = (BS.ByteString, VarUsage, Mode i)
 
-ctxGetIdent :: IdentCtx -> BS.ByteString
+ctxGetIdent :: IdentCtx i -> BS.ByteString
 ctxGetIdent (i, _, _) = i
 
 -- | Puts an expression (if any) into its context. A variable may
 --  be not defined at all, have one global expression or
 --  one for each location in the automaton.
-data ExprCtx = NoExpr | GlobalExpr Instant | LocalExpr Int (Map BS.ByteString Instant) deriving Show
+data ExprCtx i = NoExpr | GlobalExpr (Instant i) | LocalExpr Int (Map BS.ByteString (Instant i)) deriving Show
 
 -- | Dependencies of a node
-data NodeDeps = NodeDeps {
-    nodeDepsNodes :: Map Identifier NodeDeps,
-    nodeDepsFlow :: DAG Gr (IdentCtx, ExprCtx) ()
+data NodeDeps i = NodeDeps {
+    nodeDepsNodes :: Map i (NodeDeps i),
+    nodeDepsFlow :: DAG Gr (IdentCtx i, ExprCtx i) ()
   }
 
 -- | Dependencies of the program
 --  TODO: and nodes
-data ProgDeps = ProgDeps {
-    progDepsNodes :: Map Identifier NodeDeps,
-    progDepsFlow :: DAG Gr (IdentCtx, ExprCtx) ()
+data ProgDeps i = ProgDeps {
+    progDepsNodes :: Map i (NodeDeps i),
+    progDepsFlow :: DAG Gr (IdentCtx i, ExprCtx i) ()
   }
 
-getFreeVariables :: ProgDeps -> [BS.ByteString]
+getFreeVariables :: ProgDeps i -> [SimpIdent]
 getFreeVariables d = ufold putIfFree [] $ progDepsFlow d
   where putIfFree (_, _, ((x, _, _), e), _) vs = case e of
-          NoExpr -> x : vs
+          NoExpr -> SimpIdent x : vs
           _ -> vs
 
 -- | Calculates the dependencies of a given program
 --  and its defined nodes.
 --  May return an error if the dependencies are cyclic
 --  somewhere.
-mkDeps :: Program -> Either String ProgDeps
+mkDeps :: Ident i => Program i -> Either String (ProgDeps i)
 mkDeps p = do
     d <- mkDepsProgram p
     nodes <- mapM convNodeDeps $ ipDepsNodes d
@@ -88,7 +88,7 @@ mkDeps p = do
     return $ ProgDeps nodes exprDepGr
 
   where
-    convNodeDeps :: InterNodeDeps -> Either String NodeDeps
+    convNodeDeps :: Ident i => InterNodeDeps i -> Either String (NodeDeps i)
     convNodeDeps n = do
       nodes <- mapM convNodeDeps $ inDepsNodes n
       (dg, refs) <- mergeLocationNodes $ inDepsGraph n
@@ -98,24 +98,24 @@ mkDeps p = do
     dropLocInfo ((i, u, m), e) = ((identBS i, u, m), e)
 
     -- | Allow variables to be free
-    addExprFV :: RefMap -> InstantMap -> InterIdentCtx -> Either String (InterIdentCtx, ExprCtx)
+    addExprFV :: Ident i => RefMap i -> InstantMap i -> InterIdentCtx i -> Either String (InterIdentCtx i, ExprCtx i)
     addExprFV refs es v@(x, _, m) = case m of
       GlobalMode -> case Map.lookup v es of
         Nothing -> return (v, NoExpr)
         Just e -> return (v, GlobalExpr e)
       LocationRefMode autom -> case Map.lookup v refs of
-        Nothing -> throwError $ prettyIdentifier x ++ " references to a definition in location which does not exist"
+        Nothing -> throwError $ identPretty x ++ " references to a definition in location which does not exist"
         Just refVars -> lookupExprs es refVars >>= \refExprs -> return (v, LocalExpr autom refExprs)
       LocationMode _ _ -> error "Remaining location mode" -- should no longer be present here
 
-    addExprNoFV :: RefMap -> InstantMap -> InterIdentCtx -> Either String (InterIdentCtx, ExprCtx)
+    addExprNoFV :: Ident i => RefMap i -> InstantMap i -> InterIdentCtx i -> Either String (InterIdentCtx i, ExprCtx i)
     addExprNoFV refs es v@(x, u, _) = case u of
       Constant -> return (v, NoExpr)
       Input -> return (v, NoExpr)
       StateIn -> return (v, NoExpr)
       _ -> addExprFV refs es v >>= \(v', e) ->
         case e of
-          NoExpr -> throwError $ prettyIdentifier x ++ " (" ++ show u ++ ")" ++ " not defined"
+          NoExpr -> throwError $ identPretty x ++ " (" ++ show u ++ ")" ++ " not defined"
           _ -> return (v', e)
 
     lookupExprs es rs = case mapM (flip Map.lookup es) rs of
@@ -123,9 +123,9 @@ mkDeps p = do
       Just res -> return $ Map.fromList $ zip (map (identBS . interCtxGetLocation) rs) res
 
 
-type RefMap = Map InterIdentCtx [InterIdentCtx]
+type RefMap i = Map (InterIdentCtx i) [InterIdentCtx i]
 
-mergeLocationNodes :: InterDepDAG -> Either String (InterDepDAG, RefMap)
+mergeLocationNodes :: Ident i => InterDepDAG i -> Either String (InterDepDAG i, RefMap i)
 mergeLocationNodes dg =
   let (g', nodeVarMap, refs) = ufold (mergeLs dg) (G.empty, Map.empty, Map.empty) (getGraph dg)
       g'' = setVarLabels nodeVarMap g'
@@ -134,8 +134,8 @@ mergeLocationNodes dg =
     Left cycl -> throwError $ "Merging lead to cycle: " ++ show cycl -- should not happen!
     Right dg' -> return (dg', refs)
   where
-    mergeLs :: InterDepDAG -> Context InterIdentCtx () ->
-                (Gr () (), Map G.Node InterIdentCtx, RefMap) -> (Gr () (), Map G.Node InterIdentCtx, RefMap)
+    mergeLs :: Ident i => InterDepDAG i -> Context (InterIdentCtx i) () ->
+                (Gr () (), Map G.Node (InterIdentCtx i), RefMap i) -> (Gr () (), Map G.Node (InterIdentCtx i), RefMap i)
     -- x is not local to a location and does not refer to variable inside a
     -- location, it is set in global flow.
     -- If its successors are set in a location then it is a reference node. In that
@@ -193,47 +193,47 @@ mergeLocationNodes dg =
           Just v -> (i, n, v, o)
 
 
-type InterIdentCtx = (Identifier, VarUsage, Mode)
+type InterIdentCtx i = (i, VarUsage, Mode i)
 
-interCtxGetIdent :: InterIdentCtx -> Identifier
+interCtxGetIdent :: InterIdentCtx i -> i
 interCtxGetIdent (x, _, _) = x
 
 -- | Beware: should only be used if the context is
 --    known to be from a location.
-interCtxGetLocation :: InterIdentCtx -> Identifier
+interCtxGetLocation :: InterIdentCtx i -> i
 interCtxGetLocation (_, _, (LocationMode _ l)) = l
 interCtxGetLocation _ = error "cannot get location from context"
 
-type InterDepDAG = DAG Gr InterIdentCtx ()
-type InstantMap = Map InterIdentCtx Instant
+type InterDepDAG i = DAG Gr (InterIdentCtx i) ()
+type InstantMap i = Map (InterIdentCtx i) (Instant i)
 
 -- | Carries node dependencies with split up
 --  information to ease calculation.
-data InterNodeDeps = InterNodeDeps {
-    inDepsNodes :: Map Identifier InterNodeDeps,
-    inDepsGraph :: InterDepDAG,
-    inDepsVars :: G.NodeMap InterIdentCtx,
-    inDepsExprs :: InstantMap
+data InterNodeDeps i = InterNodeDeps {
+    inDepsNodes :: Map i (InterNodeDeps i),
+    inDepsGraph :: InterDepDAG i,
+    inDepsVars :: G.NodeMap (InterIdentCtx i),
+    inDepsExprs :: InstantMap i
   }
 
 -- | Carries program dependencies with split up
 --  information to ease calculation.
-data InterProgDeps = InterProgDeps {
-    ipDepsNodes :: Map Identifier InterNodeDeps,
-    ipDepsGraph :: InterDepDAG,
-    ipDepsVars :: G.NodeMap InterIdentCtx,
-    ipDepsExprs :: InstantMap
+data InterProgDeps i = InterProgDeps {
+    ipDepsNodes :: Map i (InterNodeDeps i),
+    ipDepsGraph :: InterDepDAG i,
+    ipDepsVars :: G.NodeMap (InterIdentCtx i),
+    ipDepsExprs :: InstantMap i
   }
 
-type VarMap = Map Identifier VarUsage
+type VarMap i = Map i VarUsage
 
-varMap :: Node -> VarMap
+varMap :: Ident i => Node i -> VarMap i
 varMap n =
   (Map.fromList $ map ((, Input) . varIdent) $ nodeInputs n) `Map.union`
   (Map.fromList $ map ((, Output) . varIdent) $ nodeOutputs n) `Map.union`
   (declsVarMap $ nodeDecls n)
 
-declsVarMap :: Declarations -> VarMap
+declsVarMap :: Ident i => Declarations i -> VarMap i
 declsVarMap d =
   (Map.fromList $ map ((, Local) . varIdent) $ declsLocal d) `Map.union`
   (Map.fromList $ map ((, StateIn) . varIdent) $ declsState d)
@@ -242,15 +242,15 @@ type DepMonad = Either String
 
 -- | Checks of the given graph is a DAG, if not results
 --  in an error containing the found cycle.
-checkCycles :: Gr InterIdentCtx () -> DepMonad (InterDepDAG)
+checkCycles :: Ident i => Gr (InterIdentCtx i) () -> DepMonad (InterDepDAG i)
 checkCycles g = case mkDAG g of
   Left c -> throwError $ "Cyclic dependency: " ++ depList g c
   Right dag -> return dag
   where
-    depList :: Gr InterIdentCtx () -> [G.Node] -> String
-    depList h = intercalate " -> " . map (maybe "" id . fmap (\(v, u, m) -> show u ++ " in " ++ show m ++ " " ++ prettyIdentifier v) . G.lab h)
+    depList :: Ident i => Gr (InterIdentCtx i) () -> [G.Node] -> String
+    depList h = intercalate " -> " . map (maybe "" id . fmap (\(v, u, m) -> show u ++ " in " ++ show m ++ " " ++ identPretty v) . G.lab h)
 
-mkDepsProgram :: Program -> DepMonad InterProgDeps
+mkDepsProgram :: Ident i => Program i -> DepMonad (InterProgDeps i)
 mkDepsProgram p = do
   nodeDeps <- mkDepsMapNodes (progConstantDefinitions p) (declsNode $ progDecls p)
 
@@ -260,7 +260,7 @@ mkDepsProgram p = do
   dagProgDeps <- checkCycles progFlowDeps
   return $ InterProgDeps nodeDeps dagProgDeps vs es
 
-mkDepsNode :: Map Identifier Constant -> Node -> DepMonad InterNodeDeps
+mkDepsNode :: Ident i => Map i (Constant i) -> Node i -> DepMonad (InterNodeDeps i)
 mkDepsNode consts node = do
   subDeps <- mkDepsMapNodes consts (declsNode $ nodeDecls node)
 
@@ -270,15 +270,15 @@ mkDepsNode consts node = do
   dagDeps <- checkCycles deps
   return $ InterNodeDeps subDeps dagDeps vs es
 
-mkDepsMapNodes :: Map Identifier Constant -> Map Identifier Node -> DepMonad (Map Identifier InterNodeDeps)
+mkDepsMapNodes :: Ident i => Map i (Constant i) -> Map i (Node i) -> DepMonad (Map i (InterNodeDeps i))
 mkDepsMapNodes consts nodes = do
   let (nNames, nDefs) = unzip $ Map.toAscList nodes
   nodeDeps <- mapM (mkDepsNode consts) nDefs
   return $ Map.fromAscList $ zip nNames nodeDeps
 
-type DepGraphM = ErrorT String (ReaderT VarMap (NodeMapM InterIdentCtx () Gr))
+type DepGraphM i = ErrorT String (ReaderT (VarMap i) (NodeMapM (InterIdentCtx i) () Gr))
 
-mkDepsNodeParts :: Flow -> [InstantDefinition] -> [(Int, Automaton)] -> DepGraphM InstantMap
+mkDepsNodeParts :: Ident i => Flow i -> [InstantDefinition i] -> [(Int, Automaton i)] -> DepGraphM i (InstantMap i)
 mkDepsNodeParts f o a = do
   e1 <- mkDepsFlow GlobalMode f
   e2 <- foldlM (mkDepsInstant GlobalMode) e1 o
@@ -288,7 +288,7 @@ mkDepsNodeParts f o a = do
 -- | Calculates the dependencies of the definitions
 --    and the state changes and gives back a map
 --    from variables to the defining statement.
-mkDepsFlow :: Mode -> Flow -> DepGraphM InstantMap
+mkDepsFlow :: Ident i => Mode i -> Flow i -> DepGraphM i (InstantMap i)
 mkDepsFlow m (Flow d s) = do
   e1 <- foldlM (mkDepsInstant m) Map.empty d
   foldlM (mkDepsState m) e1 s
@@ -298,7 +298,7 @@ mkDepsFlow m (Flow d s) = do
 --    adds each assigned variable to the given statement map
 --    so that it maps to the rhs.
 --    The variables are being put in the requested mode.
-mkDepsInstant :: Mode -> InstantMap -> InstantDefinition -> DepGraphM InstantMap
+mkDepsInstant :: Ident i => Mode i -> InstantMap i -> InstantDefinition i -> DepGraphM i (InstantMap i)
 mkDepsInstant m boundExprs (InstantDef xs i) = do
   us <- mapM varUsage xs
   let xus = zipWith (, , m) xs us
@@ -306,14 +306,14 @@ mkDepsInstant m boundExprs (InstantDef xs i) = do
   forM_ xus (insDeps ds)
   return $ foldl (\boundExprs' xu -> Map.insert xu i boundExprs') boundExprs xus
 
-mkDepsState :: Mode -> InstantMap -> StateTransition -> DepGraphM InstantMap
+mkDepsState :: Ident i => Mode i -> InstantMap i -> StateTransition i -> DepGraphM i (InstantMap i)
 mkDepsState m boundExprs (StateTransition x e) = do
   let xu = (x, StateOut, m)
   let ds = getDeps $ untyped e
   insDeps ds xu
   return $ Map.insert xu (preserveType InstantExpr e) boundExprs
 
-mkDepsAutomaton :: (Int, Automaton) -> DepGraphM InstantMap
+mkDepsAutomaton :: Ident i => (Int, Automaton i) -> DepGraphM i (InstantMap i)
 mkDepsAutomaton (autom, (Automaton locs _ edges)) = do
   im <- (fmap Map.unions) $ mapM (mkDepsLocation autom) locs
   mapM_ (mkDepsEdge (map fst $ Map.toList im)) edges
@@ -324,30 +324,30 @@ mkDepsAutomaton (autom, (Automaton locs _ edges)) = do
     -- of the edges of an automaton. This ensures that no
     -- condition depends on a variable that could change
     -- the condition after a transition.
-    mkDepsEdge :: [InterIdentCtx] -> Edge -> DepGraphM ()
+    mkDepsEdge :: Ident i => [InterIdentCtx i] -> Edge i -> DepGraphM i ()
     mkDepsEdge vs (Edge _ _ e) = do
       let ds = getDeps $ untyped e
       mapM_ (insDeps ds) vs
 
-    mkDepsLocation :: Int -> Location -> DepGraphM InstantMap
+    mkDepsLocation :: Ident i => Int -> Location i -> DepGraphM i (InstantMap i)
     mkDepsLocation a (Location l flow) = mkDepsFlow (LocationMode a l) flow
 
-varUsage :: Identifier -> DepGraphM VarUsage
+varUsage :: Ident i => i -> DepGraphM i VarUsage
 varUsage v = do
   vars <- lift ask
   case Map.lookup v vars of
     Just u -> return u
-    Nothing -> throwError $ "Unknown variable " ++ prettyIdentifier v
+    Nothing -> throwError $ "Unknown variable " ++ identPretty v
 
-insVar :: InterIdentCtx -> DepGraphM ()
+insVar :: Ident i => InterIdentCtx i -> DepGraphM i ()
 insVar = void . insMapNodeM'
 
-insVars :: [InterIdentCtx] -> DepGraphM ()
+insVars :: Ident i => [InterIdentCtx i] -> DepGraphM i ()
 insVars = void . insMapNodesM'
 
 -- | Inserts a dependency from the first to the
 --    second context.
-insDep :: InterIdentCtx -> InterIdentCtx -> DepGraphM ()
+insDep :: Ident i => InterIdentCtx i -> InterIdentCtx i -> DepGraphM i ()
 insDep from = lift2 . insMapEdgeM' . (from, ,())
   where lift2 = lift . lift
 
@@ -355,7 +355,7 @@ insDep from = lift2 . insMapEdgeM' . (from, ,())
 --  from /x/ to the given variable /v/. /x/ is treated
 --  as non-state-local variable, since we don't bother
 --  where it is written, but only that it is readable.
-insDeps :: [Identifier] -> InterIdentCtx -> DepGraphM ()
+insDeps :: Ident i => [i] -> InterIdentCtx i -> DepGraphM i ()
 insDeps ds xu = do
   insVar xu
   ds' <- mapM (\v -> varUsage v >>= return . (v,,GlobalMode)) ds
@@ -369,18 +369,18 @@ insDeps ds xu = do
 --    With this we can treat a variable as non-local
 --    for reading but distinguish writing in the
 --    respective states (see 'insDeps').
-insGlobLocDeps :: InterIdentCtx -> DepGraphM ()
+insGlobLocDeps :: Ident i => InterIdentCtx i -> DepGraphM i ()
 insGlobLocDeps (_, _, GlobalMode) = return ()
 insGlobLocDeps v@(x, u, _) = do
     let vG = (x, u, GlobalMode)
     insVar vG
     insDep vG v
 
-getDepsInstant :: GInstant Expr Instant -> [Identifier]
+getDepsInstant :: GInstant i (Expr i) (Instant i) -> [i]
 getDepsInstant (InstantExpr e) = getDeps $ untyped e
 getDepsInstant (NodeUsage _ es) = concat $ map (getDeps . untyped) es
 
-getDeps :: GExpr Constant Atom Expr -> [Identifier]
+getDeps :: GExpr i (Constant i) (Atom i) (Expr i) -> [i]
 getDeps (AtExpr (AtomVar ident)) = [ident]
 getDeps (AtExpr _) = []
 getDeps (LogNot e) = getDeps $ untyped e

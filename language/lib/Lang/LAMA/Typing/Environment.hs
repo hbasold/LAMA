@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, MultiParamTypeClasses, FlexibleInstances, FunctionalDependencies #-}
 
 module Lang.LAMA.Typing.Environment where
 
@@ -27,24 +27,24 @@ writable Local = True
 
 --- Accessing and manipulating an environment -----
 
-class Environment e where
-  getTypeDef :: e -> TypeAlias -> Maybe TypeDef
-  getConstant :: e -> Identifier -> Maybe Constant
-  getVarType :: e -> Identifier -> Maybe (Type, VarUsage)
-  getNode :: e -> Identifier -> Maybe Node
+class Ident i => Environment i e | e -> i where
+  getTypeDef :: e -> (TypeAlias i) -> Maybe (TypeDef i)
+  getConstant :: e -> i -> Maybe (Constant i)
+  getVarType :: e -> i -> Maybe (Type i, VarUsage)
+  getNode :: e -> i -> Maybe (Node i)
 
   emptyEnv :: e   -- ^ Generate empty environment
 
-class Environment e => DynEnvironment e where
-  addType :: e -> TypeAlias -> TypeDef -> e
-  addVar :: e -> Identifier -> (Type, VarUsage) -> e
-  addNode :: e -> Identifier -> Node -> e
-  addConstant :: e -> Identifier -> Constant -> e
+class (Ident i, Environment i e) => DynEnvironment i e | e -> i where
+  addType :: e -> (TypeAlias i) -> (TypeDef i) -> e
+  addVar :: e -> i -> (Type i, VarUsage) -> e
+  addNode :: e -> i -> (Node i) -> e
+  addConstant :: e -> i -> (Constant i) -> e
 
-  addTypes :: e -> Map TypeAlias TypeDef -> e
-  addVars :: e -> Map Identifier (Type, VarUsage) -> e
-  addNodes :: e -> Map Identifier Node -> e
-  addConstants :: e -> Map Identifier Constant -> e
+  addTypes :: e -> Map (TypeAlias i) (TypeDef i) -> e
+  addVars :: e -> Map i (Type i, VarUsage) -> e
+  addNodes :: e -> Map i (Node i) -> e
+  addConstants :: e -> Map i (Constant i) -> e
 
   emptyDecls :: e -> e
 
@@ -58,14 +58,14 @@ uncurry2 :: (a -> b -> c -> d) -> (a -> (b, c) -> d)
 uncurry2 f a (b, c) = f a b c
 
 -- | Environment which holds declared types, constants and variables
-data Env = Env {
-    envTypes :: Map TypeAlias TypeDef,
-    envConsts :: Map Identifier Constant,
-    envVars :: Map Identifier (Type, VarUsage),
-    envNodes :: Map Identifier Node
+data Env i = Env {
+    envTypes :: Map (TypeAlias i) (TypeDef i),
+    envConsts :: Map i (Constant i),
+    envVars :: Map i (Type i, VarUsage),
+    envNodes :: Map i (Node i)
   }
 
-instance Environment Env where
+instance Ident i => Environment i (Env i) where
   getTypeDef e x = Map.lookup x (envTypes e)
   getVarType e x = Map.lookup x (envVars e)
   getNode e n = Map.lookup n (envNodes e)
@@ -73,7 +73,7 @@ instance Environment Env where
 
   emptyEnv = Env Map.empty Map.empty Map.empty Map.empty
 
-instance DynEnvironment Env where
+instance Ident i => DynEnvironment i (Env i) where
   addType env x t = env { envTypes = Map.insert x t $ envTypes env }
   addVar env x t = env { envVars = Map.insert x t $ envVars env }
   addNode env n d = env { envNodes = Map.insert n d $ envNodes env }
@@ -82,7 +82,7 @@ instance DynEnvironment Env where
   emptyDecls (Env ts cs _ _) = Env ts cs Map.empty Map.empty
 
 -- | Lookup a record type
-envLookupRecordType :: (Environment e, MonadReader e m) => TypeAlias -> m RecordT
+envLookupRecordType :: (Environment i e, MonadReader e m) => (TypeAlias i) -> m (RecordT i)
 envLookupRecordType ident = do
   env <- ask
   case getTypeDef env ident of
@@ -92,7 +92,7 @@ envLookupRecordType ident = do
 
 
 -- | Lookup a type
-envLookupType :: (Environment e, MonadReader e m) => TypeAlias -> m TypeDef
+envLookupType :: (Environment i e, MonadReader e m) => (TypeAlias i) -> m (TypeDef i)
 envLookupType ident = do
   env <- ask
   case getTypeDef env ident of
@@ -100,72 +100,72 @@ envLookupType ident = do
     Just t -> return t
 
 -- | Lookup a variable that needs to be read
-envLookupReadable :: (Environment e, MonadReader e m) => Identifier -> m Type
+envLookupReadable :: (Ident i, Environment i e, MonadReader e m) => i -> m (Type i)
 envLookupReadable ident = do
   env <- ask
   case getVarType env ident of
     Nothing -> case getConstant env ident of
-      Nothing -> fail $ "Undefined variable " ++ prettyIdentifier ident
+      Nothing -> fail $ "Undefined variable " ++ identPretty ident
       Just c -> return $ getType c
     Just (t, u) -> if readable u then return t
-                    else fail $ "Variable " ++ prettyIdentifier ident ++ " not readable"
+                    else fail $ "Variable " ++ identPretty ident ++ " not readable"
 
 -- | Lookup a variable that needs to be written
-envLookupWritable :: (Environment e, MonadReader e m) => Identifier -> m Type
+envLookupWritable :: (Ident i, Environment i e, MonadReader e m) => i -> m (Type i)
 envLookupWritable ident = do
   env <- ask
   case getVarType env ident of
-    Nothing -> fail $ "Undefined variable " ++ prettyIdentifier ident
+    Nothing -> fail $ "Undefined variable " ++ identPretty ident
     Just (t, u) -> if writable u then return t
-                    else fail $ "Variable " ++ prettyIdentifier ident ++ " not writable"
+                    else fail $ "Variable " ++ identPretty ident ++ " not writable"
 
 -- | Lookup a state variable
-envLookupState :: (Environment e, MonadReader e m) => Identifier -> m Type
+envLookupState :: (Ident i, Environment i e, MonadReader e m) => i -> m (Type i)
 envLookupState ident = do
   env <- ask
   case getVarType env ident of
-    Nothing -> fail $ "Undefined variable " ++ prettyIdentifier ident
+    Nothing -> fail $ "Undefined variable " ++ identPretty ident
     Just (t, State) -> return t
-    _ -> fail $ "Variable " ++ prettyIdentifier ident ++ " is not a state variable"
+    _ -> fail $ "Variable " ++ identPretty ident ++ " is not a state variable"
 
 -- | Lookup a state variable
-envLookupNodeSignature :: (Environment e, MonadReader e m) => Identifier -> m ([Variable], [Variable])
+envLookupNodeSignature :: (Ident i, Environment i e, MonadReader e m) => i -> m ([Variable i], [Variable i])
 envLookupNodeSignature ident = do
   env <- ask
   case getNode env ident of
-    Nothing -> fail $ "Undefined nodes " ++ prettyIdentifier ident
+    Nothing -> fail $ "Undefined nodes " ++ identPretty ident
     Just n -> return (nodeInputs n, nodeOutputs n)
 
-variableMap :: VarUsage -> [Variable] -> Map Identifier (Type, VarUsage)
+variableMap :: Ident i => VarUsage -> [Variable i] -> Map i (Type i, VarUsage)
 variableMap u = Map.fromList . map splitVar
   where splitVar (Variable ident t) = (ident, (t, u))
 
 -- | Add types to the environment
-envAddTypes :: (DynEnvironment e, MonadReader e m) => Map TypeAlias TypeDef -> m a -> m a
+envAddTypes :: (DynEnvironment i e, MonadReader e m) => Map (TypeAlias i) (TypeDef i) -> m a -> m a
 envAddTypes ts = local $ (\env -> addTypes env ts)
 
 -- | Adds a type to in the environment
-envAddType :: (DynEnvironment e, MonadReader e m) => TypeAlias -> TypeDef -> m a -> m a
+envAddType :: (DynEnvironment i e, MonadReader e m) => (TypeAlias i) -> (TypeDef i) -> m a -> m a
 envAddType ident t = local $ (\env -> addType env ident t)
 
 -- | Adds constants to the environment
-envAddConsts :: (DynEnvironment e, MonadReader e m) => Map Identifier Constant -> m a -> m a
+envAddConsts :: (Ident i, DynEnvironment i e, MonadReader e m) => Map i (Constant i) -> m a -> m a
 envAddConsts cs = local $ (\env -> addConstants env cs)
 
 -- | Add scoped variables to the environment
-envAddLocal :: (DynEnvironment e, MonadReader e m) => Map Identifier (Type, VarUsage) -> m a -> m a
+envAddLocal :: (Ident i, DynEnvironment i e, MonadReader e m) => Map i (Type i, VarUsage) -> m a -> m a
 envAddLocal vars = local $ (\env -> addVars env vars)
 
 -- | Set the nodes in the environment
-envAddNodes :: (DynEnvironment e, MonadReader e m) => Map Identifier Node -> m a -> m a
+envAddNodes :: (Ident i, DynEnvironment i e, MonadReader e m) => Map i (Node i) -> m a -> m a
 envAddNodes ns = local $ (\env -> addNodes env ns)
 
-envAddDecls :: (DynEnvironment e, MonadReader e m) => Declarations -> m a -> m a
+envAddDecls :: (DynEnvironment i e, MonadReader e m) => Declarations i -> m a -> m a
 envAddDecls decls =
   let vars = (variableMap State $ declsState decls) `Map.union` (variableMap Local $ declsLocal decls)
       localNodes = declsNode decls
   in (envAddLocal vars) . (envAddNodes localNodes)
 
-envEmptyDecls :: (DynEnvironment e, MonadReader e m) => m a -> m a
+envEmptyDecls :: (DynEnvironment i e, MonadReader e m) => m a -> m a
 envEmptyDecls = local emptyDecls
 

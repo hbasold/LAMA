@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections, TemplateHaskell #-}
+{-# LANGUAGE TupleSections, TemplateHaskell, ScopedTypeVariables #-}
 
 module Lang.LAMA.Typing.TypeCheck (typecheck, typecheckConstExpr) where
 
@@ -49,48 +49,48 @@ instance Show Universe where
   show NumU = "Num"
   show TypeU = "Type"
 
-data InterType0 =
-  Ground Type
+data InterType0 i =
+  Ground (Type i)
   | Named TypeId
-  | ArrowT InterType0 InterType0
+  | ArrowT (InterType0 i) (InterType0 i)
 
-instance Show InterType0 where
+instance Ident i => Show (InterType0 i) where
   show (Ground t) = render $ prettyType t
   show (Named x) = showTypeId x
   show (ArrowT t1 t2) = "(" ++ show t1 ++ ") -> " ++ show t2
 
-gBool0, gInt0, gReal0 :: InterType0
+gBool0, gInt0, gReal0 :: InterType0 i
 gBool0 = Ground boolT
 gInt0 = Ground intT
 gReal0 = Ground realT
 
-data InterType =
-  Simple InterType0
-  | Forall TypeId Universe InterType
+data InterType i =
+  Simple (InterType0 i)
+  | Forall TypeId Universe (InterType i)
 
-instance Show InterType where
+instance Ident i => Show (InterType i) where
   show (Simple t) = show t
   show (Forall x u t) = "∀ " ++ showTypeId x ++ ":" ++ show u ++ ". " ++ show t
 
-mkGround :: Type -> InterType
+mkGround :: Type i -> InterType i
 mkGround = Simple . Ground
 
-gBool, gInt, gReal :: InterType
+gBool, gInt, gReal :: InterType i
 gBool = mkGround boolT
 gInt = mkGround intT
 gReal = mkGround realT
 
 -- | Type unification
 
-type Substitution = InterType0 -> InterType0
+type Substitution i = InterType0 i -> InterType0 i
 
-replaceBy :: TypeId -> InterType0 -> Substitution
+replaceBy :: TypeId -> InterType0 i -> Substitution i
 replaceBy x t = \t' -> case t' of
   (Ground a) -> Ground a
   (Named x') -> if x == x' then t else (Named x')
   (ArrowT t0 t1) -> ArrowT (replaceBy x t t0) (replaceBy x t t1)
 
-getUniverse :: InterType0 -> Universe
+getUniverse :: InterType0 i -> Universe
 getUniverse (Ground (GroundType BoolT)) = TypeU
 getUniverse (Ground (GroundType IntT)) = NumU
 getUniverse (Ground (GroundType RealT)) = NumU
@@ -98,7 +98,7 @@ getUniverse (Ground (GroundType (SInt _))) = NumU
 getUniverse (Ground (GroundType (UInt _))) = NumU
 getUniverse _ = TypeU
 
-unify0 :: InterType0 -> InterType0 -> Result (InterType0, Substitution)
+unify0 :: Ident i => InterType0 i -> InterType0 i -> Result i (InterType0 i, Substitution i)
 unify0 t (Named x) = return (t, replaceBy x t)
 unify0 (Named x) t = return (t, replaceBy x t)
 unify0 t@(Ground t1) t'@(Ground t2) =
@@ -110,7 +110,7 @@ unify0 (ArrowT t1 t2) (ArrowT t1' t2') = do
   return (ArrowT t1'' t2'', s2 . s1)
 unify0 t1 t2 = throwError $ "Cannot unify " ++ show t1 ++ " and " ++ show t2
 
-unify :: InterType -> InterType -> Result (InterType, Substitution)
+unify :: Ident i => InterType i -> InterType i -> Result i (InterType i, Substitution i)
 unify (Simple t1) (Simple t2) = first Simple <$> unify0 t1 t2
 unify (Forall x u t0) t1 = do
   (t', s) <- unify t0 t1
@@ -118,10 +118,10 @@ unify (Forall x u t0) t1 = do
   if u' <= u then return (t', s) else throwError $ "Incompatible universes: " ++ show u' ++ " not contained in " ++ show u
 unify t1 t2 = throwError $ "Cannot unify " ++ show t1 ++ " and " ++ show t2
 
-appArrow :: Expr -> InterType -> Result InterType
+appArrow :: Ident i => Expr i -> InterType i -> Result i (InterType i)
 appArrow e = appArrow' (getGround0 e)
 
-appArrow' :: InterType0 -> InterType -> Result InterType
+appArrow' :: Ident i => InterType0 i -> InterType i -> Result i (InterType i)
 appArrow' c (Simple (ArrowT a b))  = unify0 a c >>= \(_, s) -> return (Simple $ s b)
 appArrow' c a = do
   t0 <- genTypeId
@@ -129,41 +129,41 @@ appArrow' c a = do
   appArrow' c a'
 -- appArrow' a b = throwError $ "Could not apply type " ++ show b ++ " to " ++ show a
 
-getGround0 :: Typed e -> InterType0
+getGround0 :: Typed i e -> InterType0 i
 getGround0 = Ground . getType
 
-getGround :: Typed e -> InterType
+getGround :: Typed i e -> InterType i
 getGround = Simple . Ground . getType
 
 -- | Check if ground type (not a type variable) and
 --    return that type.
-ensureGround :: InterType -> Result Type
+ensureGround :: Ident i => InterType i -> Result i (Type i)
 ensureGround (Simple (Ground t)) = return t
 ensureGround t = throwError $ "Unresolved type: " ++ show t
 
-typeExists :: Type -> Result ()
+typeExists :: Ident i => Type i -> Result i ()
 typeExists (NamedType n) = void $ envLookupType n
 typeExists _ = return ()
 
-typecheck :: UT.Program -> Either String Program
+typecheck :: Ident i => UT.Program i -> Either String (Program i)
 typecheck p = runReader (evalStateT (runErrorT $ checkProgram p) 0) emptyEnv
 
-typecheckConstExpr :: UT.ConstExpr -> Either String ConstExpr
+typecheckConstExpr :: Ident i => UT.ConstExpr i -> Either String (ConstExpr i)
 typecheckConstExpr e = runReader (evalStateT (runErrorT $ checkConstExpr e) 0) emptyEnv
 
 -- | Monad for the transformation process
 --    Carries possible errors, an environment
 --    and a generator for type variables
-type TypeIdEnvMonad = StateT Int (Reader Env)
-type Result = ErrorT String TypeIdEnvMonad
+type TypeIdEnvMonad i = StateT Int (Reader (Env i))
+type Result i = ErrorT String (TypeIdEnvMonad i)
 
-genTypeId :: Result TypeId
+genTypeId :: Result i TypeId
 genTypeId = do
   current <- get
   put (current + 1)
   return current
 
-checkProgram :: UT.Program -> Result Program
+checkProgram :: Ident i => UT.Program i -> Result i (Program i)
 checkProgram (Program typedefs constantdefs declarations flow initial assertion invariant) = do
   checkTypeDefs typedefs >>= \types -> envAddTypes types $
     checkConstantDefs constantdefs >>= \consts -> envAddConsts consts $
@@ -174,7 +174,7 @@ checkProgram (Program typedefs constantdefs declarations flow initial assertion 
           (checkAssertion assertion) <*>
           (checkInvariant invariant)
 
-checkTypeDefs :: Map TypeAlias UT.TypeDef -> Result (Map TypeAlias TypeDef)
+checkTypeDefs :: Ident i => Map (TypeAlias i) (UT.TypeDef i) -> Result i (Map (TypeAlias i) (TypeDef i))
 checkTypeDefs = fmap Map.fromList . checkTypeDefs' . Map.toList
   where
     checkTypeDefs' [] = return []
@@ -183,20 +183,20 @@ checkTypeDefs = fmap Map.fromList . checkTypeDefs' . Map.toList
       tds' <- envAddType x t $ checkTypeDefs' tds
       return $ td' : tds'
 
-checkTypeDef :: TypeAlias -> UT.TypeDef -> Result (TypeAlias, TypeDef)
+checkTypeDef :: Ident i => TypeAlias i -> UT.TypeDef i -> Result i (TypeAlias i, TypeDef i)
 checkTypeDef x d@(EnumDef _) = return (x, d)
 checkTypeDef x (RecordDef (RecordT fields)) =
   ((x,) . RecordDef . RecordT) <$> mapM (uncurry checkRecordField) fields
 
-checkRecordField :: RecordField -> Type -> Result (RecordField, Type)
+checkRecordField :: Ident i => RecordField i -> Type i -> Result i (RecordField i, Type i)
 checkRecordField f t = typeExists t >> return (f, t)
 
-checkConstantDefs :: Map Identifier UT.Constant -> Result (Map Identifier Constant)
+checkConstantDefs :: Ident i => Map i UT.Constant -> Result i (Map i (Constant i))
 checkConstantDefs = fmap Map.fromList . checkConstantDefs' . Map.toList
   where
     checkConstantDefs' = mapM (secondM checkConstant)
 
-checkDeclarations :: UT.Declarations -> Result Declarations
+checkDeclarations :: Ident i => UT.Declarations i -> Result i (Declarations i)
 checkDeclarations (UT.Declarations nodes states locals) =
   envEmptyDecls $
     Declarations <$>
@@ -204,7 +204,7 @@ checkDeclarations (UT.Declarations nodes states locals) =
       (mapM checkVarDecl states) <*>
       (mapM checkVarDecl locals)
 
-checkNode :: UT.Node -> Result Node
+checkNode :: Ident i => UT.Node i -> Result i (Node i)
 checkNode (Node inp outp decls flow outpDef automata initial) = do
   inp' <- mapM checkVarDecl inp
   outp' <- mapM checkVarDecl outp
@@ -218,23 +218,23 @@ checkNode (Node inp outp decls flow outpDef automata initial) = do
         (mapM checkAutomaton automata) <*>
         (checkInitial initial)
 
-checkVarDecl :: Variable -> Result Variable
+checkVarDecl :: Ident i => Variable i -> Result i (Variable i)
 checkVarDecl v@(Variable _ t) = typeExists t >> return v
 
-checkFlow :: UT.Flow -> Result Flow
+checkFlow :: Ident i => UT.Flow i -> Result i (Flow i)
 checkFlow (Flow definitions transitions) =
   Flow <$>
     mapM checkInstantDef definitions <*>
     mapM checkStateTransition transitions
 
-checkInstantDef :: UT.InstantDefinition -> Result InstantDefinition
+checkInstantDef :: Ident i => UT.InstantDefinition i -> Result i (InstantDefinition i)
 checkInstantDef (InstantDef xs i) = do
     i' <- checkInstant i
     ts <- mapM envLookupWritable xs
     void $ unify (getGround i') (mkGround $ mkProductT ts)
     return $ InstantDef xs i'
 
-checkInstant :: UT.Instant -> Result Instant
+checkInstant :: Ident i => UT.Instant i -> Result i (Instant i)
 checkInstant (Fix (InstantExpr e)) = preserveType InstantExpr <$> checkExpr e
 checkInstant (Fix (NodeUsage n params)) = do
   params' <- mapM checkExpr params
@@ -243,27 +243,27 @@ checkInstant (Fix (NodeUsage n params)) = do
   checkNodeTypes "input" n nInp inTypes
   return $ mkTyped (NodeUsage n params') (mkProductT $ map varType nOutp)
 
-checkStateTransition :: UT.StateTransition -> Result StateTransition
+checkStateTransition :: Ident i => UT.StateTransition i -> Result i (StateTransition i)
 checkStateTransition (StateTransition x e) = do
   t <- envLookupState x
   e' <- checkExpr e
   void $ unify (getGround e') (mkGround t)
   return $ StateTransition x e'
 
-checkAutomaton :: UT.Automaton -> Result Automaton
+checkAutomaton :: Ident i => UT.Automaton i -> Result i (Automaton i)
 checkAutomaton (Automaton locs initial edges) =
   Automaton <$>
     mapM checkLocation locs <*>
     pure initial <*>
     mapM checkEdge edges
 
-checkLocation :: UT.Location -> Result Location
+checkLocation :: Ident i => UT.Location i -> Result i (Location i)
 checkLocation (Location l flow) = Location l <$> checkFlow flow
 
-checkEdge :: UT.Edge -> Result Edge
+checkEdge :: Ident i => UT.Edge i -> Result i (Edge i)
 checkEdge (Edge t h c) = Edge t h <$> checkExpr c
 
-checkInitial :: UT.StateInit -> Result StateInit
+checkInitial :: Ident i => UT.StateInit i -> Result i (StateInit i)
 checkInitial = fmap Map.fromList . mapM checkInit . Map.toList
   where
     checkInit (x, c) = do
@@ -272,23 +272,23 @@ checkInitial = fmap Map.fromList . mapM checkInit . Map.toList
       void $ unify (getGround c') (mkGround t)
       return (x, c')
 
-checkAssertion :: UT.Expr -> Result Expr
+checkAssertion :: Ident i => UT.Expr i -> Result i (Expr i)
 checkAssertion = checkExpr
 
-checkInvariant :: UT.Expr -> Result Expr
+checkInvariant :: Ident i => UT.Expr i -> Result i (Expr i)
 checkInvariant = checkExpr
 
-checkConstExpr :: UT.ConstExpr -> Result ConstExpr
+checkConstExpr :: forall i. Ident i => UT.ConstExpr i -> Result i (ConstExpr i)
 checkConstExpr (Fix (Const c)) = preserveType Const <$> checkConstant c
 checkConstExpr (Fix (ConstRecord ctr)) = do
-   ctr' <- checkRecordConstrConst ctr :: Result (GRecordConstr ConstExpr, Type)
+   ctr' <- checkRecordConstrConst ctr :: Result i (GRecordConstr i (ConstExpr i), Type i)
    return $ (uncurry mkTyped) $ (first ConstRecord) ctr'
 checkConstExpr (Fix (ConstTuple t)) = $notImplemented
 
-checkExpr :: UT.Expr -> Result Expr
+checkExpr :: Ident i => UT.Expr i -> Result i (Expr i)
 checkExpr = checkExpr' . UT.unfix
   where
-    checkExpr' :: (GExpr UT.Constant UT.Atom UT.Expr) -> Result Expr
+    checkExpr' :: Ident i => (GExpr i UT.Constant (UT.Atom i) (UT.Expr i)) -> Result i (Expr i)
     checkExpr' (AtExpr a) = (mapTyped AtExpr) <$> (checkAtom a)
     checkExpr' (LogNot e) = do
       e' <- checkExpr e
@@ -324,21 +324,21 @@ checkExpr = checkExpr' . UT.unfix
       case a of
         (ArrayType t n) -> do
           when (i >= n)
-            (throwError $ "Projection of " ++ prettyIdentifier x ++ " out of range")
+            (throwError $ "Projection of " ++ identPretty x ++ " out of range")
           return $ mkTyped (Project x i) (GroundType t)
-        _ -> throwError $ prettyIdentifier x ++ " is not an array type"
+        _ -> throwError $ identPretty x ++ " is not an array type"
 
 -- | Checks the signature of a used node
-checkNodeTypes :: String -> Identifier -> [Variable] -> [Type] -> Result ()
+checkNodeTypes :: Ident i => String -> i -> [Variable i] -> [Type i] -> Result i ()
 checkNodeTypes kind node namedSig expected =
   case checkTypeList 1 namedSig expected of
     Nothing -> return ()
-    Just e -> throwError $ "Could not match " ++ kind ++ " signature of " ++ prettyIdentifier node ++
+    Just e -> throwError $ "Could not match " ++ kind ++ " signature of " ++ identPretty node ++
       case e of
       (err, True) -> ": number of types did not match (" ++ err ++ ")"
       (err, False) -> ": type mismatch " ++ err
   where
-    checkTypeList :: Int -> [Variable] -> [Type] -> Maybe (String, Bool)
+    checkTypeList :: Ident i => Int -> [Variable i] -> [Type i] -> Maybe (String, Bool)
     checkTypeList _ [] [] = Nothing
     checkTypeList p [] r = Just ("had " ++ (show $ p + (length r)) ++ " but expected " ++ show p, True)
     checkTypeList p r [] = Just ("had" ++ show p ++ " but expected " ++ (show $ p + (length r)), True)
@@ -346,27 +346,27 @@ checkNodeTypes kind node namedSig expected =
       if (varType v) == t then checkTypeList (p+1) vs ts
       else Just (show p ++ " (expected " ++ show v ++ " but got " ++ show t ++ ")", False)
 
-checkAtom :: GAtom UT.Constant UT.Atom -> Result Atom
+checkAtom :: Ident i => GAtom i UT.Constant (UT.Atom i) -> Result i (Atom i)
 checkAtom (AtomConst c) = preserveType AtomConst <$> checkConstant c
 checkAtom (AtomVar x) = mkTyped (AtomVar x) <$> envLookupReadable x
 
-checkRecordConstr :: UT.GRecordConstr UT.Expr -> Result (GRecordConstr Expr, Type)
+checkRecordConstr :: Ident i => UT.GRecordConstr i (UT.Expr i) -> Result i (GRecordConstr i (Expr i), Type i)
 checkRecordConstr (RecordConstr x es) = do
   (RecordT fields) <- envLookupRecordType x
   es' <- mapM checkExpr es
   when ((map snd fields) /= (map getType es'))
-    (throwError $ "Arguments of record constructor do not match while constructing " ++ prettyIdentifier x)
+    (throwError $ "Arguments of record constructor do not match while constructing " ++ identPretty x)
   return $ (RecordConstr x es', NamedType x)
 
-checkRecordConstrConst :: UT.GRecordConstr UT.ConstExpr -> Result (GRecordConstr ConstExpr, Type)
+checkRecordConstrConst :: Ident i => UT.GRecordConstr i (UT.ConstExpr i) -> Result i (GRecordConstr i (ConstExpr i), Type i)
 checkRecordConstrConst (RecordConstr x es) = do
   (RecordT fields) <- envLookupRecordType x
   es' <- mapM checkConstExpr es
   when ((map snd fields) /= (map getType es'))
-    (throwError $ "Arguments of record constructor do not match while constructing " ++ prettyIdentifier x)
+    (throwError $ "Arguments of record constructor do not match while constructing " ++ identPretty x)
   return $ (RecordConstr x es', NamedType x)
 
-checkConstant :: UT.Constant -> Result Constant
+checkConstant :: UT.Constant -> Result i (Constant i)
 checkConstant (Fix (BoolConst a)) = return $ mkTyped (BoolConst a) boolT
 checkConstant (Fix (IntConst a)) = return $ mkTyped (IntConst a) intT
 checkConstant (Fix (RealConst a)) = return $ mkTyped (RealConst a) realT
@@ -393,7 +393,7 @@ usedBits = (+ 1) . log2
         log2' 1 = 0
         log2' y = 1 + (log2 $ div y 2)
 
-opType :: BinOp -> Result InterType
+opType :: BinOp -> Result i (InterType i)
 opType o = case o of
   Or  -> return $ Simple $ ArrowT gBool0 (ArrowT gBool0 gBool0)
   And  -> return $ Simple $ ArrowT gBool0 (ArrowT gBool0 gBool0)

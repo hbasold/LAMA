@@ -17,8 +17,10 @@ Library
     Lang.LAMA.Types
     Lang.LAMA.Structure
     Lang.LAMA.UnTypedStructure
+    Lang.LAMA.Structure.PosIdentUntyped
     Lang.LAMA.Pretty
     Lang.LAMA.Typing.TypedStructure
+    Lang.LAMA.Structure.PosIdentTyped
     Lang.LAMA.Typing.TypeCheck
     Lang.LAMA.PrettyTyped
     Lang.LAMA.Parse

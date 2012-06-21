@@ -13,7 +13,7 @@ import qualified Data.Graph.Inductive.Graph as G
 import Data.Text.Lazy (pack)
 import Data.Foldable (forM_, foldlM)
 import Lang.LAMA.Identifier
-import Data.Map as Map
+import Data.Map as Map hiding (map)
 import Data.Graph.Inductive.GenShow ()
 import Control.Monad (void, when, MonadPlus(..))
 import Control.Monad.Trans.Maybe
@@ -55,6 +55,7 @@ run v r f inp = do
   let fv = getFreeVariables deps
   void $ go prog deps fv emptyState r
   where
+    go :: Program PosIdent -> ProgDeps PosIdent -> [SimpIdent] -> State -> Int -> MaybeT IO ()
     go prog deps fv s i
       | i <= 0 = return ()
       | otherwise = do
@@ -70,7 +71,7 @@ checkErrors r = case r of
   Left (TypeError te) -> printAndFail $ "Type check failed:\n" ++ te
   Right concTree -> return concTree
 
-checkDeps :: Either String ProgDeps -> MaybeT IO ProgDeps
+checkDeps :: Either String (ProgDeps i) -> MaybeT IO (ProgDeps i)
 checkDeps d = case d of
   Left err -> printAndFail $ "Dependency error:\n" ++ err
   Right deps -> return deps
@@ -83,7 +84,7 @@ checkInterpret e = case e of
 printAndFail :: String -> MaybeT IO a
 printAndFail e = liftIO (putStrLn e) >> mzero
 
-showDeps :: FilePath -> ProgDeps -> IO ()
+showDeps :: Ident i => FilePath -> ProgDeps i -> IO ()
 showDeps f deps = do
     let progName = takeBaseName f
     -- dependency graph for program
@@ -106,17 +107,17 @@ defaultVis = graphToDot params
 instance Labellable () where
   toLabelValue = const $ textLabelValue $ pack ""
 
-instance Labellable IdentCtx where
+instance Ident i => Labellable (IdentCtx i) where
   toLabelValue = textLabelValue . pack . prettyVar
     where
       prettyVar (x, u, m) = BS.unpack x ++ "(" ++ show u ++ prettyMode m ++ ")"
       prettyMode GlobalMode = ""
       prettyMode (LocationRefMode _) = " (ref)"
-      prettyMode (LocationMode _ (Id l _)) = " in " ++ BS.unpack l
+      prettyMode (LocationMode _ x) = " in " ++ identString x
 
-askValues :: [Ident] -> MaybeT IO (Map Ident ConstExpr)
+askValues :: [SimpIdent] -> MaybeT IO (Map SimpIdent (ConstExpr PosIdent))
 askValues = foldlM (\vs x -> do
-    liftIO $ putStr "Please input value for " >> BS.putStr x >> BS.putStr (BS.pack ": ")
+    liftIO $ putStr "Please input value for " >> (BS.putStr $ identBS x) >> BS.putStr (BS.pack ": ")
     e <- liftIO $ fmap (BL.pack . BS.unpack) BS.getLine
     v <- checkErrors $ parseLAMAConstExpr e
     return $ Map.insert x v vs)

@@ -2,18 +2,25 @@
 module Lang.LAMA.UnTypedStructure (
   module Lang.LAMA.Structure,
   Program,
+  -- * Type definitions
+  TypeDef,
+  -- ** Enums
+  EnumConstr, EnumT,
+  -- ** Records
+  RecordField, RecordT,
+  -- * Constants
   Constant,
   -- * Nodes
-  Node,
+  Node, Variable,
   Declarations,
   -- * Data flow
   Flow,
   -- ** Definition of local and output variables
-  InstantDefinition, Instant,
+  Pattern, InstantDefinition, Instant,
   -- ** Definition of state variables
   StateTransition, StateInit,
   -- * Automata
-  Location, Edge, Automaton,
+  LocationId, Location, Edge, Automaton,
   -- * Expressions
   Atom, Expr, ConstExpr,
   -- * Constructors
@@ -27,24 +34,33 @@ import Lang.LAMA.Fix
 -- | Constants
 type Constant = Fix GConst
 
-type Expr = Fix (GExpr Constant Atom)         -- ^ expression
-type Atom = Fix (GAtom Constant)              -- ^ atom
-type ConstExpr = Fix (GConstExpr Constant)    -- ^ constant expression
+type Expr i = Fix (GExpr i Constant (Atom i))         -- ^ expression
+type Atom i = Fix (GAtom i Constant)              -- ^ atom
+type ConstExpr i = Fix (GConstExpr i Constant)    -- ^ constant expression
 
-type Program = GProgram Constant Expr ConstExpr Instant
-type Node = GNode Expr ConstExpr Instant
-type Declarations = GDeclarations Expr ConstExpr Instant
-type Flow = GFlow Expr Instant
-type InstantDefinition = GInstantDefinition Instant
-type Instant = Fix (GInstant Expr)
-type StateTransition = GStateTransition Expr
-type StateInit = GStateInit ConstExpr
-type Location = GLocation Expr Instant
-type Edge = GEdge Expr
-type Automaton = GAutomaton Expr Instant
+type Program i = GProgram i Constant (Expr i) (ConstExpr i) (Instant i)
+type Node i = GNode i (Expr i) (ConstExpr i) (Instant i)
+type Declarations i = GDeclarations i (Expr i) (ConstExpr i) (Instant i)
+type Flow i = GFlow i (Expr i) (Instant i)
+type InstantDefinition i = GInstantDefinition i (Instant i)
+type Instant i = Fix (GInstant i (Expr i))
+type StateTransition i = GStateTransition i (Expr i)
+type StateInit i = GStateInit i (ConstExpr i)
+type Location i = GLocation i (Expr i) (Instant i)
+type Edge i = GEdge i (Expr i)
+type Automaton i = GAutomaton i (Expr i) (Instant i)
+
+type TypeDef i = GTypeDef i
+type EnumConstr i = GEnumConstr i
+type EnumT i = GEnumT i
+type RecordField i = GRecordField i
+type RecordT i = GRecordT i
+type Variable i = GVariable i
+type Pattern i = GPattern i
+type LocationId i = GLocationId i
 
 boolConst :: Bool -> Constant
 boolConst c = Fix (BoolConst c)
 
-constAtExpr :: Constant -> Expr
+constAtExpr :: Constant -> Expr i
 constAtExpr c = Fix (AtExpr (AtomConst c))

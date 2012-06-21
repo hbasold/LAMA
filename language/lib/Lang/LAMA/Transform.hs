@@ -23,7 +23,7 @@ import qualified Lang.LAMA.Parser.Abs as Abs
 import qualified Lang.LAMA.Parser.Print as Abs (printTree)
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
-import Lang.LAMA.UnTypedStructure
+import Lang.LAMA.Structure.PosIdentUntyped
 
 -- | Monad for the transformation process
 --    Carries possible errors
@@ -33,23 +33,23 @@ absToConc :: Abs.Program -> Either String Program
 absToConc = transProgram
 
 -- | Create identifier from position information and name
-makeId :: ((Int, Int), BS.ByteString) -> Identifier
-makeId (pos, str) = Id str pos
+makeId :: ((Int, Int), BS.ByteString) -> PosIdent
+makeId (pos, str) = PosIdent str pos
 
 -- | Create identifier from position information and name without the last
 --    character, this should be a "'" which is part of a state identifier
 --    on the lhs in a state assignment.
-makeStateId :: ((Int, Int), BS.ByteString) -> Identifier
-makeStateId (pos, str) = Id (BS.init str) pos
+makeStateId :: ((Int, Int), BS.ByteString) -> PosIdent
+makeStateId (pos, str) = PosIdent (BS.init str) pos
 
 --- Translation functions
 
-transIdentifier :: Abs.Identifier -> Result Identifier
+transIdentifier :: Abs.Identifier -> Result PosIdent
 transIdentifier x = case x of
   Abs.Identifier str  -> return $ makeId str
 
 
-transStateId :: Abs.StateId -> Result Identifier
+transStateId :: Abs.StateId -> Result PosIdent
 transStateId x = case x of
   Abs.StateId str  -> return $ makeStateId str
 
@@ -66,12 +66,12 @@ transProgram x = case x of
       (transAssertion assertion) <*>
       (transInvariant invariant)
 
-transTypeDefs :: Abs.TypeDefs -> Result (Map TypeAlias TypeDef)
+transTypeDefs :: Abs.TypeDefs -> Result (Map (TypeAlias PosIdent) TypeDef)
 transTypeDefs x = case x of
   Abs.NoTypeDefs  -> return Map.empty
   Abs.JustTypeDefs typedefs  -> fmap Map.fromList $ mapM transTypeDef typedefs
 
-transTypeDef :: Abs.TypeDef -> Result (TypeAlias, TypeDef)
+transTypeDef :: Abs.TypeDef -> Result (TypeAlias PosIdent, TypeDef)
 transTypeDef x = case x of
   Abs.EnumDef enumt  -> fmap (second EnumDef) $ transEnumT enumt
   Abs.RecordDef recordt  -> fmap (second RecordDef) $ transRecordT recordt
@@ -82,18 +82,18 @@ transEnumConstr x = case x of
   Abs.EnumConstr identifier  -> transIdentifier identifier
 
 
-transEnumT :: Abs.EnumT -> Result (TypeAlias, EnumT)
+transEnumT :: Abs.EnumT -> Result (TypeAlias PosIdent, EnumT)
 transEnumT x = case x of
   Abs.EnumT identifier enumconstrs  ->
     (,) <$> (transIdentifier identifier) <*> (fmap EnumT $ mapM transEnumConstr enumconstrs)
 
 
-transRecordField :: Abs.RecordField -> Result (RecordField, Type)
+transRecordField :: Abs.RecordField -> Result (RecordField, Type PosIdent)
 transRecordField x = case x of
   Abs.RecordField identifier t ->
     (,) <$> (transIdentifier identifier) <*> (transType t)
 
-transRecordT :: Abs.RecordT -> Result (TypeAlias, RecordT)
+transRecordT :: Abs.RecordT -> Result (TypeAlias PosIdent, RecordT)
 transRecordT x = case x of
   Abs.RecordT identifier recordfields  -> do
     ident <- transIdentifier identifier
@@ -101,7 +101,7 @@ transRecordT x = case x of
     return (ident, RecordT fields)
 
 
-transType :: Abs.Type -> Result Type
+transType :: Abs.Type -> Result (Type PosIdent)
 transType x = case x of
   Abs.GroundType basetype  -> fmap GroundType $ transBaseType basetype
   Abs.TypeId identifier  -> fmap NamedType $ transIdentifier identifier
@@ -117,13 +117,13 @@ transBaseType x = case x of
   Abs.SInt natural  -> fmap SInt $ transNatural natural
   Abs.UInt natural  -> fmap UInt $ transNatural natural
 
-transConstantDefs :: Abs.ConstantDefs -> Result (Map Identifier Constant)
+transConstantDefs :: Abs.ConstantDefs -> Result (Map PosIdent Constant)
 transConstantDefs x = case x of
   Abs.NoConstantDefs -> return Map.empty
   Abs.JustConstantDefs constantdefs -> fmap Map.fromList $ mapM transConstantDef constantdefs
 
 
-transConstantDef :: Abs.ConstantDef -> Result (Identifier, Constant)
+transConstantDef :: Abs.ConstantDef -> Result (PosIdent, Constant)
 transConstantDef x = case x of
   Abs.ConstantDef identifier constant ->
     (,) <$> transIdentifier identifier <*> transConstant constant
@@ -171,7 +171,7 @@ transAssertion x = case x of
   Abs.JustAssertion expr  -> transExpr expr
 
 
-transInitial :: Abs.Initial -> Result (Map Identifier ConstExpr)
+transInitial :: Abs.Initial -> Result (Map PosIdent ConstExpr)
 transInitial x = case x of
   Abs.NoInitial  -> return Map.empty
   Abs.JustInitial stateinits  -> fmap Map.fromList $ mapM transStateInit stateinits
@@ -183,7 +183,7 @@ transInvariant x = case x of
   Abs.JustInvariant expr  -> transExpr expr
 
 
-transStateInit :: Abs.StateInit -> Result (Identifier, ConstExpr)
+transStateInit :: Abs.StateInit -> Result (PosIdent, ConstExpr)
 transStateInit x = case x of
   Abs.StateInit identifier constexpr  -> do
     (,) <$> transIdentifier identifier <*> (transConstExpr constexpr)
@@ -193,7 +193,7 @@ transConstExpr :: Abs.ConstExpr -> Result ConstExpr
 transConstExpr x = case x of
   Abs.ConstExpr expr  -> transExpr expr >>= evalConst . unfix
   where
-    evalConst :: GExpr Constant Atom Expr -> Result ConstExpr
+    evalConst :: GExpr PosIdent Constant Atom Expr -> Result ConstExpr
     evalConst (AtExpr (AtomConst c)) = return $ Fix $ Const c
     evalConst (Constr (RecordConstr tid es)) = do
       cExprs <- mapM (evalConst . unfix) es
@@ -215,7 +215,7 @@ transMaybeTypedVars x = case x of
   Abs.JustTypedVars typedvarss  -> fmap concat $ mapM transTypedVars typedvarss
 
 
-transNode :: Abs.Node -> Result (Identifier, Node)
+transNode :: Abs.Node -> Result (PosIdent, Node)
 transNode x = case x of
   Abs.Node identifier maybetypedvars typedvarss declarations flow outputs controlstructure initial ->
     (,) <$> (transIdentifier identifier) <*>
@@ -245,7 +245,7 @@ transVarDecls x = case x of
     return $ vs ++ vss
 
 
-transNodeDecls :: Abs.NodeDecls -> Result (Map Identifier Node)
+transNodeDecls :: Abs.NodeDecls -> Result (Map PosIdent Node)
 transNodeDecls x = case x of
   Abs.NoNodes  -> return Map.empty
   Abs.JustNodeDecls nodes  -> fmap Map.fromList $ mapM transNode nodes
@@ -311,7 +311,7 @@ transPattern x = case x of
   Abs.SinglePattern identifier  -> (:[]) <$> (transIdentifier identifier)
   Abs.ProductPattern list2id  -> transList2Id list2id
 
-transList2Id :: Abs.List2Id -> Result [Identifier]
+transList2Id :: Abs.List2Id -> Result [PosIdent]
 transList2Id x = case x of
   Abs.Id2 identifier0 identifier  -> do
     ident1 <- transIdentifier identifier0
@@ -342,7 +342,7 @@ transLocation x = case x of
 isKnownLocation :: [Location] -> LocationId -> Result ()
 isKnownLocation locs loc =
   when (not $ any (\(Location l _) -> l == loc) locs)
-    (throwError $ "Unknown location " ++ prettyIdentifier loc)
+    (throwError $ "Unknown location " ++ identPretty loc)
 
 transInitialLocation :: [Location] -> Abs.InitialLocation -> Result LocationId
 transInitialLocation locs x = case x of

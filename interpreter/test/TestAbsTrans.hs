@@ -21,40 +21,40 @@ tests = TestList [
 -- Helper
 dontcare :: (Int, Int)
 dontcare = (0, 0)
-ident :: String -> Identifier
-ident s = Id (B.pack s) dontcare
+ident :: String -> PosIdent
+ident s = PosIdent (B.pack s) dontcare
 
-false :: Constant
+false :: Constant i
 false = boolConst False
 
-trueE :: Expr
+trueE :: Expr i
 trueE = constAtExpr $ boolConst True
 
-varExpr :: Identifier -> Type -> Expr
+varExpr :: i -> Type i -> Expr i
 varExpr v t = mkTyped (AtExpr (AtomVar v)) t
 
-intConst :: Integer -> Constant
+intConst :: Integer -> Constant i
 intConst c = mkTyped (IntConst c) intT
 
-intE :: Integer -> Expr
+intE :: Integer -> Expr i
 intE = constAtExpr . intConst
 
-intConstE :: Integer -> ConstExpr
+intConstE :: Integer -> ConstExpr i
 intConstE c = mkTyped (Const $ intConst c) intT
 
-ite :: Expr -> Expr -> Expr -> Expr
+ite :: Expr i -> Expr i -> Expr i -> Expr i
 ite c e1 e2 = mkTyped (Ite c e1 e2) boolT
 
-eqE :: Expr -> Expr -> Expr
+eqE :: Expr i -> Expr i -> Expr i
 eqE e1 e2 = mkTyped (Expr2 Equals e1 e2) boolT
 
-leqE :: Expr -> Expr -> Expr
+leqE :: Expr i -> Expr i -> Expr i
 leqE e1 e2 = mkTyped (Expr2 LEq e1 e2) boolT
 
-notE :: Expr -> Expr
+notE :: Expr i -> Expr i
 notE e = mkTyped (LogNot e) boolT
 
-checkEqual :: Program -> BL.ByteString -> Test
+checkEqual :: Program PosIdent -> BL.ByteString -> Test
 checkEqual t inp = case parseLAMA inp of
   Left (ParseError pe) -> TestCase $ assertFailure $ "Parsing failed: " ++ show pe
   Left (StaticError se) -> TestCase $ assertFailure $ "Conversion failed: " ++ show se
@@ -73,7 +73,7 @@ typesSrc = BL.pack $ unlines [
   "local x : r2;",
   "definition x = (use main);" ]
 
-expectedTypes :: Program
+expectedTypes :: Program PosIdent
 expectedTypes =
   Program {
     progTypeDefinitions = fromList [
@@ -121,7 +121,7 @@ constantsSrc = BL.pack $ unlines [
   "      y = uint[16](1322);",
   "tel" ]
 
-expectedConstants :: Program
+expectedConstants :: Program PosIdent
 expectedConstants =
   Program {
     progTypeDefinitions = fromList [],
@@ -176,7 +176,7 @@ switch = BL.pack $ unlines [
     "local on, off, so : bool;",
     "definition so = (use Switch on off);"]
 
-expectedSwitch :: Program
+expectedSwitch :: Program PosIdent
 expectedSwitch =
   Program {
     progTypeDefinitions = fromList [],
@@ -260,7 +260,7 @@ upDownCounter = BL.pack $ unlines [
  "definition xo = (use main);",
  "invariant (<= xo 10);" ]
 
-expectedUpDownCounter :: Program
+expectedUpDownCounter :: Program PosIdent
 expectedUpDownCounter =
   Program {
     progTypeDefinitions = fromList [], progConstantDefinitions = fromList [],

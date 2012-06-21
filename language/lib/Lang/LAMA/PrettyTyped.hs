@@ -5,11 +5,10 @@ import Text.PrettyPrint
 import Lang.LAMA.Types
 import Lang.LAMA.Typing.TypedStructure
 import Lang.LAMA.Identifier
-import Lang.LAMA.Fix
 
-prettyType :: Type -> Doc
+prettyType :: Ident i => Type i -> Doc
 prettyType (GroundType t) = prettyBaseType t
-prettyType (NamedType x) = text $ prettyIdentifier x
+prettyType (NamedType x) = text $ identPretty x
 prettyType (ArrayType t n) = prettyBaseType t <> (brackets $ integer $ toInteger n)
 prettyType (Prod ts) = case ts of
   [] -> text "1"
@@ -23,12 +22,12 @@ prettyBaseType RealT = text "real"
 prettyBaseType (SInt n) = text "sint" <> (brackets $ integer $ toInteger n)
 prettyBaseType (UInt n) = text "uint" <> (brackets $ integer $ toInteger n)
 
-prettyTyped :: (e (Typed e) -> Doc) -> Typed e -> Doc
+prettyTyped :: Ident i => (e (Typed i e) -> Doc) -> Typed i e -> Doc
 prettyTyped p t = p (untyped t) <+> colon <+> prettyType (getType t)
 
 -----
 
-prettyConstExpr :: ConstExpr -> Doc
+prettyConstExpr :: Ident i => ConstExpr i -> Doc
 prettyConstExpr = prettyTyped prettyConstExpr'
   where
     prettyConstExpr' (Const c) = prettyConst c
@@ -37,7 +36,7 @@ prettyConstExpr = prettyTyped prettyConstExpr'
     prettyConstExpr' (ConstTuple (Tuple v)) =
       parens $ hcat $ punctuate comma $ map prettyConstExpr v
 
-prettyConst :: Constant -> Doc
+prettyConst :: Constant i -> Doc
 prettyConst c = case untyped c of
   BoolConst v -> case v of
     True -> text "true"
