@@ -1,0 +1,33 @@
+-- Should be equivalent to
+--   x = 0 -> (pre a + pre (0 -> pre b))
+--   which in turn is equivalent to
+--   x = 0 -> pre (a + (0 -> pre b))
+--
+-- An example run:
+-- a b x
+-- 1 1 0
+-- 2 2 1
+-- 3 3 3
+-- 4 4 5
+-- 5 5 7
+-- 1 1 9
+-- 2 2 6
+-- 3 3 3
+-- 4 4 5
+
+nodes
+node TempTest (a, b : int) returns (x : int);
+  let
+    state c_1, b_1 : int;
+    local c : int;
+    definition
+      c = (+ a b_1);
+    transition
+      c_1' = c;
+      b_1' = b;
+    output x = c_1;
+    initial
+      b_1 = 0, c_1 = 0;
+  tel
+local a, b, x : int;
+definition x = (use TempTest a b);

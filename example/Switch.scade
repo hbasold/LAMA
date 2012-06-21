@@ -1,0 +1,11 @@
+node Switch(on, off : bool)
+returns (s : bool)
+let
+   s = if (false -> pre s) then not off else on;
+tel
+
+/* Properties:
+always(on implies (next s));
+always(off implies (next not s));
+always((not off and not on) implies (exists ls = s: next (s = ls)));
+*/
