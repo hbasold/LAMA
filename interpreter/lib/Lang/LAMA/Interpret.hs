@@ -17,6 +17,7 @@ import Control.Monad.Reader (MonadReader(..), Reader, runReader)
 import Control.Monad (liftM)
 import Data.Foldable (foldlM, find)
 import Control.Applicative ((<$>), (<*>))
+import Control.Arrow (second)
 
 import Text.PrettyPrint as PP
 
@@ -71,8 +72,8 @@ emptyNodeDecls = Map.empty
 emptyEnv :: Environment
 emptyEnv = Environment Map.empty Map.empty emptyState
 
-addToState :: State -> Map SimpIdent ConstExpr -> State
-addToState s vs = s { stateEnv = Map.union (stateEnv s) vs }
+updateState :: State -> NodeEnv -> State
+updateState s vs = s { stateEnv = vs `Map.union` (stateEnv s) }
 
 type EvalM = ErrorT String (Reader Environment)
 
@@ -137,13 +138,13 @@ evalProg p d =
     let e = stateEnv s
     let e' = e `Map.union` (Map.mapKeys dropPos $ progInitial p) -- only adds initial values if not already present
     let s' = s { stateEnv = e' }
-    s'' <- localNodeDecls (const (zipMaps nodes $ progDepsNodes d)) $
-            foldlM (\s'' -> localState (const s'') . assign) s' defs
-    return s''
+    (s'', tr) <- localNodeDecls (const (zipMaps nodes $ progDepsNodes d)) $
+                  foldlM updateAssign (s', emptyNodeEnv) defs
+    return $ updateState s'' tr
 
-assign :: (IdentCtx PosIdent, ExprCtx PosIdent) -> EvalM State
+assign :: (IdentCtx PosIdent, ExprCtx PosIdent) -> EvalM (State, NodeEnv)
 assign (v, e) = case e of
-  NoExpr -> askState
+  NoExpr -> askState >>= return . (, emptyNodeEnv)
   GlobalExpr inst -> assignInstant v inst
   LocalExpr autom refs -> do
     l <- takeEdge autom -- get next state
@@ -153,9 +154,16 @@ assign (v, e) = case e of
   where
     assignInstant v inst = do
       (r, nState') <- evalInstant inst
-      env' <- updateM (SimpIdent $ ctxGetIdent v) r
       s <- askState
-      return $ s { stateEnv = env', stateNodes = nState' }
+      case v of
+        (x, StateOut, _) ->
+          return (s, Map.singleton (SimpIdent x) r)
+        (x, _, _) -> do
+          env' <- updateM (SimpIdent x) r
+          return (s { stateEnv = env', stateNodes = nState' }, emptyNodeEnv)
+
+updateAssign :: (State, NodeEnv) -> (IdentCtx PosIdent, ExprCtx PosIdent) -> EvalM (State, NodeEnv)
+updateAssign (s'', tr) = liftM (second (Map.union tr)) . localState (const s'') . assign
 
 -- | Takes an edge in the given automaton and returns the new location
 takeEdge :: Int -> EvalM SimpIdent
@@ -303,11 +311,11 @@ evalNode nDecl nDeps params =
     let e' = e `Map.union` (Map.mapKeys dropPos $ nodeInitial nDecl) -- only adds initial values if not already present
     let e'' = addParams nDecl params e'
     let s' = s { stateEnv = e'' }
-    s'' <- localNodeDecls (const $ zipMaps nodes $ nodeDepsNodes nDeps) $
-            localAutomDecls (const $ nodeAutomata nDecl) $
-              foldlM (\s'' -> localState (const s'') . assign) s' defs
+    (s'', tr) <- localNodeDecls (const $ zipMaps nodes $ nodeDepsNodes nDeps) $
+                  localAutomDecls (const $ nodeAutomata nDecl) $
+                    foldlM updateAssign (s', emptyNodeEnv) defs
     r <- localState (const s'') $ fmap mkTuple $ mapM (lookup . dropPos . varIdent) (nodeOutputs nDecl)
-    return (r, s'')
+    return (r, updateState s'' tr)
 
 mkTuple :: [ConstExpr] -> ConstExpr
 mkTuple [] = error "cannot build empty tuple"

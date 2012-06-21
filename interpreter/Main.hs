@@ -60,7 +60,7 @@ run v r f inp = do
       | i <= 0 = return ()
       | otherwise = do
           userInp <- askValues fv
-          s' <- checkInterpret $ eval (addToState s userInp) prog deps
+          s' <- checkInterpret $ eval (updateState s userInp) prog deps
           liftIO $ putStrLn $ render $ prettyState s'
           void $ go prog deps fv s' (i-1)
 
