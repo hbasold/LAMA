@@ -2,16 +2,16 @@ nodes
   node Switch(on, off: bool) returns (so: bool);
   let
     state
-      s : bool;
+      s_1 : bool;
     local
-      s_ : bool;
+      s : bool;
     definition
-      s_ = (ite s (not off) on);
+      s = (ite s_1 (not off) on);
     transition
-      s' = s_;
+      s_1' = s;
     output
-      so = s_;
-    initial s = false;
+      so = s;
+    initial s_1 = false;
   tel
 local on, off, s : bool;
 state on_1, off_1, s_1 : bool;
