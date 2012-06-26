@@ -17,6 +17,7 @@ Library
     Lang.LAMA.Types
     Lang.LAMA.Structure
     Lang.LAMA.UnTypedStructure
+    Lang.LAMA.Structure.SimpIdentUntyped
     Lang.LAMA.Structure.PosIdentUntyped
     Lang.LAMA.Pretty
     Lang.LAMA.Typing.TypedStructure
