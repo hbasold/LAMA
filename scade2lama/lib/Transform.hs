@@ -25,6 +25,7 @@ import qualified Lang.LAMA.Types as L
 import qualified FlattenListExpr as FlattenList
 import qualified RewriteTemporal as Temporal
 import qualified RewriteOperatorApp as OpApp
+import qualified UnrollTemporal as Unroll
 
 updateVarName :: (BS.ByteString -> BS.ByteString) -> L.Variable -> L.Variable
 updateVarName f (L.Variable (L.SimpIdent x) t) = L.Variable (L.SimpIdent $ f x) t
@@ -86,7 +87,7 @@ transform ds =
     mkConstDefs :: [S.ConstDecl] -> Map L.SimpIdent L.Constant
     mkConstDefs = Map.fromList . map trConstDecl
     
-    rewrite = OpApp.rewrite . Temporal.rewrite . FlattenList.rewrite
+    rewrite = Unroll.rewrite . OpApp.rewrite . Temporal.rewrite . FlattenList.rewrite
 
 trDeclaration :: S.Declaration -> TransM (Maybe (L.SimpIdent, L.Node))
 trDeclaration (S.OpenDecl path) = $notImplemented
@@ -125,7 +126,7 @@ trOpDecl (S.UserOpDecl {
       in do
         ((definitions, transitions), stateInits) <- liftM ((partitionEithers *** concat) . unzip) $ mapM trEquation equations
         let inits = Map.fromList stateInits
-        stateVars <- mapM (lookupErr "Unknown variable" vars) $ Map.keys inits
+        stateVars <- mapM (\x -> lookupErr ("Unknown variable " ++ show x) vars x) $ Map.keys inits
         let localVars = Map.elems vars \\ stateVars
         return $ L.Node inp outp'
           (L.Declarations subNodes stateVars localVars)

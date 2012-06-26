@@ -12,5 +12,9 @@ Executable scade2lama
   Hs-Source-Dirs: . lib
   GHC-Options: -Wall
   other-modules:
+    FlattenListExpr
+    RewriteOperatorApp
+    RewriteTemporal
+    UnrollTemporal
     Transform
   Main-Is: Main.hs
