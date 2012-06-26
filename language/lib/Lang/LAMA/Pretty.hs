@@ -10,6 +10,7 @@ import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Natural
 import Data.Ratio
+import qualified Data.ByteString.Char8 as BS
 
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
@@ -39,7 +40,7 @@ trIdent :: Ident i => i -> Abs.Identifier
 trIdent = Abs.Identifier . ((0,0),) . identBS
 
 trStateId :: Ident i => i -> Abs.StateId
-trStateId = Abs.StateId . ((0,0),) . identBS
+trStateId = Abs.StateId . ((0,0),) . (flip BS.snoc '\'') . identBS
 
 trNatural :: Natural -> Abs.Natural
 trNatural = Abs.Nat . toInteger
