@@ -1,0 +1,16 @@
+Name:           ScadeToLama
+Version:        0.1
+Build-Type:     Simple
+Cabal-Version:  >= 1.10
+Description:
+  Transformation from Scade to LAMA files
+
+Executable scade2lama
+  default-language: Haskell2010
+  Build-Depends: base, containers, language-scade, language-lama,
+    transformers, placeholders, mtl, bytestring
+  Hs-Source-Dirs: . lib
+  GHC-Options: -Wall
+  other-modules:
+    Transform
+  Main-Is: Main.hs
