@@ -26,6 +26,9 @@ import qualified FlattenListExpr as FlattenList
 import qualified RewriteTemporal as Temporal
 import qualified RewriteOperatorApp as OpApp
 
+updateVarName :: (BS.ByteString -> BS.ByteString) -> L.Variable -> L.Variable
+updateVarName f (L.Variable (L.SimpIdent x) t) = L.Variable (L.SimpIdent $ f x) t
+
 type Type = L.Type L.SimpIdent
 type TypeAlias = L.TypeAlias L.SimpIdent
 
@@ -67,9 +70,6 @@ transform ds =
           use = L.mkNodeUsage x $ map (L.mkAtomVar . L.varIdent) scopedInp
           flow = L.Flow [L.InstantDef (map L.varIdent scopedOutp) use] []
       in (locs, sts, stInit, flow)
-    
-    updateVarName :: (BS.ByteString -> BS.ByteString) -> L.Variable -> L.Variable
-    updateVarName f (L.Variable (L.SimpIdent x) t) = L.Variable (L.SimpIdent $ f x) t
     
     mergeFlows :: [([L.Variable], [L.Variable], L.StateInit, L.Flow)] -> ([L.Variable], [L.Variable], L.StateInit, L.Flow)
     mergeFlows
@@ -113,17 +113,22 @@ trOpDecl (S.UserOpDecl {
   where
     mkNode :: [L.Variable] -> [L.Variable] -> S.DataDef -> TransM L.Node
     mkNode inp outp (S.DataDef { S.dataSignals = sigs, S.dataLocals = locs, S.dataEquations = equations }) =
-      let vars = Map.fromList $ map (L.varIdent &&& id) $ concat $ map trVarDecl locs
+      let locs' = Map.fromList $ map (L.varIdent &&& id) $ concat $ map trVarDecl locs
+          outpAsLoc = Map.fromList $ map (L.varIdent &&& id) outp
+          vars = locs' `Map.union` outpAsLoc
+          -- create new output variables (x -> x_out) ...
+          outp' = map (updateVarName $ flip BS.append $ BS.pack "_out") outp
+          -- and assign the corresponding value to them (x_out = x)
+          outputDefs = foldr (\(x, x') ds -> (L.InstantDef [L.varIdent x'] $ L.mkInstantExpr $ L.mkAtomVar (L.varIdent x)) : ds ) [] $ zip outp outp'
           subNodes = Map.empty
-          outputDefs = []
           automata = Map.empty
       in do
         ((definitions, transitions), stateInits) <- liftM ((partitionEithers *** concat) . unzip) $ mapM trEquation equations
         let inits = Map.fromList stateInits
         stateVars <- mapM (lookupErr "Unknown variable" vars) $ Map.keys inits
         let localVars = Map.elems vars \\ stateVars
-        return $ L.Node inp outp
-          (L.Declarations subNodes localVars stateVars)
+        return $ L.Node inp outp'
+          (L.Declarations subNodes stateVars localVars)
           (L.Flow definitions transitions)
           outputDefs automata inits
 trOpDecl _ = undefined
