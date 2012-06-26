@@ -65,7 +65,7 @@ interpreterOpts argv =
 
 usage :: String
 usage = usageInfo header options
-  where header = "Usage: pcfi [OPTION...] files..."
+  where header = "Usage: scade2lama [OPTION...] file"
 
 main :: IO ()
 main = do
@@ -84,7 +84,7 @@ main = do
     Nothing -> return ()
 
 runFile :: Options -> FilePath -> IO (Maybe String)
-runFile opts f = putStrLn f >> readFile f >>= runMaybeT . run opts f
+runFile opts f = readFile f >>= runMaybeT . run opts f
 
 run :: Options -> FilePath -> String -> MaybeT IO String
 run opts f inp = do
