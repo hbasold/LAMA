@@ -1,7 +1,9 @@
 node Switch(on, off : bool)
 returns (s : bool)
+var s_1 : bool;
 let
-   s = if (false -> pre s) then not off else on;
+   s_1 = false -> pre s;
+   s = if s_1 then not off else on;
 tel
 
 /* Properties:
