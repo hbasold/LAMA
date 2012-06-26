@@ -24,7 +24,8 @@ module Lang.LAMA.UnTypedStructure (
   -- * Expressions
   Atom, Expr, ConstExpr,
   -- * Constructors
-  boolConst, constAtExpr,
+  boolConst, constAtExpr, mkAtomVar,
+  mkInstantExpr, mkNodeUsage, mkIte, mkLogNot, mkExpr2, mkConst,
   module Lang.LAMA.Fix
 ) where
 
@@ -64,3 +65,24 @@ boolConst c = Fix (BoolConst c)
 
 constAtExpr :: Constant -> Expr i
 constAtExpr c = Fix (AtExpr (AtomConst c))
+
+mkAtomVar :: i -> Expr i
+mkAtomVar = Fix . AtExpr . AtomVar
+
+mkInstantExpr :: Expr i -> Instant i
+mkInstantExpr = Fix . InstantExpr
+
+mkNodeUsage :: i -> [Expr i] -> Instant i
+mkNodeUsage x = Fix . NodeUsage x
+
+mkIte :: Expr i -> Expr i -> Expr i -> Expr i
+mkIte c e1 = Fix . Ite c e1
+
+mkLogNot :: Expr i -> Expr i
+mkLogNot = Fix . LogNot
+
+mkExpr2 :: BinOp -> Expr i -> Expr i -> Expr i
+mkExpr2 o e1 = Fix . Expr2 o e1
+
+mkConst :: Constant -> ConstExpr i
+mkConst = Fix . Const
