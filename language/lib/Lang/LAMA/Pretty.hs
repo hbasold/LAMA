@@ -1,10 +1,8 @@
-{-# LANGUAGE TupleSections, TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 
 module Lang.LAMA.Pretty (prettyLama) where
 
-import Development.Placeholders
-
-import Prelude hiding (null)
+import Prelude hiding (null, init)
 import qualified Data.List as List
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -157,11 +155,21 @@ trInstant :: Ident i => Instant i -> Abs.Instant
 trInstant (Fix (InstantExpr e)) = Abs.InstantExpr $ trExpr e
 trInstant (Fix (NodeUsage n params)) = Abs.NodeUsage (trIdent n) (map trExpr params)
 
-trControlStructure :: Map Int (Automaton i) -> Abs.ControlStructure
+trControlStructure :: Ident i => Map Int (Automaton i) -> Abs.ControlStructure
 trControlStructure = Abs.ControlStructure . map trAutomaton . Map.elems
 
-trAutomaton :: Automaton i -> Abs.Automaton
-trAutomaton = $notImplemented
+trAutomaton :: Ident i => Automaton i -> Abs.Automaton
+trAutomaton (Automaton locs init edges)
+  = Abs.Automaton (map trLocation locs) (trInitialLocation init) (map trEdge edges)
+
+trLocation :: Ident i => Location i -> Abs.Location
+trLocation (Location s f) = Abs.Location (trIdent s) (trFlow f)
+
+trInitialLocation :: Ident i => LocationId i -> Abs.InitialLocation
+trInitialLocation s = Abs.InitialLocation $ trIdent s
+
+trEdge :: Ident i => Edge i -> Abs.Edge
+trEdge (Edge t h c) = Abs.Edge (trIdent t) (trIdent h) (trExpr c)
 
 trInitial :: Ident i => StateInit i -> Abs.Initial
 trInitial = mapDefault Abs.NoInitial (Abs.JustInitial . map trStateInit . Map.toList)
@@ -192,9 +200,9 @@ trExpr = trExpr' . unfix
     trExpr' (LogNot e) = Abs.Expr1 Abs.Not (trExpr e)
     trExpr' (Expr2 o e1 e2) = Abs.Expr2 (trBinOp o) (trExpr e1) (trExpr e2)
     trExpr' (Ite c e1 e2) = Abs.Expr3 Abs.Ite (trExpr c) (trExpr e1) (trExpr e2)
-    trExpr' (Constr ctr) = $notImplemented
-    trExpr' (Select x f) = $notImplemented
-    trExpr' (Project x i) = $notImplemented
+    trExpr' (Constr (RecordConstr t params)) = Abs.Constr (trIdent t) (map trExpr params)
+    trExpr' (Select x f) = Abs.Select (trIdent x) (trIdent f)
+    trExpr' (Project x i) = Abs.Project (trIdent x) (trNatural i)
 
 trAtom :: Ident i => GAtom i Constant (Atom i) -> Abs.Atom
 trAtom (AtomConst c) = Abs.AtomConst $ trConstant c
@@ -219,6 +227,8 @@ trBinOp x = case x of
   Mod  -> Abs.Mod
 
 trConstExpr :: Ident i => ConstExpr i -> Abs.ConstExpr
-trConstExpr (Fix (Const c)) = Abs.ConstExpr $ Abs.AtExpr $ Abs.AtomConst $ trConstant c
-trConstExpr (Fix (ConstRecord ctor)) = $notImplemented
-trConstExpr (Fix (ConstTuple tuple)) = $notImplemented
+trConstExpr = Abs.ConstExpr . trConstExpr' . unfix
+  where
+    trConstExpr' (Const c) = Abs.AtExpr $ Abs.AtomConst $ trConstant c
+    trConstExpr' (ConstRecord (RecordConstr t params)) = Abs.Constr (trIdent t) (map (trConstExpr' . unfix) params)
+    trConstExpr' (ConstTuple _) = undefined
