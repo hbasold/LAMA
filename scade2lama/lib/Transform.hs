@@ -11,6 +11,7 @@ import Data.String (fromString)
 import Data.Either (partitionEithers, either)
 import Data.List ((\\))
 import qualified Data.ByteString.Char8 as BS
+import Data.Ratio
 
 import Control.Monad.State
 import Control.Monad.Error (MonadError(..))
@@ -200,9 +201,9 @@ trExpr expr = case expr of
     trExpr' (S.IdExpr (S.Path [x])) = pure $ L.mkAtomVar (fromString x)
     trExpr' (S.IdExpr path) = $notImplemented
     trExpr' (S.NameExpr name) = $notImplemented
-    trExpr' (S.ConstIntExpr c) = $notImplemented
+    trExpr' (S.ConstIntExpr c) = L.constAtExpr <$> pure (L.mkIntConst c)
     trExpr' (S.ConstBoolExpr c) = L.constAtExpr <$> pure (L.boolConst c)
-    trExpr' (S.ConstFloatExpr c) = $notImplemented
+    trExpr' (S.ConstFloatExpr c) = L.constAtExpr <$> pure (L.mkRealConst $ approxRational c 0.01)
     trExpr' (S.ConstPolyIntExpr i s) = $notImplemented
     trExpr' (S.BinaryExpr op e1 e2) = L.mkExpr2 <$> pure (trBinOp op) <*> trExpr' e1 <*> trExpr' e2
     trExpr' (S.UnaryExpr S.UnNot e) = L.mkLogNot <$> trExpr' e
@@ -221,9 +222,9 @@ trExpr expr = case expr of
     trExpr' _ = undefined -- s. trExpr
 
 trConstExpr :: S.Expr -> TransM L.ConstExpr
-trConstExpr (S.ConstIntExpr c) = $notImplemented
+trConstExpr (S.ConstIntExpr c) = L.mkConst <$> pure (L.mkIntConst c)
 trConstExpr (S.ConstBoolExpr c) = L.mkConst <$> pure (L.boolConst c)
-trConstExpr (S.ConstFloatExpr c) = $notImplemented
+trConstExpr (S.ConstFloatExpr c) = L.mkConst <$> pure (L.mkRealConst $ approxRational c 0.01)
 trConstExpr (S.ConstPolyIntExpr i s) = $notImplemented
 trConstExpr e = throwError $ show e ++ " is not a constant."
  

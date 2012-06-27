@@ -24,7 +24,7 @@ module Lang.LAMA.UnTypedStructure (
   -- * Expressions
   Atom, Expr, ConstExpr,
   -- * Constructors
-  boolConst, constAtExpr, mkAtomVar,
+  boolConst, mkIntConst, mkRealConst, constAtExpr, mkAtomVar,
   mkInstantExpr, mkNodeUsage, mkIte, mkLogNot, mkExpr2, mkConst,
   module Lang.LAMA.Fix
 ) where
@@ -61,7 +61,13 @@ type Pattern i = GPattern i
 type LocationId i = GLocationId i
 
 boolConst :: Bool -> Constant
-boolConst c = Fix (BoolConst c)
+boolConst = Fix . BoolConst
+
+mkIntConst :: Integer -> Constant
+mkIntConst = Fix . IntConst
+
+mkRealConst :: Rational -> Constant
+mkRealConst = Fix . RealConst
 
 constAtExpr :: Constant -> Expr i
 constAtExpr c = Fix (AtExpr (AtomConst c))

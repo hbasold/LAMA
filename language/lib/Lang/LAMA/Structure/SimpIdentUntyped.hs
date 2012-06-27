@@ -23,7 +23,7 @@ module Lang.LAMA.Structure.SimpIdentUntyped (
   -- * Expressions
   Atom, Expr, ConstExpr,
   -- * Constructors
-  boolConst, constAtExpr, mkAtomVar,
+  boolConst, mkIntConst, mkRealConst, constAtExpr, mkAtomVar,
   mkInstantExpr, mkNodeUsage, mkIte, mkLogNot, mkExpr2, mkConst,
   module Lang.LAMA.Fix
 ) where
@@ -31,7 +31,7 @@ module Lang.LAMA.Structure.SimpIdentUntyped (
 import Lang.LAMA.Identifier
 import qualified Lang.LAMA.UnTypedStructure as S
 import Lang.LAMA.Structure
-import Lang.LAMA.UnTypedStructure (boolConst, constAtExpr, mkAtomVar, mkInstantExpr, mkNodeUsage, mkIte, mkLogNot, mkExpr2, mkConst)
+import Lang.LAMA.UnTypedStructure (boolConst, mkIntConst, mkRealConst, constAtExpr, mkAtomVar, mkInstantExpr, mkNodeUsage, mkIte, mkLogNot, mkExpr2, mkConst)
 import Lang.LAMA.Fix
 
 type Constant = S.Constant
