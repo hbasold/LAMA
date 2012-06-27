@@ -1,0 +1,13 @@
+node Count(x : bool; reset : bool)
+returns (c : int)
+let
+   c = if not reset
+   		then (0 -> pre c) +
+					if x then 1 else 0
+		else 0;
+tel
+
+/* Properties:
+always(reset implies next (c = 0))
+always(x implies exists lc = c: next (c = lc + 1));
+*/
