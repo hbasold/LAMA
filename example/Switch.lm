@@ -1,10 +1,10 @@
 nodes
   node Switch(on, off: bool) returns (so: bool);
   let
-    state
-      s_1 : bool;
     local
       s : bool;
+    state
+      s_1 : bool;
     definition
       s = (ite s_1 (not off) on);
     transition

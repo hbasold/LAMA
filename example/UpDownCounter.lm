@@ -7,10 +7,10 @@
 nodes
   node UpDown () returns (xo : int);
   let
-    state
-      x : int;
     local
       x_ : int;
+    state
+      x : int;
     transition
       x' = x_;
     output

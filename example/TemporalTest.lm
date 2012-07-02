@@ -18,8 +18,8 @@
 nodes
 node TempTest (a, b : int) returns (x : int);
   let
-    state c_1, b_1 : int;
     local c : int;
+    state c_1, b_1 : int;
     definition
       c = (+ a b_1);
     transition

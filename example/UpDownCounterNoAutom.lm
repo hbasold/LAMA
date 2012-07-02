@@ -1,11 +1,11 @@
 nodes
   node UpDown() returns (x : int);
   let
+    local
+      s_ : int;
     state
       s : int;
       up : bool;
-    local
-      s_ : int;
     definition
       s_ = (ite up (+ s 1) (- s 1)) ;
     transition
