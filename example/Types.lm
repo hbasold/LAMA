@@ -1,0 +1,51 @@
+-- Uses all types and their introductions and eliminations that we have.
+typedef
+  enum E1 = {Fill, Sum};
+constants
+  n = 5;
+  l = 4;
+nodes
+  node Write (a : int^5; i, x : int) returns (b : int^5); let
+    output b =
+      (ite (= i 0) (update a 0 x)
+      (ite (= i 1) (update a 1 x)
+      (ite (= i 2) (update a 2 x)
+      (ite (= i 3) (update a 3 x)
+      (ite (= i 4) (update a 4 x)
+        a )))));
+  tel
+  
+  node Read (a : int^5; i : int) returns (x : int); let
+    output x =
+      (ite (= i 0) (project a 0)
+      (ite (= i 1) (project a 1)
+      (ite (= i 2) (project a 2)
+      (ite (= i 3) (project a 3)
+      (ite (= i 4) (project a 4)
+        6346 )))));
+  tel
+local
+  i, i1 : int;
+  ai, ai1 : int;
+  a, a1, a2 : int^5;
+state s : E1 * int * int^5;
+definition
+  a = (match s {(prod r i a). a});
+  i = (match s {(prod r i a). i});
+  i1 = (match s {(prod r i a). (mod (+ i 1) n)});
+  ai = (use Read a i);
+  ai1 = (use Read a i1);
+  a1 = (use Write a i (+ 1 ai));
+  a2 = (use Write a i (+ ai ai1));
+transition
+  s' = (match s {(prod r i a).
+        (match r {
+          Fill. (prod
+                  (ite (= i l) Sum Fill)
+                  i1 a1),
+          Sum. (prod
+                  (ite (= i l) Fill Sum)
+                  i1 a2)
+        })
+      });
+initial s = (prod Fill 0 (array 0 0 0 0 0));
