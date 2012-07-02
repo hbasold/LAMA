@@ -20,4 +20,10 @@ transition
   on_1' = on;
   off_1' = off;
   s_1' = s;
-invariant (and (and (=> on_1 s) (=> off_1 (not s))) (=> (and (not off_1) (not on_1)) (= s s_1)));
+initial on_1 = false, off_1 = false, s_1 = false;
+invariant
+  (and
+    (and
+      (=> on_1 s)
+      (=> off_1 (not s)))
+    (=> (and (not off_1) (not on_1)) (= s s_1)));
