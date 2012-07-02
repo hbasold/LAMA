@@ -71,8 +71,11 @@ data ProgDeps i = ProgDeps {
 
 getFreeVariables :: ProgDeps i -> [SimpIdent]
 getFreeVariables d = ufold putIfFree [] $ progDepsFlow d
-  where putIfFree (_, _, ((x, _, _), e), _) vs = case e of
-          NoExpr -> SimpIdent x : vs
+  where putIfFree (_, _, ((x, u, _), e), _) vs = case e of
+          NoExpr -> case u of
+            Constant -> vs
+            StateIn -> vs
+            _ -> SimpIdent x : vs
           _ -> vs
 
 -- | Calculates the dependencies of a given program
@@ -252,9 +255,10 @@ checkCycles g = case mkDAG g of
 
 mkDepsProgram :: Ident i => Program i -> DepMonad (InterProgDeps i)
 mkDepsProgram p = do
-  nodeDeps <- mkDepsMapNodes (progConstantDefinitions p) (declsNode $ progDecls p)
+  let consts = progConstantDefinitions p
+  nodeDeps <- mkDepsMapNodes consts (declsNode $ progDecls p)
 
-  let vars = declsVarMap $ progDecls p
+  let vars = (declsVarMap $ progDecls p) `Map.union` (fmap (const Constant) consts)
   let (mes, (vs, progFlowDeps)) = G.run G.empty $ runReaderT (runErrorT $ mkDepsNodeParts (progFlow p) [] []) vars
   es <- mes
   dagProgDeps <- checkCycles progFlowDeps
@@ -271,10 +275,7 @@ mkDepsNode consts node = do
   return $ InterNodeDeps subDeps dagDeps vs es
 
 mkDepsMapNodes :: Ident i => Map i (Constant i) -> Map i (Node i) -> DepMonad (Map i (InterNodeDeps i))
-mkDepsMapNodes consts nodes = do
-  let (nNames, nDefs) = unzip $ Map.toAscList nodes
-  nodeDeps <- mapM (mkDepsNode consts) nDefs
-  return $ Map.fromAscList $ zip nNames nodeDeps
+mkDepsMapNodes consts = mapM (mkDepsNode consts)
 
 type DepGraphM i = ErrorT String (ReaderT (VarMap i) (NodeMapM (InterIdentCtx i) () Gr))
 
@@ -337,7 +338,7 @@ varUsage v = do
   vars <- lift ask
   case Map.lookup v vars of
     Just u -> return u
-    Nothing -> throwError $ "Unknown variable " ++ identPretty v
+    Nothing -> throwError $ "Unknown variable " ++ identPretty v ++ " in " ++ show vars
 
 insVar :: Ident i => InterIdentCtx i -> DepGraphM i ()
 insVar = void . insMapNodeM'
