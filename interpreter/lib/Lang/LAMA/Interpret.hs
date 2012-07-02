@@ -6,7 +6,6 @@ import Development.Placeholders
 
 import qualified Data.Map as Map
 import Data.Map (Map)
-import qualified Data.ByteString.Char8 as BS
 
 import Prelude hiding (lookup)
 
@@ -143,14 +142,14 @@ evalProg p d =
     return $ updateState s'' tr
 
 assign :: (IdentCtx PosIdent, ExprCtx PosIdent) -> EvalM (State, NodeEnv)
-assign (v, e) = case e of
+assign (to, e) = case e of
   NoExpr -> askState >>= return . (, emptyNodeEnv)
-  GlobalExpr inst -> assignInstant v inst
+  GlobalExpr inst -> assignInstant to inst
   LocalExpr autom refs -> do
     l <- takeEdge autom -- get next state
     inst <- lookupErr ("Unknown location " ++ identString l ++ " in expressions " ++ show refs) refs (identBS l)
     localState (\s -> s {stateActiveLocs = Map.alter (const $ Just l) autom (stateActiveLocs s)}) $
-      assignInstant v inst
+      assignInstant to inst
   where
     assignInstant v inst = do
       (r, nState') <- evalInstant inst
@@ -196,7 +195,7 @@ evalInstant i = case untyped i of
 evalExpr :: Expr -> EvalM ConstExpr
 evalExpr expr = case untyped expr of
   AtExpr a -> evalAtom a
-  LogNot e -> negate <$> evalExpr e
+  LogNot e -> mapBoolConst not <$> evalExpr e
   Expr2 o e1 e2 -> evalExpr e1 >>= \e1' -> evalExpr e2 >>= \e2' -> return $ evalBinOp o e1' e2'
   Ite c e1 e2 -> do
     c' <- evalExpr c
@@ -206,9 +205,6 @@ evalExpr expr = case untyped expr of
   Constr ctr -> $notImplemented
   Select _ _ -> $notImplemented
   Project x i -> $notImplemented
-  
-  where
-    negate = mapBoolConst not
 
 evalAtom :: GAtom PosIdent Constant Atom -> EvalM ConstExpr
 evalAtom (AtomConst c) = return $ preserveType Const c
@@ -265,20 +261,28 @@ liftOrd g c1 = either (mapIntPredicate . g) (mapRealPredicate . g) $ getNumConst
         f' (RealConst v) = BoolConst $ f v
         f' _ = error "not a real valued const"
 
-liftNum :: (forall a. Num a => a -> a -> a) -> ConstExpr -> ConstExpr -> ConstExpr
-liftNum g c1 = either (mapIntLikeConst . g) (mapRealConst . g) $ getNumConst c1
+mapIntegral :: (Integer -> Integer) -> ConstExpr -> ConstExpr
+mapIntegral f = mapConst f'
   where
-    mapIntLikeConst f = mapConst f'
-      where
-        f' (IntConst v) = IntConst $ f v
-        f' (SIntConst s v) = SIntConst s $ f v -- TODO: range check
-        f' (UIntConst s v) = UIntConst s $ fromInteger $ f (toInteger v) -- TODO: range check
-        f' _ = error "not an int valued const"
+    f' (IntConst v) = IntConst $ f v
+    f' (SIntConst s v) = SIntConst s $ f v -- TODO: range check
+    f' (UIntConst s v) = UIntConst s $ fromInteger $ f (toInteger v) -- TODO: range check
+    f' _ = error "not an int valued const"
 
-    mapRealConst f = mapConst f'
-      where
-        f' (RealConst v) = RealConst $ f v
-        f' _ = error "not a real valued const"
+mapFractional :: (Rational -> Rational) -> ConstExpr -> ConstExpr
+mapFractional f = mapConst f'
+  where
+    f' (RealConst v) = RealConst $ f v
+    f' _ = error "not a real valued const"
+
+liftNum :: (forall a. Num a => a -> a -> a) -> ConstExpr -> ConstExpr -> ConstExpr
+liftNum g c1 = either (mapIntegral . g) (mapFractional . g) $ getNumConst c1
+
+liftIntegral :: (forall a. Integral a => a -> a -> a) -> ConstExpr -> ConstExpr -> ConstExpr
+liftIntegral f c1 = either (mapIntegral . f) (error "not an int valued const") $ getNumConst c1
+
+liftFractional :: (forall a. Fractional a => a -> a -> a) -> ConstExpr -> ConstExpr -> ConstExpr
+liftFractional f c1 = either (error "not a real valued const") (mapFractional . f) $ getNumConst c1
 
 evalBinOp :: BinOp -> ConstExpr -> ConstExpr -> ConstExpr
 evalBinOp o = case o of
@@ -294,9 +298,9 @@ evalBinOp o = case o of
   Plus  -> liftNum (+)
   Minus  -> liftNum (-)
   Mul  -> liftNum (*)
-  RealDiv  -> $notImplemented
-  IntDiv  -> $notImplemented
-  Mod  -> $notImplemented
+  RealDiv  -> liftFractional (/)
+  IntDiv  -> liftIntegral (div)
+  Mod  -> liftIntegral (mod)
   where
     xor a b = not (a == b)
     implies a b = not a || b
