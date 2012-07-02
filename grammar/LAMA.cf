@@ -14,21 +14,16 @@ NoTypeDefs. TypeDefs ::= ;
 JustTypeDefs. TypeDefs  ::= "typedef" [TypeDef] ;
 terminator nonempty TypeDef ";" ;
 
-EnumDef. TypeDef   ::= EnumT ;
-RecordDef. TypeDef   ::= RecordT ;
+EnumDef. TypeDef   ::= "enum" Identifier "=" "{" [EnumConstr] "}" ;
 
 EnumConstr. EnumConstr ::= Identifier ;
 separator nonempty EnumConstr "," ;
-EnumT.      EnumT      ::= "enum" Identifier "=" "{" [EnumConstr] "}" ;
-
-RecordField. RecordField ::= Identifier ":" Type ;
-separator nonempty RecordField "," ;
-RecordT. RecordT    ::= "record" Identifier "=" "{" [RecordField] "}" ;
 
 ---- 
 GroundType. Type ::= BaseType ;
 TypeId. Type ::= Identifier ;
 ArrayType. Type ::= BaseType "^" Natural ;
+ProdType. Type ::= Type "*" Type ;
 
 BoolT. BaseType ::= "bool" ;
 IntT. BaseType ::= "int" ;
@@ -110,15 +105,10 @@ JustOutputs. Outputs    ::= "output" [InstantDefinition] ;
 
 terminator nonempty InstantDefinition ";" ;
 terminator nonempty Transition ";" ;
-InstantDef. InstantDefinition ::= Pattern "=" Instant ;
+InstantDef. InstantDefinition ::= Identifier "=" Instant ;
 InstantExpr. Instant ::= Expr ;
 NodeUsage. Instant ::= "(" "use" Identifier [Expr] ")" ;
 Transition. Transition ::= StateId "=" Expr ;
-
-SinglePattern. Pattern ::= Identifier ;
-ProductPattern. Pattern ::= "(" List2Id ")" ;
-Id2. List2Id ::= Identifier "," Identifier ;
-ConsId. List2Id ::= Identifier "," List2Id ;
 
 -----
 ControlStructure. ControlStructure ::= [Automaton] ;
@@ -141,10 +131,20 @@ AtExpr. Expr ::= Atom ;
 Expr1. Expr ::= "(" UnOp Expr ")" ;
 Expr2. Expr ::= "(" BinOp Expr Expr ")" ;
 Expr3. Expr ::= "(" TernOp Expr Expr Expr ")" ;
-Constr. Expr ::= "(" "constr" Identifier [Expr] ")" ;
+Prod. Expr ::= "(" "prod" [Expr] ")" ;
+Match. Expr ::= "(" "match" Expr "{" [Pattern] "}" ")" ;
+Array. Expr ::= "(" "array" [Expr] ")" ;
 Project. Expr ::= "(" "project" Identifier Natural ")" ;
-Select. Expr ::= "(" "select" Identifier Identifier ")" ;
+Update. Expr ::= "(" "update" Identifier Natural Expr ")" ;
 separator Expr "" ;
+-- TODO: [Expr] in prod and array should not be empty
+
+separator nonempty Pattern "," ;
+Pattern. Pattern ::= PatHead "." Expr ;
+EnumPat. PatHead ::= EnumConstr ;
+ProdPat. PatHead ::= "(" "prod" List2Id ")" ;
+Id2. List2Id ::= Identifier Identifier ;
+ConsId. List2Id ::= Identifier List2Id ;
 
 Not. UnOp ::= "not" ;
 
