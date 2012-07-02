@@ -82,15 +82,15 @@ Node. Node  ::= "node" Identifier "(" MaybeTypedVars ")" "returns" "(" [TypedVar
                 "tel" ;
 
 separator nonempty Node "" ;
-Declarations. Declarations ::= NodeDecls StateDecls LocalDecls ;
+Declarations. Declarations ::= NodeDecls LocalDecls StateDecls ;
 SingleDecl. VarDecls ::= TypedVars ";" ;
 ConsDecl. VarDecls ::= TypedVars ";" VarDecls ;
 NoNodes. NodeDecls     ::= ;
 JustNodeDecls. NodeDecls     ::= "nodes" [Node] ;
-NoStateDecls. StateDecls    ::= ;
-JustStateDecls. StateDecls    ::= "state" VarDecls ;
 NoLocals. LocalDecls    ::= ;
 JustLocalDecls. LocalDecls    ::= "local" VarDecls ;
+NoStateDecls. StateDecls    ::= ;
+JustStateDecls. StateDecls    ::= "state" VarDecls ;
 
 
 -----
