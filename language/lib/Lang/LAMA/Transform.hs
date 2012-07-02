@@ -1,14 +1,11 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 {- Translate generated data structures to internal structures
   while checking for undefined automaton locations and
   constant expressions. -}
-module Lang.LAMA.Transform (absToConc, transConstExpr) where
-
-import Development.Placeholders
+module Lang.LAMA.Transform (absToConc, trConstExpr) where
 
 import qualified Data.Map as Map
 import Data.Map (Map)
+import qualified Data.Set as Set
 import Data.Natural
 import Data.Ratio
 import qualified Data.ByteString.Char8 as BS
@@ -16,7 +13,8 @@ import Prelude hiding (foldl, concat, any)
 import Data.Foldable
 import Control.Applicative hiding (Const)
 import Control.Arrow (second)
-import Control.Monad.Error (throwError)
+import Control.Monad.Error (MonadError(..), ErrorT(..))
+import Control.Monad.Reader (MonadReader(..), Reader, runReader)
 import Control.Monad (when, liftM)
 
 import qualified Lang.LAMA.Parser.Abs as Abs
@@ -26,11 +24,36 @@ import Lang.LAMA.Types
 import Lang.LAMA.Structure.PosIdentUntyped
 
 -- | Monad for the transformation process
---    Carries possible errors
-type Result = Either String
+--    Carries possible errors, declared types and constants.
+data Env = Env { envEnums :: Set.Set EnumConstr, envConsts :: Map PosIdent Constant }
+
+emptyEnv :: Env
+emptyEnv = Env Set.empty Map.empty
+
+type Result = ErrorT String (Reader Env)
+
+askEnums :: Result (Set.Set EnumConstr)
+askEnums = reader envEnums
+
+localEnums :: Set.Set EnumConstr -> Result a -> Result a
+localEnums es = local (\env -> env { envEnums = es })
+
+askConsts :: Result (Map PosIdent Constant)
+askConsts = reader envConsts
+
+localConsts :: Map PosIdent Constant -> Result a -> Result a
+localConsts cs = local (\env -> env { envConsts = cs })
+
+mkEnumSet :: Map (TypeAlias PosIdent) EnumDef -> Set.Set EnumConstr
+mkEnumSet = foldl getEnumCons Set.empty
+  where
+    getEnumCons cs (EnumDef ctors) = cs `Set.union` (Set.fromList ctors)
 
 absToConc :: Abs.Program -> Either String Program
-absToConc = transProgram
+absToConc p = runReader (runErrorT $ transProgram p) emptyEnv
+
+trConstExpr :: Abs.ConstExpr -> Either String ConstExpr
+trConstExpr e = runReader (runErrorT $ transConstExpr e) emptyEnv
 
 -- | Create identifier from position information and name
 makeId :: ((Int, Int), BS.ByteString) -> PosIdent
@@ -57,56 +80,46 @@ transStateId x = case x of
 transProgram :: Abs.Program -> Result Program
 transProgram x = case x of
   Abs.Program typedefs constantdefs declarations flow initial assertion invariant -> do
-    Program <$>
-      (transTypeDefs typedefs) <*>
-      (transConstantDefs constantdefs) <*>
-      (transDeclarations declarations) <*>
-      (transFlow flow) <*>
-      (transInitial initial) <*>
-      (transAssertion assertion) <*>
-      (transInvariant invariant)
+    td <- transTypeDefs typedefs
+    cs <- transConstantDefs constantdefs
+    localEnums (mkEnumSet td) $ localConsts cs $
+      Program td cs <$>
+        (transDeclarations declarations) <*>
+        (transFlow flow) <*>
+        (transInitial initial) <*>
+        (transAssertion assertion) <*>
+        (transInvariant invariant)
 
-transTypeDefs :: Abs.TypeDefs -> Result (Map (TypeAlias PosIdent) TypeDef)
+transTypeDefs :: Abs.TypeDefs -> Result (Map (TypeAlias PosIdent) EnumDef)
 transTypeDefs x = case x of
   Abs.NoTypeDefs  -> return Map.empty
   Abs.JustTypeDefs typedefs  -> fmap Map.fromList $ mapM transTypeDef typedefs
 
-transTypeDef :: Abs.TypeDef -> Result (TypeAlias PosIdent, TypeDef)
+transTypeDef :: Abs.TypeDef -> Result (TypeAlias PosIdent, EnumDef)
 transTypeDef x = case x of
-  Abs.EnumDef enumt  -> fmap (second EnumDef) $ transEnumT enumt
-  Abs.RecordDef recordt  -> fmap (second RecordDef) $ transRecordT recordt
+  Abs.EnumDef identifier enumconstrs  ->
+    (second EnumDef) <$> ((,) <$> transIdentifier identifier <*> mapM transEnumConstr enumconstrs)
 
 
 transEnumConstr :: Abs.EnumConstr -> Result EnumConstr
 transEnumConstr x = case x of
-  Abs.EnumConstr identifier  -> transIdentifier identifier
+  Abs.EnumConstr identifier  -> EnumCons <$> transIdentifier identifier
 
 
-transEnumT :: Abs.EnumT -> Result (TypeAlias PosIdent, EnumT)
-transEnumT x = case x of
-  Abs.EnumT identifier enumconstrs  ->
-    (,) <$> (transIdentifier identifier) <*> (fmap EnumT $ mapM transEnumConstr enumconstrs)
-
-
-transRecordField :: Abs.RecordField -> Result (RecordField, Type PosIdent)
-transRecordField x = case x of
-  Abs.RecordField identifier t ->
-    (,) <$> (transIdentifier identifier) <*> (transType t)
-
-transRecordT :: Abs.RecordT -> Result (TypeAlias PosIdent, RecordT)
-transRecordT x = case x of
-  Abs.RecordT identifier recordfields  -> do
-    ident <- transIdentifier identifier
-    fields <- mapM transRecordField recordfields
-    return (ident, RecordT fields)
+transProdTypeList :: Abs.Type -> Abs.Type -> Result [Type PosIdent]
+transProdTypeList (Abs.ProdType t1 t2) (Abs.ProdType t3 t4) = (++) <$> transProdTypeList t1 t2 <*> transProdTypeList t3 t4
+transProdTypeList (Abs.ProdType t1 t2) t = (++) <$> transProdTypeList t1 t2 <*> ((:[]) <$> transType t)
+transProdTypeList t (Abs.ProdType t1 t2) = (++) <$> ((:[]) <$> transType t) <*> transProdTypeList t1 t2
+transProdTypeList t1 t2 = (\a b -> [a, b]) <$> transType t1 <*> transType t2
 
 
 transType :: Abs.Type -> Result (Type PosIdent)
 transType x = case x of
   Abs.GroundType basetype  -> fmap GroundType $ transBaseType basetype
-  Abs.TypeId identifier  -> fmap NamedType $ transIdentifier identifier
+  Abs.TypeId identifier  -> fmap EnumType $ transIdentifier identifier
   Abs.ArrayType basetype natural  ->
     ArrayType <$> (transBaseType basetype) <*> (transNatural natural)
+  Abs.ProdType t1 t2  -> ProdType <$> transProdTypeList t1 t2
 
 
 transBaseType :: Abs.BaseType -> Result BaseType
@@ -191,13 +204,19 @@ transStateInit x = case x of
 
 transConstExpr :: Abs.ConstExpr -> Result ConstExpr
 transConstExpr x = case x of
-  Abs.ConstExpr expr  -> transExpr expr >>= evalConst . unfix
+  Abs.ConstExpr expr  -> transExpr expr >>= evalConstM
   where
-    evalConst :: GExpr PosIdent Constant Atom Expr -> Result ConstExpr
-    evalConst (AtExpr (AtomConst c)) = return $ Fix $ Const c
-    evalConst (Constr (RecordConstr tid es)) = do
-      cExprs <- mapM (evalConst . unfix) es
-      return $ Fix $ ConstRecord $ RecordConstr tid cExprs
+    evalConstM = liftM Fix . evalConst . unfix
+
+    evalConst :: GExpr PosIdent Constant Atom Expr -> Result (GConstExpr PosIdent Constant ConstExpr)
+    evalConst (AtExpr (AtomConst c)) = return $ Const c
+    evalConst (AtExpr (AtomVar y)) = do
+      enums <- askEnums
+      if (EnumCons y) `Set.member` enums
+      then return $ ConstEnum (EnumCons y)
+        else throwError $ "Not a constant expression: " ++ show y
+    evalConst (ProdCons (Prod cs)) = ConstProd . Prod <$> mapM evalConstM cs
+    evalConst (ArrayCons (Array cs)) = ConstArray . Array <$> mapM evalConstM cs
     evalConst _ = throwError $ "Not a constant expression: " ++ Abs.printTree x
 
 
@@ -230,11 +249,11 @@ transNode x = case x of
 
 transDeclarations :: Abs.Declarations -> Result Declarations
 transDeclarations x = case x of
-  Abs.Declarations nodedecls statedecls localdecls ->
+  Abs.Declarations nodedecls localdecls statedecls ->
     Declarations <$>
       transNodeDecls nodedecls <*>
-      transStateDecls statedecls <*>
-      transLocalDecls localdecls
+      transLocalDecls localdecls <*>
+      transStateDecls statedecls
 
 transVarDecls :: Abs.VarDecls -> Result [Variable]
 transVarDecls x = case x of
@@ -290,7 +309,7 @@ transOutputs x = case x of
 
 transInstantDefinition :: Abs.InstantDefinition -> Result InstantDefinition
 transInstantDefinition x = case x of
-  Abs.InstantDef pattern instant  -> InstantDef <$> (transPattern pattern) <*> (transInstant instant)
+  Abs.InstantDef identifier instant  -> InstantDef <$> (transIdentifier identifier) <*> (transInstant instant)
 
 
 transInstant :: Abs.Instant -> Result Instant
@@ -304,20 +323,6 @@ transTransition :: Abs.Transition -> Result StateTransition
 transTransition x = case x of
   Abs.Transition stateid expr  ->
     StateTransition <$> (transStateId stateid) <*> (transExpr expr)
-
-
-transPattern :: Abs.Pattern -> Result Pattern
-transPattern x = case x of
-  Abs.SinglePattern identifier  -> (:[]) <$> (transIdentifier identifier)
-  Abs.ProductPattern list2id  -> transList2Id list2id
-
-transList2Id :: Abs.List2Id -> Result [PosIdent]
-transList2Id x = case x of
-  Abs.Id2 identifier0 identifier  -> do
-    ident1 <- transIdentifier identifier0
-    ident2 <- transIdentifier identifier
-    return [ident1, ident2]
-  Abs.ConsId identifier list2id  -> (:) <$> (transIdentifier identifier) <*> (transList2Id list2id)
 
 
 transControlStructure :: Abs.ControlStructure -> Result (Map Int Automaton)
@@ -366,7 +371,12 @@ transEdge locs x = case x of
 transAtom :: Abs.Atom -> Result Atom
 transAtom x = case x of
   Abs.AtomConst constant  -> Fix . AtomConst <$> transConstant constant
-  Abs.AtomVar identifier  -> Fix . AtomVar <$> transIdentifier identifier
+  Abs.AtomVar identifier  -> do
+    y <- transIdentifier identifier
+    cs <- askConsts
+    case Map.lookup y cs of
+      Nothing -> return $ Fix $ AtomVar y
+      Just c -> return $ Fix $ AtomConst c
 
 transExpr :: Abs.Expr -> Result Expr
 transExpr = fmap Fix . transExpr'
@@ -383,13 +393,37 @@ transExpr = fmap Fix . transExpr'
       Abs.Expr3 Abs.Ite expr0 expr1 expr  ->
         Ite <$> transExpr expr0 <*> transExpr expr1 <*> transExpr expr
 
-      Abs.Constr identifier exprs  ->
-        Constr <$> (RecordConstr <$> transIdentifier identifier <*> mapM transExpr exprs)
+      Abs.Prod exprs  -> ProdCons . Prod <$> mapM transExpr exprs
+
+      Abs.Match expr patterns  ->
+        Match <$> transExpr expr <*> mapM transPattern patterns
+
+      Abs.Array exprs  -> ArrayCons . Array <$> mapM transExpr exprs
 
       Abs.Project identifier natural  ->
         Project <$> transIdentifier identifier <*> transNatural natural
 
-      Abs.Select identifier0 identifier  -> $notImplemented
+      Abs.Update identifier natural expr  ->
+        Update <$> transIdentifier identifier <*> transNatural natural <*> transExpr expr
+
+
+transPattern :: Abs.Pattern -> Result Pattern
+transPattern x = case x of
+  Abs.Pattern pathead expr  -> Pattern <$> transPatHead pathead <*> transExpr expr
+
+
+transPatHead :: Abs.PatHead -> Result PatHead
+transPatHead x = case x of
+  Abs.EnumPat enumconstr  -> EnumPat <$> transEnumConstr enumconstr
+  Abs.ProdPat list2id  -> ProdPat <$> transList2Id list2id
+
+transList2Id :: Abs.List2Id -> Result [PosIdent]
+transList2Id x = case x of
+  Abs.Id2 identifier1 identifier2  -> do
+    ident1 <- transIdentifier identifier1
+    ident2 <- transIdentifier identifier2
+    return [ident1, ident2]
+  Abs.ConsId identifier list2id  -> (:) <$> (transIdentifier identifier) <*> (transList2Id list2id)
 
 
 transBinOp :: Abs.BinOp -> Result BinOp

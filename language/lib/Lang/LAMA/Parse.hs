@@ -34,7 +34,7 @@ parseLAMAConstExpr inp =
   let ts = lexer inp
   in case Par.pConstExpr ts of
     Bad s   -> Left $ ParseError s
-    Ok tree -> case transConstExpr tree of
+    Ok tree -> case trConstExpr tree of
         Left s -> Left $ StaticError s
         Right concTree -> case typecheckConstExpr concTree of
           Left s -> Left $ TypeError s

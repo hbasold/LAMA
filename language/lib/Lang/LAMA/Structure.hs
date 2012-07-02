@@ -2,11 +2,8 @@
 module Lang.LAMA.Structure (
   GProgram(..),
   -- * Type definitions
-  GTypeDef(..),
   -- ** Enums
-  GEnumConstr, GEnumT(..),
-  -- ** Records
-  GRecordField, GRecordT(..),
+  GEnumDef(..), GEnumConstr(..),
   -- * Constants
   GConst(..),
   -- * Nodes
@@ -14,7 +11,7 @@ module Lang.LAMA.Structure (
   -- * Data flow
   GFlow(..),
   -- ** Definition of local and output variables
-  GPattern, GInstantDefinition(..), GInstant(..),
+  GInstantDefinition(..), GInstant(..),
   -- ** Definition of state variables
   GStateTransition(..), GStateInit,
   -- * Automata
@@ -22,17 +19,19 @@ module Lang.LAMA.Structure (
   -- * Expressions
   -- ** Untyped expressions
   -- $untyped-doc
-  GAtom(..), GExpr(..), GConstExpr(..), BinOp(..), GRecordConstr(..), GTuple(..)
+  GProd(..), GArray(..), GPattern(..), GPatHead(..),
+  GAtom(..), GExpr(..), GConstExpr(..), BinOp(..)
 ) where
 
 import Data.Natural
 import Data.Map
 
 import Lang.LAMA.Identifier
+import Data.String (IsString(..))
 import Lang.LAMA.Types
 
 data GProgram i const expr cexpr inst = Program {
-    progTypeDefinitions     :: Map (TypeAlias i) (GTypeDef i),
+    progEnumDefinitions     :: Map (TypeAlias i) (GEnumDef i),
     progConstantDefinitions :: Map i const,
     progDecls               :: GDeclarations i expr cexpr inst,
     progFlow                :: GFlow i expr inst,
@@ -44,22 +43,17 @@ data GProgram i const expr cexpr inst = Program {
 
 ---- Type definitions -----
 
--- | Type definition
-data GTypeDef i
-  = EnumDef (GEnumT i)     -- ^ Enum definition
-  | RecordDef (GRecordT i) -- ^ Record definition
-  deriving (Eq, Show)
-
 -- | Naming of enum constructors
-type GEnumConstr i = i
--- | Enum definition: lists the names for the constructors
-data GEnumT i = EnumT [GEnumConstr i] deriving (Eq, Show)
+newtype GEnumConstr i = EnumCons { runEnumCons :: i } deriving (Eq, Ord, Show)
+instance Ident i => Ident (GEnumConstr i) where
+  identBS (EnumCons x) = identBS x
+  identPretty (EnumCons x) = identPretty x
 
--- | Naming of record fields
-type GRecordField i = i
--- | Record definition: consists of named fields and their types
-data GRecordT i = RecordT [(GRecordField i, Type i)] deriving (Eq, Show)
+instance IsString i => IsString (GEnumConstr i) where
+  fromString = EnumCons . fromString
 
+-- | Enum definition
+data GEnumDef i = EnumDef [GEnumConstr i] deriving (Eq, Show)
 
 ---- Constants -----
 -- | LAMA constants
@@ -94,8 +88,8 @@ varType (Variable _ t) = t
 
 data GDeclarations i expr cexpr inst = Declarations {
     declsNode   :: Map i (GNode i expr cexpr inst),
-    declsState  :: [GVariable i],
-    declsLocal  :: [GVariable i]
+    declsLocal  :: [GVariable i],
+    declsState  :: [GVariable i]
   } deriving (Eq, Show)
 
 ---- Data flow -----
@@ -105,8 +99,8 @@ data GFlow i expr inst = Flow {
     flowTransitions :: [GStateTransition i expr]
   } deriving (Eq, Show)
 
-type GPattern i = [i]
-data GInstantDefinition i inst = InstantDef (GPattern i) inst deriving (Eq, Show)
+
+data GInstantDefinition i inst = InstantDef i inst deriving (Eq, Show)
 data GInstant i expr f
   = InstantExpr (expr)
   | NodeUsage i [expr]     -- ^ Using a node
@@ -134,22 +128,29 @@ data GAutomaton i expr inst = Automaton {
 data GAtom i const f
   = AtomConst const  -- ^ Constant
   | AtomVar i  -- ^ Variable
+  | AtomEnum (GEnumConstr i) -- ^ Enum value
   deriving (Eq, Show)
 
--- | Construction of records: requires type and expression for each field
-data GRecordConstr i expr = RecordConstr (TypeAlias i) [expr] deriving (Eq, Show)
+data GProd expr = Prod [expr] deriving (Eq, Show)
+data GArray expr = Array [expr] deriving (Eq, Show)
 
-data GTuple i expr = Tuple [expr] deriving (Eq, Show)
+data GPattern i expr = Pattern (GPatHead i) expr deriving (Eq, Show)
+data GPatHead i
+  = EnumPat (GEnumConstr i)
+  | ProdPat [i]
+  deriving (Eq, Show)
 
 -- | Untyped LAMA expressions
 data GExpr i const atom f
   = AtExpr (GAtom i const atom)                    -- ^ Atomic expression (see GAtom)
-  | LogNot (f)                        -- ^ Logical negation
-  | Expr2 BinOp (f) (f)                 -- ^ Binary expression
-  | Ite (f) (f) (f)                       -- ^ If-then-else
-  | Constr (GRecordConstr i f)         -- ^ Record construtor
-  | Select i (GRecordField i)   -- ^ Record selection
+  | LogNot f                        -- ^ Logical negation
+  | Expr2 BinOp f f                 -- ^ Binary expression
+  | Ite f f f                       -- ^ If-then-else
+  | ProdCons (GProd f) -- ^ Product constructor
+  | Match f [GPattern i f] -- ^ Pattern match
+  | ArrayCons (GArray f) -- ^ Array constructor
   | Project i Natural      -- ^ Array projection
+  | Update i Natural f -- ^ Array update
   deriving (Eq, Show)
 
 -- | Binary operators
@@ -162,17 +163,18 @@ data BinOp
 -- | Untyped constant expressions
 data GConstExpr i const f
   = Const const                       -- ^ Simple constant
-  | ConstRecord (GRecordConstr i f)  -- ^ Record constructed from constant expressions
-  | ConstTuple (GTuple i f)
+  | ConstEnum (GEnumConstr i)
+  | ConstProd (GProd f) -- ^ Product constructed from constant expressions
+  | ConstArray (GArray f)  -- ^ Array constructed from constant expressions
   deriving (Eq, Show)
 
 
 ---- Instances -----
 
-instance Ident i => EqFunctor (GRecordConstr i) where
+instance EqFunctor GProd where
   eqF = (==)
 
-instance Ident i => EqFunctor (GTuple i) where
+instance EqFunctor GArray where
   eqF = (==)
 
 instance EqFunctor GConst where
@@ -191,10 +193,10 @@ instance (Ident i, Eq const, Eq atom) => EqFunctor (GExpr i const atom) where
   eqF = (==)
 
 
-instance Ident i => ShowFunctor (GRecordConstr i) where
+instance ShowFunctor GProd where
   showF = show
 
-instance Ident i => ShowFunctor (GTuple i) where
+instance ShowFunctor GArray where
   showF = show
 
 instance ShowFunctor GConst where

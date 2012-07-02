@@ -52,9 +52,11 @@ trIntegerConst v = if v < 0 then Abs.NegativeInt $ abs v else Abs.NonNegativeInt
 
 trType :: Ident i => Type i -> Abs.Type
 trType (GroundType bt) = Abs.GroundType $ trBaseType bt
-trType (NamedType x) = Abs.TypeId $ trIdent x
+trType (EnumType x) = Abs.TypeId $ trIdent x
 trType (ArrayType bt n) = Abs.ArrayType (trBaseType bt) (trNatural n)
-trType (Prod _) = undefined
+trType (ProdType [t1, t2]) = Abs.ProdType (trType t1) (trType t2)
+trType (ProdType (t:ts)) = Abs.ProdType (trType t) (trType $ ProdType ts)
+trType (ProdType _) = undefined
 
 trBaseType :: BaseType -> Abs.BaseType
 trBaseType BoolT = Abs.BoolT
@@ -68,20 +70,16 @@ trProgram (Program t c d f i a p) =
   Abs.Program (trTypeDefs t) (trConstantDefs c) (trDecls d)
               (trFlow f) (trInitial i) (trAssertion a) (trInvariant p)
 
-trTypeDefs :: Ident i => Map (TypeAlias i) (TypeDef i) -> Abs.TypeDefs
+trTypeDefs :: Ident i => Map (TypeAlias i) (EnumDef i) -> Abs.TypeDefs
 trTypeDefs tds
   | Map.null tds = Abs.NoTypeDefs
   | otherwise = Abs.JustTypeDefs $ map trTypeDef $ Map.toList tds
 
-trTypeDef :: Ident i => (TypeAlias i, TypeDef i) -> Abs.TypeDef
-trTypeDef (x, EnumDef (EnumT ctrs)) = Abs.EnumDef $ Abs.EnumT (trIdent x) (map trEnumConstr ctrs)
-trTypeDef (x, RecordDef (RecordT fs)) = Abs.RecordDef $ Abs.RecordT (trIdent x) (map trRecordField fs)
+trTypeDef :: Ident i => (TypeAlias i, EnumDef i) -> Abs.TypeDef
+trTypeDef (x, EnumDef ctrs) = Abs.EnumDef (trIdent x) (map trEnumConstr ctrs)
 
 trEnumConstr :: Ident i => EnumConstr i -> Abs.EnumConstr
 trEnumConstr = Abs.EnumConstr . trIdent
-
-trRecordField :: Ident i => (RecordField i, Type i) -> Abs.RecordField
-trRecordField (f, t) = Abs.RecordField (trIdent f) (trType t)
 
 trConstantDefs :: Ident i => Map i Constant -> Abs.ConstantDefs
 trConstantDefs = mapDefault Abs.NoConstantDefs (Abs.JustConstantDefs . map trConstantDef . Map.toList)
@@ -91,7 +89,7 @@ trConstantDef (x, c) = Abs.ConstantDef (trIdent x) (trConstant c)
 
 trDecls :: Ident i => Declarations i -> Abs.Declarations
 trDecls d = Abs.Declarations (trNodeDecls $ declsNode d)
-              (trStateDecls $ declsState d) (trLocalDecls $ declsLocal d)
+              (trLocalDecls $ declsLocal d) (trStateDecls $ declsState d)
 
 trNodeDecls :: Ident i => Map i (Node i) -> Abs.NodeDecls
 trNodeDecls = mapDefault Abs.NoNodes (Abs.JustNodeDecls . map trNode . Map.toList)
@@ -140,16 +138,7 @@ trOutputs :: Ident i => [InstantDefinition i] -> Abs.Outputs
 trOutputs = mapDefault Abs.NoOutputs (Abs.JustOutputs . map trInstantDefinition)
 
 trInstantDefinition :: Ident i => InstantDefinition i -> Abs.InstantDefinition
-trInstantDefinition (InstantDef pat inst) = Abs.InstantDef (trPattern pat) (trInstant inst)
-
-trPattern :: Ident i => Pattern i -> Abs.Pattern
-trPattern [x] = Abs.SinglePattern $ trIdent x
-trPattern xs = Abs.ProductPattern $ trList2Id xs
-
-trList2Id :: Ident i => [i] -> Abs.List2Id
-trList2Id [x,y] = Abs.Id2 (trIdent x) (trIdent y)
-trList2Id (x:(y:xs)) = Abs.ConsId (trIdent x) (trList2Id $ y:xs)
-trList2Id _ = undefined
+trInstantDefinition (InstantDef x inst) = Abs.InstantDef (trIdent x) (trInstant inst)
 
 trInstant :: Ident i => Instant i -> Abs.Instant
 trInstant (Fix (InstantExpr e)) = Abs.InstantExpr $ trExpr e
@@ -192,6 +181,18 @@ trConstant = trConstant' . unfix
     trConstant' (SIntConst s v) = Abs.SIntConst (trNatural $ s) (trIntegerConst v)
     trConstant' (UIntConst s v) = Abs.UIntConst (trNatural $ s) (trNatural v)
 
+trPattern :: Ident i => Pattern i -> Abs.Pattern
+trPattern (Pattern h e) = Abs.Pattern (trPatHead h) (trExpr e)
+
+trPatHead :: Ident i => PatHead i -> Abs.PatHead
+trPatHead (EnumPat x) = Abs.EnumPat (trEnumConstr x)
+trPatHead (ProdPat xs) = Abs.ProdPat (trList2Id xs)
+
+trList2Id :: Ident i => [i] -> Abs.List2Id
+trList2Id [x,y] = Abs.Id2 (trIdent x) (trIdent y)
+trList2Id (x:(y:xs)) = Abs.ConsId (trIdent x) (trList2Id $ y:xs)
+trList2Id _ = undefined
+
 trExpr :: Ident i => Expr i -> Abs.Expr
 trExpr = trExpr' . unfix
   where
@@ -200,13 +201,16 @@ trExpr = trExpr' . unfix
     trExpr' (LogNot e) = Abs.Expr1 Abs.Not (trExpr e)
     trExpr' (Expr2 o e1 e2) = Abs.Expr2 (trBinOp o) (trExpr e1) (trExpr e2)
     trExpr' (Ite c e1 e2) = Abs.Expr3 Abs.Ite (trExpr c) (trExpr e1) (trExpr e2)
-    trExpr' (Constr (RecordConstr t params)) = Abs.Constr (trIdent t) (map trExpr params)
-    trExpr' (Select x f) = Abs.Select (trIdent x) (trIdent f)
+    trExpr' (ProdCons (Prod es)) = Abs.Prod (map trExpr es)
+    trExpr' (Match e pats) = Abs.Match (trExpr e) (map trPattern pats)
+    trExpr' (ArrayCons (Array es)) = Abs.Array (map trExpr es)
     trExpr' (Project x i) = Abs.Project (trIdent x) (trNatural i)
+    trExpr' (Update x i e) = Abs.Update (trIdent x) (trNatural i) (trExpr e)
 
 trAtom :: Ident i => GAtom i Constant (Atom i) -> Abs.Atom
 trAtom (AtomConst c) = Abs.AtomConst $ trConstant c
 trAtom (AtomVar x) = Abs.AtomVar $ trIdent x
+trAtom (AtomEnum x) = Abs.AtomVar $ trIdent x
 
 trBinOp :: BinOp -> Abs.BinOp
 trBinOp x = case x of
@@ -230,5 +234,6 @@ trConstExpr :: Ident i => ConstExpr i -> Abs.ConstExpr
 trConstExpr = Abs.ConstExpr . trConstExpr' . unfix
   where
     trConstExpr' (Const c) = Abs.AtExpr $ Abs.AtomConst $ trConstant c
-    trConstExpr' (ConstRecord (RecordConstr t params)) = Abs.Constr (trIdent t) (map (trConstExpr' . unfix) params)
-    trConstExpr' (ConstTuple _) = undefined
+    trConstExpr' (ConstEnum x) = Abs.AtExpr $ Abs.AtomVar $ trIdent x
+    trConstExpr' (ConstProd (Prod cs)) = Abs.Prod $ map (trConstExpr' . unfix) cs
+    trConstExpr' (ConstArray (Array cs)) = Abs.Array $ map (trConstExpr' . unfix) cs

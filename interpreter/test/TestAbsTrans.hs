@@ -67,44 +67,36 @@ typesSrc :: BL.ByteString
 typesSrc = BL.pack $ unlines [
   "typedef",
   "  enum e = { e1, e2 };",
-  "  record r1 = { f1 : e };",
-  "  record r2 = { f2 : r1 };",
-  "nodes node main() returns (x : r2); let tel",
-  "local x : r2;",
+  "nodes node main() returns (x : e * int * real * int^5); let tel",
+  "local x : e * int * real * int^5;",
   "definition x = (use main);" ]
 
 expectedTypes :: Program PosIdent
 expectedTypes =
   Program {
-    progTypeDefinitions = fromList [
-      (e, EnumDef (EnumT [e1, e2])),
-      (r1, RecordDef (RecordT [(f1, NamedType e)])),
-      (r2, RecordDef (RecordT [(f2, NamedType r1)]))
+    progEnumDefinitions = fromList [
+      (e, EnumDef [e1, e2])
     ],
     progConstantDefinitions = fromList [],
     progDecls = Declarations {
       declsNode = Map.fromList [(ident "main", Node {
         nodeInputs = [],
-        nodeOutputs = [Variable x (NamedType r2)],
+        nodeOutputs = [Variable x (ProdType [EnumType e, intT, realT, ArrayType IntT 5])],
         nodeDecls = Declarations Map.empty [] [],
         nodeFlow = Flow {flowDefinitions = [], flowTransitions = []},
         nodeOutputDefs = [], nodeAutomata = Map.fromList [], nodeInitial = fromList []
       })],
       declsState = [],
-      declsLocal = [Variable x (NamedType r2)]
+      declsLocal = [Variable x (ProdType [EnumType e, intT, realT, ArrayType IntT 5])]
     },
-    progFlow = Flow [InstantDef [x] (mkTyped (NodeUsage main []) (NamedType r2))] [],
+    progFlow = Flow [InstantDef x (mkTyped (NodeUsage main []) (ProdType [EnumType e, intT, realT, ArrayType IntT 5]))] [],
     progAssertion = trueE, progInitial = fromList [], progInvariant = trueE
   }
   where
     main = ident "main"
     e = ident "e"
-    e1 = ident "e1"
-    e2 = ident "e2"
-    r1 = ident "r1"
-    r2 = ident "r2"
-    f1 = ident "f1"
-    f2 = ident "f2"
+    e1 = EnumCons $ ident "e1"
+    e2 = EnumCons $ ident "e2"
     x = ident "x"
 
 testTypes :: Test
@@ -124,7 +116,7 @@ constantsSrc = BL.pack $ unlines [
 expectedConstants :: Program PosIdent
 expectedConstants =
   Program {
-    progTypeDefinitions = fromList [],
+    progEnumDefinitions = fromList [],
     progConstantDefinitions = fromList [],
     progDecls = Declarations {
       declsNode = Map.fromList [(ident "main", Node {
@@ -136,8 +128,8 @@ expectedConstants =
         nodeDecls = Declarations Map.empty [] [],
         nodeFlow = Flow [] [],
         nodeOutputDefs = [
-          InstantDef [x] (preserveType InstantExpr $ constAtExpr $ mkTyped (SIntConst 32 (-5)) (GroundType (SInt 32))),
-          InstantDef [y] (preserveType InstantExpr $ constAtExpr $ mkTyped (UIntConst 16 1322) (GroundType (UInt 16)))
+          InstantDef x (preserveType InstantExpr $ constAtExpr $ mkTyped (SIntConst 32 (-5)) (GroundType (SInt 32))),
+          InstantDef y (preserveType InstantExpr $ constAtExpr $ mkTyped (UIntConst 16 1322) (GroundType (UInt 16)))
         ],
         nodeAutomata = Map.fromList [], nodeInitial = fromList []
       })],
@@ -161,10 +153,10 @@ switch = BL.pack $ unlines [
     "nodes",
     "node Switch(on, off: bool) returns (so: bool);",
     "let",
-    "  state",
-    "    s : bool;",
     "  local",
     "    s_ : bool;",
+    "  state",
+    "    s : bool;",
     "  definition",
     "    s_ = (ite s (not off) on);",
     "  transition",
@@ -179,7 +171,7 @@ switch = BL.pack $ unlines [
 expectedSwitch :: Program PosIdent
 expectedSwitch =
   Program {
-    progTypeDefinitions = fromList [],
+    progEnumDefinitions = fromList [],
     progConstantDefinitions = fromList [],
     progDecls = Declarations {
       declsNode = Map.fromList [(ident "Switch", Node {
@@ -192,7 +184,7 @@ expectedSwitch =
         },
         nodeFlow = Flow {
           flowDefinitions = [
-            InstantDef [s_] $ preserveType InstantExpr $ (
+            InstantDef s_ $ preserveType InstantExpr $ (
               ite (varExpr s boolT)
                   (notE (varExpr off boolT))
                   (varExpr on boolT)
@@ -200,7 +192,7 @@ expectedSwitch =
           ],
           flowTransitions = [StateTransition s (varExpr s_ boolT)]
         },
-        nodeOutputDefs = [InstantDef [so] $ preserveType InstantExpr $ (varExpr s_ boolT)],
+        nodeOutputDefs = [InstantDef so $ preserveType InstantExpr $ (varExpr s_ boolT)],
         nodeAutomata = Map.fromList [],
         nodeInitial = fromList [(s,(mkTyped (Const false) boolT))]
       })],
@@ -208,7 +200,7 @@ expectedSwitch =
       declsLocal = [Variable on boolT, Variable off boolT, Variable so boolT]
     },
     progFlow = Flow {
-      flowDefinitions = [InstantDef [so] (mkTyped (NodeUsage switchN [varExpr on boolT, varExpr off boolT]) boolT)],
+      flowDefinitions = [InstantDef so (mkTyped (NodeUsage switchN [varExpr on boolT, varExpr off boolT]) boolT)],
       flowTransitions = []
     },
     progAssertion = trueE, progInitial = fromList [], progInvariant = trueE
@@ -231,10 +223,10 @@ upDownCounter = BL.pack $ unlines [
   "nodes",
   "  node main () returns (xo : int);",
   "  let",
-  "    state",
-  "      x : int;",
   "    local",
   "      x_ : int;",
+  "    state",
+  "      x : int;",
   "    transition",
   "      x' = x_;",
   "    output",
@@ -263,7 +255,7 @@ upDownCounter = BL.pack $ unlines [
 expectedUpDownCounter :: Program PosIdent
 expectedUpDownCounter =
   Program {
-    progTypeDefinitions = fromList [], progConstantDefinitions = fromList [],
+    progEnumDefinitions = fromList [], progConstantDefinitions = fromList [],
     progDecls = Declarations {
       declsNode = Map.fromList [(ident "main", Node {
         nodeInputs = [],
@@ -277,15 +269,15 @@ expectedUpDownCounter =
           flowDefinitions = [],
           flowTransitions = [StateTransition x (varExpr x_ intT)]
         },
-        nodeOutputDefs = [InstantDef [xo] $ preserveType InstantExpr $ (varExpr x_ intT)],
+        nodeOutputDefs = [InstantDef xo $ preserveType InstantExpr $ (varExpr x_ intT)],
         nodeAutomata = Map.fromList [ (0, Automaton {
           automLocations = [
             Location sA (Flow {
-              flowDefinitions = [InstantDef [x_] $ preserveType InstantExpr $ (mkTyped (Expr2 Plus (varExpr x intT) (intE 1)) (GroundType IntT))],
+              flowDefinitions = [InstantDef x_ $ preserveType InstantExpr $ (mkTyped (Expr2 Plus (varExpr x intT) (intE 1)) (GroundType IntT))],
               flowTransitions = []
             }),
             Location sB (Flow {
-              flowDefinitions = [InstantDef [x_] $ preserveType InstantExpr $ (mkTyped (Expr2 Minus (varExpr x intT) (intE 1)) (GroundType IntT))],
+              flowDefinitions = [InstantDef x_ $ preserveType InstantExpr $ (mkTyped (Expr2 Minus (varExpr x intT) (intE 1)) (GroundType IntT))],
               flowTransitions = []
             })
           ],
@@ -303,7 +295,7 @@ expectedUpDownCounter =
       declsLocal = [Variable xo intT]      
     },
     progFlow = Flow {
-      flowDefinitions = [InstantDef [xo] (mkTyped (NodeUsage main []) intT)],
+      flowDefinitions = [InstantDef xo (mkTyped (NodeUsage main []) intT)],
       flowTransitions = []
     },
     progInitial = fromList [],

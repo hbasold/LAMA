@@ -20,7 +20,7 @@ $i = [$l $d _ ']          -- identifier character
 $u = [\0-\255]          -- universal: any character
 
 @rsyms =    -- symbols and non-identifier-like reserved words
-   \; | \, | \= | \{ | \} | \: | \^ | \[ | \] | \( | \- | \) | \/ | \= \> | \< | \> | \< \= | \> \= | \+ | \*
+   \; | \= | \{ | \} | \, | \^ | \* | \[ | \] | \( | \- | \) | \/ | \: | \. | \= \> | \< | \> | \< \= | \> \= | \+
 
 :-
 "--" [.]* ; -- Toss single line comments
@@ -90,7 +90,7 @@ eitherResIdent tv s = treeFind resWords
                               | s > a  = treeFind right
                               | s == a = t
 
-resWords = b "initial" 30 (b ">=" 15 (b ":" 8 (b "+" 4 (b ")" 2 (b "(" 1 N N) (b "*" 3 N N)) (b "-" 6 (b "," 5 N N) (b "/" 7 N N))) (b "=" 12 (b "<" 10 (b ";" 9 N N) (b "<=" 11 N N)) (b ">" 14 (b "=>" 13 N N) N))) (b "constants" 23 (b "and" 19 (b "]" 17 (b "[" 16 N N) (b "^" 18 N N)) (b "automaton" 21 (b "assertion" 20 N N) (b "bool" 22 N N))) (b "edge" 27 (b "definition" 25 (b "constr" 24 N N) (b "div" 26 N N)) (b "false" 29 (b "enum" 28 N N) N)))) (b "record" 45 (b "node" 38 (b "let" 34 (b "invariant" 32 (b "int" 31 N N) (b "ite" 33 N N)) (b "location" 36 (b "local" 35 N N) (b "mod" 37 N N))) (b "output" 42 (b "not" 40 (b "nodes" 39 N N) (b "or" 41 N N)) (b "real" 44 (b "project" 43 N N) N))) (b "true" 52 (b "state" 49 (b "select" 47 (b "returns" 46 N N) (b "sint" 48 N N)) (b "transition" 51 (b "tel" 50 N N) N)) (b "xor" 56 (b "uint" 54 (b "typedef" 53 N N) (b "use" 55 N N)) (b "}" 58 (b "{" 57 N N) N))))
+resWords = b "initial" 31 (b ">=" 16 (b "/" 8 (b "+" 4 (b ")" 2 (b "(" 1 N N) (b "*" 3 N N)) (b "-" 6 (b "," 5 N N) (b "." 7 N N))) (b "<=" 12 (b ";" 10 (b ":" 9 N N) (b "<" 11 N N)) (b "=>" 14 (b "=" 13 N N) (b ">" 15 N N)))) (b "bool" 24 (b "and" 20 (b "]" 18 (b "[" 17 N N) (b "^" 19 N N)) (b "assertion" 22 (b "array" 21 N N) (b "automaton" 23 N N))) (b "edge" 28 (b "definition" 26 (b "constants" 25 N N) (b "div" 27 N N)) (b "false" 30 (b "enum" 29 N N) N)))) (b "project" 46 (b "mod" 39 (b "let" 35 (b "invariant" 33 (b "int" 32 N N) (b "ite" 34 N N)) (b "location" 37 (b "local" 36 N N) (b "match" 38 N N))) (b "or" 43 (b "nodes" 41 (b "node" 40 N N) (b "not" 42 N N)) (b "prod" 45 (b "output" 44 N N) N))) (b "typedef" 54 (b "state" 50 (b "returns" 48 (b "real" 47 N N) (b "sint" 49 N N)) (b "transition" 52 (b "tel" 51 N N) (b "true" 53 N N))) (b "xor" 58 (b "update" 56 (b "uint" 55 N N) (b "use" 57 N N)) (b "}" 60 (b "{" 59 N N) N))))
    where b s n = let bs = BS.pack s
                   in B bs (TS bs n)
 

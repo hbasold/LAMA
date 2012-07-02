@@ -2,11 +2,8 @@ module Lang.LAMA.Structure.PosIdentTyped (
   module Lang.LAMA.Structure,
   Program,
   -- * Type definitions
-  TypeDef,
   -- ** Enums
-  EnumConstr, EnumT,
-  -- ** Records
-  RecordField, RecordT,
+  EnumDef, EnumConstr,
   -- * Constants
   Constant,
   -- * Nodes
@@ -15,12 +12,13 @@ module Lang.LAMA.Structure.PosIdentTyped (
   -- * Data flow
   Flow,
   -- ** Definition of local and output variables
-  Pattern, InstantDefinition, Instant,
+  InstantDefinition, Instant,
   -- ** Definition of state variables
   StateTransition, StateInit,
   -- * Automata
   LocationId, Location, Edge, Automaton,
   -- * Expressions
+  Prod, Array, Pattern, PatHead,
   Atom, Expr, ConstExpr,
   -- * Constructors
   boolConst, constAtExpr
@@ -48,11 +46,11 @@ type Location = S.Location PosIdent
 type Edge = S.Edge PosIdent
 type Automaton = S.Automaton PosIdent
 
-type TypeDef = GTypeDef PosIdent
-type EnumConstr = GEnumConstr PosIdent
-type EnumT = GEnumT PosIdent
-type RecordField = GRecordField PosIdent
-type RecordT = GRecordT PosIdent
-type Variable = GVariable PosIdent
-type Pattern = S.Pattern PosIdent
+type EnumDef = S.EnumDef PosIdent
+type EnumConstr = S.EnumConstr PosIdent
+type Variable = S.Variable PosIdent
 type LocationId = S.LocationId PosIdent
+type Prod = S.Prod PosIdent
+type Array = S.Array PosIdent
+type Pattern = S.Pattern PosIdent
+type PatHead = S.PatHead PosIdent

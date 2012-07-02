@@ -2,11 +2,8 @@ module Lang.LAMA.Structure.SimpIdentUntyped (
   module Lang.LAMA.Structure,
   Program,
   -- * Type definitions
-  TypeDef,
   -- ** Enums
-  EnumConstr, EnumT,
-  -- ** Records
-  RecordField, RecordT,
+  EnumDef, EnumConstr,
   -- * Constants
   Constant,
   -- * Nodes
@@ -15,12 +12,13 @@ module Lang.LAMA.Structure.SimpIdentUntyped (
   -- * Data flow
   Flow,
   -- ** Definition of local and output variables
-  Pattern, InstantDefinition, Instant,
+  InstantDefinition, Instant,
   -- ** Definition of state variables
   StateTransition, StateInit,
   -- * Automata
   LocationId, Location, Edge, Automaton,
   -- * Expressions
+  Prod, Array, Pattern, PatHead,
   Atom, Expr, ConstExpr,
   -- * Constructors
   boolConst, mkIntConst, mkRealConst, constAtExpr, mkAtomVar,
@@ -51,11 +49,11 @@ type Location = S.Location SimpIdent
 type Edge = S.Edge SimpIdent
 type Automaton = S.Automaton SimpIdent
 
-type TypeDef = S.TypeDef SimpIdent
+type EnumDef = S.EnumDef SimpIdent
 type EnumConstr = S.EnumConstr SimpIdent
-type EnumT = S.EnumT SimpIdent
-type RecordField = S.RecordField SimpIdent
-type RecordT = S.RecordT SimpIdent
 type Variable = S.Variable SimpIdent
-type Pattern = S.Pattern SimpIdent
 type LocationId = S.LocationId SimpIdent
+type Prod = S.Prod SimpIdent
+type Array = S.Array SimpIdent
+type Pattern = S.Pattern SimpIdent
+type PatHead = S.PatHead SimpIdent

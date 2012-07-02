@@ -15,8 +15,8 @@ import Data.Graph.Inductive.DAG
 import qualified Data.Graph.Inductive.Graph as G
 import qualified Data.Graph.Inductive.UnlabeledGraph as U
 import Data.Graph.Inductive.Graph (Context, ufold, insEdges, pre)
-import Data.Map as Map hiding (map, null, foldl)
-import Data.List (intercalate)
+import Data.Map as Map hiding (map, null, foldl, (\\))
+import Data.List (intercalate, (\\))
 import Data.Foldable (foldl, foldlM)
 import Data.Traversable (mapM)
 import qualified Data.ByteString.Char8 as BS
@@ -299,12 +299,12 @@ mkDepsFlow m (Flow d s) = do
 --    so that it maps to the rhs.
 --    The variables are being put in the requested mode.
 mkDepsInstant :: Ident i => Mode i -> InstantMap i -> InstantDefinition i -> DepGraphM i (InstantMap i)
-mkDepsInstant m boundExprs (InstantDef xs i) = do
-  us <- mapM varUsage xs
-  let xus = zipWith (, , m) xs us
+mkDepsInstant m boundExprs (InstantDef x i) = do
+  u <- varUsage x
+  let xu = (x, u, m)
   let ds = getDepsInstant $ untyped i
-  forM_ xus (insDeps ds)
-  return $ foldl (\boundExprs' xu -> Map.insert xu i boundExprs') boundExprs xus
+  void $ insDeps ds xu
+  return $ Map.insert xu i boundExprs
 
 mkDepsState :: Ident i => Mode i -> InstantMap i -> StateTransition i -> DepGraphM i (InstantMap i)
 mkDepsState m boundExprs (StateTransition x e) = do
@@ -376,16 +376,24 @@ insGlobLocDeps v@(x, u, _) = do
     insVar vG
     insDep vG v
 
-getDepsInstant :: GInstant i (Expr i) (Instant i) -> [i]
+getDepsInstant :: Ident i => GInstant i (Expr i) (Instant i) -> [i]
 getDepsInstant (InstantExpr e) = getDeps $ untyped e
 getDepsInstant (NodeUsage _ es) = concat $ map (getDeps . untyped) es
 
-getDeps :: GExpr i (Constant i) (Atom i) (Expr i) -> [i]
+getDepsPattern :: Ident i => Pattern i -> [i]
+getDepsPattern (Pattern h e) = (getDeps $ untyped e) \\ (getVarsHead h)
+  where
+    getVarsHead (EnumPat _) = []
+    getVarsHead (ProdPat xs) = xs
+
+getDeps :: Ident i => GExpr i (Constant i) (Atom i) (Expr i) -> [i]
 getDeps (AtExpr (AtomVar ident)) = [ident]
 getDeps (AtExpr _) = []
 getDeps (LogNot e) = getDeps $ untyped e
 getDeps (Expr2 _ e1 e2) = (getDeps $ untyped e1) ++ (getDeps $ untyped e2)
 getDeps (Ite c e1 e2) = (getDeps $ untyped c) ++ (getDeps $ untyped e1) ++ (getDeps $ untyped e2)
-getDeps (Constr (RecordConstr _ es)) = concat $ map (getDeps . untyped) es
-getDeps (Select x _) = [x]
+getDeps (ProdCons (Prod es)) = concat $ map (getDeps . untyped) es
+getDeps (Match e pats) = (getDeps $ untyped e) ++ (concat $ map getDepsPattern pats)
+getDeps (ArrayCons (Array es)) = concat $ map (getDeps . untyped) es
 getDeps (Project x _) = [x]
+getDeps (Update x _ e) = x : (getDeps $ untyped e)

@@ -104,8 +104,7 @@ instance Print TypeDefs where
 
 instance Print TypeDef where
   prt i e = case e of
-   EnumDef enumt -> prPrec i 0 (concatD [prt 0 enumt])
-   RecordDef recordt -> prPrec i 0 (concatD [prt 0 recordt])
+   EnumDef identifier enumconstrs -> prPrec i 0 (concatD [doc (showString "enum") , prt 0 identifier , doc (showString "=") , doc (showString "{") , prt 0 enumconstrs , doc (showString "}")])
 
   prtList es = case es of
    [x] -> (concatD [prt 0 x , doc (showString ";")])
@@ -119,29 +118,12 @@ instance Print EnumConstr where
    [x] -> (concatD [prt 0 x])
    x:xs -> (concatD [prt 0 x , doc (showString ",") , prt 0 xs])
 
-instance Print EnumT where
-  prt i e = case e of
-   EnumT identifier enumconstrs -> prPrec i 0 (concatD [doc (showString "enum") , prt 0 identifier , doc (showString "=") , doc (showString "{") , prt 0 enumconstrs , doc (showString "}")])
-
-
-instance Print RecordField where
-  prt i e = case e of
-   RecordField identifier type' -> prPrec i 0 (concatD [prt 0 identifier , doc (showString ":") , prt 0 type'])
-
-  prtList es = case es of
-   [x] -> (concatD [prt 0 x])
-   x:xs -> (concatD [prt 0 x , doc (showString ",") , prt 0 xs])
-
-instance Print RecordT where
-  prt i e = case e of
-   RecordT identifier recordfields -> prPrec i 0 (concatD [doc (showString "record") , prt 0 identifier , doc (showString "=") , doc (showString "{") , prt 0 recordfields , doc (showString "}")])
-
-
 instance Print Type where
   prt i e = case e of
    GroundType basetype -> prPrec i 0 (concatD [prt 0 basetype])
    TypeId identifier -> prPrec i 0 (concatD [prt 0 identifier])
    ArrayType basetype natural -> prPrec i 0 (concatD [prt 0 basetype , doc (showString "^") , prt 0 natural])
+   ProdType type'0 type' -> prPrec i 0 (concatD [prt 0 type'0 , doc (showString "*") , prt 0 type'])
 
 
 instance Print BaseType where
@@ -248,7 +230,7 @@ instance Print Node where
 
 instance Print Declarations where
   prt i e = case e of
-   Declarations nodedecls statedecls localdecls -> prPrec i 0 (concatD [prt 0 nodedecls , prt 0 statedecls , prt 0 localdecls])
+   Declarations nodedecls localdecls statedecls -> prPrec i 0 (concatD [prt 0 nodedecls , prt 0 localdecls , prt 0 statedecls])
 
 
 instance Print VarDecls where
@@ -263,16 +245,16 @@ instance Print NodeDecls where
    JustNodeDecls nodes -> prPrec i 0 (concatD [doc (showString "nodes") , prt 0 nodes])
 
 
-instance Print StateDecls where
-  prt i e = case e of
-   NoStateDecls  -> prPrec i 0 (concatD [])
-   JustStateDecls vardecls -> prPrec i 0 (concatD [doc (showString "state") , prt 0 vardecls])
-
-
 instance Print LocalDecls where
   prt i e = case e of
    NoLocals  -> prPrec i 0 (concatD [])
    JustLocalDecls vardecls -> prPrec i 0 (concatD [doc (showString "local") , prt 0 vardecls])
+
+
+instance Print StateDecls where
+  prt i e = case e of
+   NoStateDecls  -> prPrec i 0 (concatD [])
+   JustStateDecls vardecls -> prPrec i 0 (concatD [doc (showString "state") , prt 0 vardecls])
 
 
 instance Print Flow where
@@ -300,7 +282,7 @@ instance Print Outputs where
 
 instance Print InstantDefinition where
   prt i e = case e of
-   InstantDef pattern instant -> prPrec i 0 (concatD [prt 0 pattern , doc (showString "=") , prt 0 instant])
+   InstantDef identifier instant -> prPrec i 0 (concatD [prt 0 identifier , doc (showString "=") , prt 0 instant])
 
   prtList es = case es of
    [x] -> (concatD [prt 0 x , doc (showString ";")])
@@ -319,18 +301,6 @@ instance Print Transition where
   prtList es = case es of
    [x] -> (concatD [prt 0 x , doc (showString ";")])
    x:xs -> (concatD [prt 0 x , doc (showString ";") , prt 0 xs])
-
-instance Print Pattern where
-  prt i e = case e of
-   SinglePattern identifier -> prPrec i 0 (concatD [prt 0 identifier])
-   ProductPattern list2id -> prPrec i 0 (concatD [doc (showString "(") , prt 0 list2id , doc (showString ")")])
-
-
-instance Print List2Id where
-  prt i e = case e of
-   Id2 identifier0 identifier -> prPrec i 0 (concatD [prt 0 identifier0 , doc (showString ",") , prt 0 identifier])
-   ConsId identifier list2id -> prPrec i 0 (concatD [prt 0 identifier , doc (showString ",") , prt 0 list2id])
-
 
 instance Print ControlStructure where
   prt i e = case e of
@@ -378,13 +348,35 @@ instance Print Expr where
    Expr1 unop expr -> prPrec i 0 (concatD [doc (showString "(") , prt 0 unop , prt 0 expr , doc (showString ")")])
    Expr2 binop expr0 expr -> prPrec i 0 (concatD [doc (showString "(") , prt 0 binop , prt 0 expr0 , prt 0 expr , doc (showString ")")])
    Expr3 ternop expr0 expr1 expr -> prPrec i 0 (concatD [doc (showString "(") , prt 0 ternop , prt 0 expr0 , prt 0 expr1 , prt 0 expr , doc (showString ")")])
-   Constr identifier exprs -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "constr") , prt 0 identifier , prt 0 exprs , doc (showString ")")])
+   Prod exprs -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "prod") , prt 0 exprs , doc (showString ")")])
+   Match expr patterns -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "match") , prt 0 expr , doc (showString "{") , prt 0 patterns , doc (showString "}") , doc (showString ")")])
+   Array exprs -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "array") , prt 0 exprs , doc (showString ")")])
    Project identifier natural -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "project") , prt 0 identifier , prt 0 natural , doc (showString ")")])
-   Select identifier0 identifier -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "select") , prt 0 identifier0 , prt 0 identifier , doc (showString ")")])
+   Update identifier natural expr -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "update") , prt 0 identifier , prt 0 natural , prt 0 expr , doc (showString ")")])
 
   prtList es = case es of
    [] -> (concatD [])
    x:xs -> (concatD [prt 0 x , prt 0 xs])
+
+instance Print Pattern where
+  prt i e = case e of
+   Pattern pathead expr -> prPrec i 0 (concatD [prt 0 pathead , doc (showString ".") , prt 0 expr])
+
+  prtList es = case es of
+   [x] -> (concatD [prt 0 x])
+   x:xs -> (concatD [prt 0 x , doc (showString ",") , prt 0 xs])
+
+instance Print PatHead where
+  prt i e = case e of
+   EnumPat enumconstr -> prPrec i 0 (concatD [prt 0 enumconstr])
+   ProdPat list2id -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "prod") , prt 0 list2id , doc (showString ")")])
+
+
+instance Print List2Id where
+  prt i e = case e of
+   Id2 identifier0 identifier -> prPrec i 0 (concatD [prt 0 identifier0 , prt 0 identifier])
+   ConsId identifier list2id -> prPrec i 0 (concatD [prt 0 identifier , prt 0 list2id])
+
 
 instance Print UnOp where
   prt i e = case e of

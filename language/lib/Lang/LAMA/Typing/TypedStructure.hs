@@ -3,11 +3,8 @@ module Lang.LAMA.Typing.TypedStructure (
   module Lang.LAMA.Structure,
   Program,
   -- * Type definitions
-  TypeDef,
   -- ** Enums
-  EnumConstr, EnumT,
-  -- ** Records
-  RecordField, RecordT,
+  EnumDef, EnumConstr,
   -- * Constants
   Constant,
   -- * Nodes
@@ -16,14 +13,14 @@ module Lang.LAMA.Typing.TypedStructure (
   -- * Data flow
   Flow,
   -- ** Definition of local and output variables
-  Pattern, InstantDefinition, Instant,
+  InstantDefinition, Instant,
   -- ** Definition of state variables
   StateTransition, StateInit,
   -- * Automata
   LocationId, Location, Edge, Automaton,
   -- * Expressions
+  Prod, Array, Pattern, PatHead,
   Atom, Expr, ConstExpr,
-  -- * Constructors
   boolConst, constAtExpr
 ) where
 
@@ -54,14 +51,14 @@ type Location i = GLocation i (Expr i) (Instant i)
 type Edge i = GEdge i (Expr i)
 type Automaton i = GAutomaton i (Expr i) (Instant i)
 
-type TypeDef i = GTypeDef i
+type EnumDef i = GEnumDef i
 type EnumConstr i = GEnumConstr i
-type EnumT i = GEnumT i
-type RecordField i = GRecordField i
-type RecordT i = GRecordT i
 type Variable i = GVariable i
-type Pattern i = GPattern i
 type LocationId i = GLocationId i
+type Prod i = GProd (Expr i)
+type Array i = GArray (Expr i)
+type Pattern i = GPattern i (Expr i)
+type PatHead i = GPatHead i
 
 boolConst :: Bool -> Constant i
 boolConst c = mkTyped (BoolConst c) boolT

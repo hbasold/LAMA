@@ -1,11 +1,10 @@
-{-# LANGUAGE TemplateHaskell, TupleSections, FlexibleContexts, Rank2Types #-}
+{-# LANGUAGE TupleSections, FlexibleContexts, Rank2Types #-}
 
 module Lang.LAMA.Interpret where
 
-import Development.Placeholders
-
 import qualified Data.Map as Map
 import Data.Map (Map)
+import Data.List (genericIndex, genericSplitAt)
 
 import Prelude hiding (lookup)
 
@@ -16,7 +15,7 @@ import Control.Monad.Reader (MonadReader(..), Reader, runReader)
 import Control.Monad (liftM)
 import Data.Foldable (foldlM, find)
 import Control.Applicative ((<$>), (<*>))
-import Control.Arrow (second)
+import Control.Arrow (second, (***))
 
 import Text.PrettyPrint as PP
 
@@ -94,11 +93,11 @@ askState = reader envState
 localState :: MonadReader Environment m => (State -> State) -> m a -> m a
 localState f = local (\env -> env { envState = f $ envState env })
 
-update :: SimpIdent -> ConstExpr -> NodeEnv -> NodeEnv
-update x v = Map.alter (const (Just v)) x
+updateNodeEnv :: SimpIdent -> ConstExpr -> NodeEnv -> NodeEnv
+updateNodeEnv x v = Map.alter (const (Just v)) x
 
 updateM :: MonadReader Environment m => SimpIdent -> ConstExpr -> m NodeEnv
-updateM x v = askState >>= return . (update x v) . stateEnv
+updateM x v = askState >>= return . (updateNodeEnv x v) . stateEnv
 
 lookup :: (MonadReader Environment m, MonadError String m) => SimpIdent -> m ConstExpr
 lookup x = do
@@ -123,7 +122,7 @@ lookupErr err m k = case Map.lookup k m of
 
 addParams :: Node -> [ConstExpr] -> NodeEnv -> NodeEnv
 addParams (Node {nodeInputs = inp}) es env =
-  foldl (\env'' (x, c) -> update (dropPos $ varIdent x) c env'') env (zip inp es)
+  foldl (\env'' (x, c) -> updateNodeEnv (dropPos $ varIdent x) c env'') env (zip inp es)
 
 eval :: State -> Program -> ProgDeps PosIdent -> Either String State
 eval s p d = runReader (runErrorT $ evalProg p d) (emptyEnv{ envState = s})
@@ -194,7 +193,7 @@ evalInstant i = case untyped i of
 
 evalExpr :: Expr -> EvalM ConstExpr
 evalExpr expr = case untyped expr of
-  AtExpr a -> evalAtom a
+  AtExpr a -> evalAtom (getType expr) a
   LogNot e -> mapBoolConst not <$> evalExpr e
   Expr2 o e1 e2 -> evalExpr e1 >>= \e1' -> evalExpr e2 >>= \e2' -> return $ evalBinOp o e1' e2'
   Ite c e1 e2 -> do
@@ -202,13 +201,54 @@ evalExpr expr = case untyped expr of
     e1' <- evalExpr e1
     e2' <- evalExpr e2
     return $ if isTrue c' then e1' else e2'
-  Constr ctr -> $notImplemented
-  Select _ _ -> $notImplemented
-  Project x i -> $notImplemented
+  ProdCons (Prod es) -> do
+    es' <- mapM evalExpr es
+    return $ mkTyped (ConstProd $ Prod es') (getType expr)
+  Match e pats -> do
+    e' <- evalExpr e
+    match e' pats
+  ArrayCons (Array es) -> do
+    es' <- mapM evalExpr es
+    return $ mkTyped (ConstArray $ Array es') (getType expr)
+  Project x i -> do
+    a <- lookup (dropPos x)
+    case untyped a of
+      ConstArray (Array vs) -> return $ vs `genericIndex` i
+      _ -> throwError $ "Not an array: " ++ (render $ prettyConstExpr a)
+  Update x i e -> do
+    e' <- evalExpr e
+    a <- lookup (dropPos x)
+    case untyped a of
+      ConstArray (Array vs) ->
+        return $ mkTyped (ConstArray $ Array $ update i e' vs) (getType expr)
+      _ -> throwError $ "Not an array: " ++ (render $ prettyConstExpr a)
+  where
+    update i y = uncurry (++) . (id *** (y:) . tail) . genericSplitAt i
 
-evalAtom :: GAtom PosIdent Constant Atom -> EvalM ConstExpr
-evalAtom (AtomConst c) = return $ preserveType Const c
-evalAtom (AtomVar x) = lookup (dropPos x)
+match :: ConstExpr -> [Pattern] -> EvalM ConstExpr
+match c pats = do
+  r <- foldlM (match' c) Nothing pats
+  case r of
+    Nothing -> askState >>= \s -> throwError $ "Insufficient pattern: trying to match " ++ (render $ prettyConstExpr c) ++ " with " ++ show pats ++ " in env " ++ (render $ prettyState s)
+    Just c' -> return c'
+  where
+    match' :: ConstExpr -> Maybe ConstExpr -> Pattern -> EvalM (Maybe ConstExpr)
+    match' _ r@(Just _) _ = return r
+    match' v Nothing (Pattern (EnumPat x) e) = do
+      if (ConstEnum x) == (untyped v)
+      then liftM Just $ evalExpr e
+      else return Nothing
+    match' v Nothing (Pattern (ProdPat xs) e) = case (untyped v) of
+      (ConstProd (Prod vs)) ->
+        let patVars = Map.fromList $ zip (map dropPos xs) vs
+            addPatVars = localState (flip updateState patVars)
+        in liftM Just $ addPatVars (evalExpr e)
+      _ -> return Nothing
+
+evalAtom :: Type PosIdent -> GAtom PosIdent Constant Atom -> EvalM ConstExpr
+evalAtom _ (AtomConst c) = return $ preserveType Const c
+evalAtom _ (AtomVar x) = lookup (dropPos x)
+evalAtom t (AtomEnum x) = return $ mkTyped (ConstEnum x) t
 
 mapConst :: (GConst Constant -> GConst Constant) -> ConstExpr -> ConstExpr
 mapConst f = mapTyped f'
@@ -318,13 +358,13 @@ evalNode nDecl nDeps params =
     (s'', tr) <- localNodeDecls (const $ zipMaps nodes $ nodeDepsNodes nDeps) $
                   localAutomDecls (const $ nodeAutomata nDecl) $
                     foldlM updateAssign (s', emptyNodeEnv) defs
-    r <- localState (const s'') $ fmap mkTuple $ mapM (lookup . dropPos . varIdent) (nodeOutputs nDecl)
+    r <- localState (const s'') $ fmap mkProd $ mapM (lookup . dropPos . varIdent) (nodeOutputs nDecl)
     return (r, updateState s'' tr)
 
-mkTuple :: [ConstExpr] -> ConstExpr
-mkTuple [] = error "cannot build empty tuple"
-mkTuple [v] = v
-mkTuple vs =
+mkProd :: [ConstExpr] -> ConstExpr
+mkProd [] = error "cannot build empty tuple"
+mkProd [v] = v
+mkProd vs =
   let ts = map getType vs
       t = mkProductT ts
-  in mkTyped (ConstTuple $ Tuple vs) t
+  in mkTyped (ConstProd $ Prod vs) t

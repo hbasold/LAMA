@@ -22,58 +22,60 @@ import qualified Data.ByteString.Lazy.Char8 as BS
  '+' { PT _ (TS _ 4) }
  ',' { PT _ (TS _ 5) }
  '-' { PT _ (TS _ 6) }
- '/' { PT _ (TS _ 7) }
- ':' { PT _ (TS _ 8) }
- ';' { PT _ (TS _ 9) }
- '<' { PT _ (TS _ 10) }
- '<=' { PT _ (TS _ 11) }
- '=' { PT _ (TS _ 12) }
- '=>' { PT _ (TS _ 13) }
- '>' { PT _ (TS _ 14) }
- '>=' { PT _ (TS _ 15) }
- '[' { PT _ (TS _ 16) }
- ']' { PT _ (TS _ 17) }
- '^' { PT _ (TS _ 18) }
- 'and' { PT _ (TS _ 19) }
- 'assertion' { PT _ (TS _ 20) }
- 'automaton' { PT _ (TS _ 21) }
- 'bool' { PT _ (TS _ 22) }
- 'constants' { PT _ (TS _ 23) }
- 'constr' { PT _ (TS _ 24) }
- 'definition' { PT _ (TS _ 25) }
- 'div' { PT _ (TS _ 26) }
- 'edge' { PT _ (TS _ 27) }
- 'enum' { PT _ (TS _ 28) }
- 'false' { PT _ (TS _ 29) }
- 'initial' { PT _ (TS _ 30) }
- 'int' { PT _ (TS _ 31) }
- 'invariant' { PT _ (TS _ 32) }
- 'ite' { PT _ (TS _ 33) }
- 'let' { PT _ (TS _ 34) }
- 'local' { PT _ (TS _ 35) }
- 'location' { PT _ (TS _ 36) }
- 'mod' { PT _ (TS _ 37) }
- 'node' { PT _ (TS _ 38) }
- 'nodes' { PT _ (TS _ 39) }
- 'not' { PT _ (TS _ 40) }
- 'or' { PT _ (TS _ 41) }
- 'output' { PT _ (TS _ 42) }
- 'project' { PT _ (TS _ 43) }
- 'real' { PT _ (TS _ 44) }
- 'record' { PT _ (TS _ 45) }
- 'returns' { PT _ (TS _ 46) }
- 'select' { PT _ (TS _ 47) }
- 'sint' { PT _ (TS _ 48) }
- 'state' { PT _ (TS _ 49) }
- 'tel' { PT _ (TS _ 50) }
- 'transition' { PT _ (TS _ 51) }
- 'true' { PT _ (TS _ 52) }
- 'typedef' { PT _ (TS _ 53) }
- 'uint' { PT _ (TS _ 54) }
- 'use' { PT _ (TS _ 55) }
- 'xor' { PT _ (TS _ 56) }
- '{' { PT _ (TS _ 57) }
- '}' { PT _ (TS _ 58) }
+ '.' { PT _ (TS _ 7) }
+ '/' { PT _ (TS _ 8) }
+ ':' { PT _ (TS _ 9) }
+ ';' { PT _ (TS _ 10) }
+ '<' { PT _ (TS _ 11) }
+ '<=' { PT _ (TS _ 12) }
+ '=' { PT _ (TS _ 13) }
+ '=>' { PT _ (TS _ 14) }
+ '>' { PT _ (TS _ 15) }
+ '>=' { PT _ (TS _ 16) }
+ '[' { PT _ (TS _ 17) }
+ ']' { PT _ (TS _ 18) }
+ '^' { PT _ (TS _ 19) }
+ 'and' { PT _ (TS _ 20) }
+ 'array' { PT _ (TS _ 21) }
+ 'assertion' { PT _ (TS _ 22) }
+ 'automaton' { PT _ (TS _ 23) }
+ 'bool' { PT _ (TS _ 24) }
+ 'constants' { PT _ (TS _ 25) }
+ 'definition' { PT _ (TS _ 26) }
+ 'div' { PT _ (TS _ 27) }
+ 'edge' { PT _ (TS _ 28) }
+ 'enum' { PT _ (TS _ 29) }
+ 'false' { PT _ (TS _ 30) }
+ 'initial' { PT _ (TS _ 31) }
+ 'int' { PT _ (TS _ 32) }
+ 'invariant' { PT _ (TS _ 33) }
+ 'ite' { PT _ (TS _ 34) }
+ 'let' { PT _ (TS _ 35) }
+ 'local' { PT _ (TS _ 36) }
+ 'location' { PT _ (TS _ 37) }
+ 'match' { PT _ (TS _ 38) }
+ 'mod' { PT _ (TS _ 39) }
+ 'node' { PT _ (TS _ 40) }
+ 'nodes' { PT _ (TS _ 41) }
+ 'not' { PT _ (TS _ 42) }
+ 'or' { PT _ (TS _ 43) }
+ 'output' { PT _ (TS _ 44) }
+ 'prod' { PT _ (TS _ 45) }
+ 'project' { PT _ (TS _ 46) }
+ 'real' { PT _ (TS _ 47) }
+ 'returns' { PT _ (TS _ 48) }
+ 'sint' { PT _ (TS _ 49) }
+ 'state' { PT _ (TS _ 50) }
+ 'tel' { PT _ (TS _ 51) }
+ 'transition' { PT _ (TS _ 52) }
+ 'true' { PT _ (TS _ 53) }
+ 'typedef' { PT _ (TS _ 54) }
+ 'uint' { PT _ (TS _ 55) }
+ 'update' { PT _ (TS _ 56) }
+ 'use' { PT _ (TS _ 57) }
+ 'xor' { PT _ (TS _ 58) }
+ '{' { PT _ (TS _ 59) }
+ '}' { PT _ (TS _ 60) }
 
 L_integ  { PT _ (TI $$) }
 L_Identifier { PT _ (T_Identifier _) }
@@ -102,8 +104,7 @@ ListTypeDef : TypeDef ';' { (:[]) $1 }
 
 
 TypeDef :: { TypeDef }
-TypeDef : EnumT { EnumDef $1 } 
-  | RecordT { RecordDef $1 }
+TypeDef : 'enum' Identifier '=' '{' ListEnumConstr '}' { EnumDef $2 $5 } 
 
 
 EnumConstr :: { EnumConstr }
@@ -115,27 +116,11 @@ ListEnumConstr : EnumConstr { (:[]) $1 }
   | EnumConstr ',' ListEnumConstr { (:) $1 $3 }
 
 
-EnumT :: { EnumT }
-EnumT : 'enum' Identifier '=' '{' ListEnumConstr '}' { EnumT $2 $5 } 
-
-
-RecordField :: { RecordField }
-RecordField : Identifier ':' Type { RecordField $1 $3 } 
-
-
-ListRecordField :: { [RecordField] }
-ListRecordField : RecordField { (:[]) $1 } 
-  | RecordField ',' ListRecordField { (:) $1 $3 }
-
-
-RecordT :: { RecordT }
-RecordT : 'record' Identifier '=' '{' ListRecordField '}' { RecordT $2 $5 } 
-
-
 Type :: { Type }
 Type : BaseType { GroundType $1 } 
   | Identifier { TypeId $1 }
   | BaseType '^' Natural { ArrayType $1 $3 }
+  | Type '*' Type { ProdType $1 $3 }
 
 
 BaseType :: { BaseType }
@@ -239,7 +224,7 @@ ListNode : Node { (:[]) $1 }
 
 
 Declarations :: { Declarations }
-Declarations : NodeDecls StateDecls LocalDecls { Declarations $1 $2 $3 } 
+Declarations : NodeDecls LocalDecls StateDecls { Declarations $1 $2 $3 } 
 
 
 VarDecls :: { VarDecls }
@@ -252,14 +237,14 @@ NodeDecls : {- empty -} { NoNodes }
   | 'nodes' ListNode { JustNodeDecls $2 }
 
 
-StateDecls :: { StateDecls }
-StateDecls : {- empty -} { NoStateDecls } 
-  | 'state' VarDecls { JustStateDecls $2 }
-
-
 LocalDecls :: { LocalDecls }
 LocalDecls : {- empty -} { NoLocals } 
   | 'local' VarDecls { JustLocalDecls $2 }
+
+
+StateDecls :: { StateDecls }
+StateDecls : {- empty -} { NoStateDecls } 
+  | 'state' VarDecls { JustStateDecls $2 }
 
 
 Flow :: { Flow }
@@ -292,7 +277,7 @@ ListTransition : Transition ';' { (:[]) $1 }
 
 
 InstantDefinition :: { InstantDefinition }
-InstantDefinition : Pattern '=' Instant { InstantDef $1 $3 } 
+InstantDefinition : Identifier '=' Instant { InstantDef $1 $3 } 
 
 
 Instant :: { Instant }
@@ -302,16 +287,6 @@ Instant : Expr { InstantExpr $1 }
 
 Transition :: { Transition }
 Transition : StateId '=' Expr { Transition $1 $3 } 
-
-
-Pattern :: { Pattern }
-Pattern : Identifier { SinglePattern $1 } 
-  | '(' List2Id ')' { ProductPattern $2 }
-
-
-List2Id :: { List2Id }
-List2Id : Identifier ',' Identifier { Id2 $1 $3 } 
-  | Identifier ',' List2Id { ConsId $1 $3 }
 
 
 ControlStructure :: { ControlStructure }
@@ -359,14 +334,35 @@ Expr : Atom { AtExpr $1 }
   | '(' UnOp Expr ')' { Expr1 $2 $3 }
   | '(' BinOp Expr Expr ')' { Expr2 $2 $3 $4 }
   | '(' TernOp Expr Expr Expr ')' { Expr3 $2 $3 $4 $5 }
-  | '(' 'constr' Identifier ListExpr ')' { Constr $3 (reverse $4) }
+  | '(' 'prod' ListExpr ')' { Prod (reverse $3) }
+  | '(' 'match' Expr '{' ListPattern '}' ')' { Match $3 $5 }
+  | '(' 'array' ListExpr ')' { Array (reverse $3) }
   | '(' 'project' Identifier Natural ')' { Project $3 $4 }
-  | '(' 'select' Identifier Identifier ')' { Select $3 $4 }
+  | '(' 'update' Identifier Natural Expr ')' { Update $3 $4 $5 }
 
 
 ListExpr :: { [Expr] }
 ListExpr : {- empty -} { [] } 
   | ListExpr Expr { flip (:) $1 $2 }
+
+
+ListPattern :: { [Pattern] }
+ListPattern : Pattern { (:[]) $1 } 
+  | Pattern ',' ListPattern { (:) $1 $3 }
+
+
+Pattern :: { Pattern }
+Pattern : PatHead '.' Expr { Pattern $1 $3 } 
+
+
+PatHead :: { PatHead }
+PatHead : EnumConstr { EnumPat $1 } 
+  | '(' 'prod' List2Id ')' { ProdPat $3 }
+
+
+List2Id :: { List2Id }
+List2Id : Identifier Identifier { Id2 $1 $2 } 
+  | Identifier List2Id { ConsId $1 $2 }
 
 
 UnOp :: { UnOp }

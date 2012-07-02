@@ -25,9 +25,9 @@ type TypeAlias i = i
 -- | LAMA type expressions
 data Type i
   = GroundType BaseType   -- ^ Basic sorts
-  | NamedType (TypeAlias i)      -- ^ Named type (enum, record)
+  | EnumType (TypeAlias i)      -- ^ Named type (enum)
   | ArrayType BaseType Natural  -- ^ Array with fixed length of basic sort
-  | Prod [Type i]
+  | ProdType [Type i]
   deriving (Eq, Show)
 
 -- | Basic LAMA sorts
@@ -54,7 +54,7 @@ realT = GroundType RealT
 mkProductT :: [Type i] -> Type i
 mkProductT [] = error "emtpy type list"
 mkProductT [t] = t
-mkProductT ts = Prod ts
+mkProductT ts = ProdType ts
 
 
 ----- Structure typing ------

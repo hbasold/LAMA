@@ -8,12 +8,12 @@ import Lang.LAMA.Identifier
 
 prettyType :: Ident i => Type i -> Doc
 prettyType (GroundType t) = prettyBaseType t
-prettyType (NamedType x) = text $ identPretty x
+prettyType (EnumType x) = text $ identString x
 prettyType (ArrayType t n) = prettyBaseType t <> (brackets $ integer $ toInteger n)
-prettyType (Prod ts) = case ts of
+prettyType (ProdType ts) = case ts of
   [] -> text "1"
   [t] -> prettyType t
-  (t':ts') -> foldr (\t doc -> doc <> text " X " <> prettyType t) (prettyType t') ts'
+  (t':ts') -> foldr (\t doc -> doc <> text " * " <> prettyType t) (prettyType t') ts'
 
 prettyBaseType :: BaseType -> Doc
 prettyBaseType BoolT = text "bool"
@@ -31,10 +31,11 @@ prettyConstExpr :: Ident i => ConstExpr i -> Doc
 prettyConstExpr = prettyTyped prettyConstExpr'
   where
     prettyConstExpr' (Const c) = prettyConst c
-    prettyConstExpr' (ConstRecord (RecordConstr x v)) =
-      (ptext $ identString x) <> (braces $ hcat $ punctuate comma $ map prettyConstExpr v)
-    prettyConstExpr' (ConstTuple (Tuple v)) =
-      parens $ hcat $ punctuate comma $ map prettyConstExpr v
+    prettyConstExpr' (ConstEnum x) = text $ identString x
+    prettyConstExpr' (ConstProd (Prod vs)) =
+      parens $ hcat $ punctuate comma $ map prettyConstExpr vs
+    prettyConstExpr' (ConstArray (Array vs)) =
+      brackets $ hcat $ punctuate comma $ map prettyConstExpr vs
 
 prettyConst :: Constant i -> Doc
 prettyConst c = case untyped c of

@@ -15,30 +15,18 @@ data TypeDefs =
   deriving (Eq,Ord,Show)
 
 data TypeDef =
-   EnumDef EnumT
- | RecordDef RecordT
+   EnumDef Identifier [EnumConstr]
   deriving (Eq,Ord,Show)
 
 data EnumConstr =
    EnumConstr Identifier
   deriving (Eq,Ord,Show)
 
-data EnumT =
-   EnumT Identifier [EnumConstr]
-  deriving (Eq,Ord,Show)
-
-data RecordField =
-   RecordField Identifier Type
-  deriving (Eq,Ord,Show)
-
-data RecordT =
-   RecordT Identifier [RecordField]
-  deriving (Eq,Ord,Show)
-
 data Type =
    GroundType BaseType
  | TypeId Identifier
  | ArrayType BaseType Natural
+ | ProdType Type Type
   deriving (Eq,Ord,Show)
 
 data BaseType =
@@ -117,7 +105,7 @@ data Node =
   deriving (Eq,Ord,Show)
 
 data Declarations =
-   Declarations NodeDecls StateDecls LocalDecls
+   Declarations NodeDecls LocalDecls StateDecls
   deriving (Eq,Ord,Show)
 
 data VarDecls =
@@ -130,14 +118,14 @@ data NodeDecls =
  | JustNodeDecls [Node]
   deriving (Eq,Ord,Show)
 
-data StateDecls =
-   NoStateDecls
- | JustStateDecls VarDecls
-  deriving (Eq,Ord,Show)
-
 data LocalDecls =
    NoLocals
  | JustLocalDecls VarDecls
+  deriving (Eq,Ord,Show)
+
+data StateDecls =
+   NoStateDecls
+ | JustStateDecls VarDecls
   deriving (Eq,Ord,Show)
 
 data Flow =
@@ -160,7 +148,7 @@ data Outputs =
   deriving (Eq,Ord,Show)
 
 data InstantDefinition =
-   InstantDef Pattern Instant
+   InstantDef Identifier Instant
   deriving (Eq,Ord,Show)
 
 data Instant =
@@ -170,16 +158,6 @@ data Instant =
 
 data Transition =
    Transition StateId Expr
-  deriving (Eq,Ord,Show)
-
-data Pattern =
-   SinglePattern Identifier
- | ProductPattern List2Id
-  deriving (Eq,Ord,Show)
-
-data List2Id =
-   Id2 Identifier Identifier
- | ConsId Identifier List2Id
   deriving (Eq,Ord,Show)
 
 data ControlStructure =
@@ -212,9 +190,25 @@ data Expr =
  | Expr1 UnOp Expr
  | Expr2 BinOp Expr Expr
  | Expr3 TernOp Expr Expr Expr
- | Constr Identifier [Expr]
+ | Prod [Expr]
+ | Match Expr [Pattern]
+ | Array [Expr]
  | Project Identifier Natural
- | Select Identifier Identifier
+ | Update Identifier Natural Expr
+  deriving (Eq,Ord,Show)
+
+data Pattern =
+   Pattern PatHead Expr
+  deriving (Eq,Ord,Show)
+
+data PatHead =
+   EnumPat EnumConstr
+ | ProdPat List2Id
+  deriving (Eq,Ord,Show)
+
+data List2Id =
+   Id2 Identifier Identifier
+ | ConsId Identifier List2Id
   deriving (Eq,Ord,Show)
 
 data UnOp =
