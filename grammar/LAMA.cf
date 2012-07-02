@@ -2,6 +2,9 @@ position token Identifier (letter (letter | digit | '_')*) ;
 position token StateId (letter (letter | digit | '_')* '\'') ;
 comment "--" ;
 
+-- TODO: remove constants and require enums to be written as (enum x).
+-- This makes all environments superfluous.
+
 entrypoints Program, ConstExpr ;
 
 Program. Program  ::= TypeDefs ConstantDefs
