@@ -43,31 +43,31 @@ The set of reserved words is the set of terminals appearing in the grammar. Thos
 The reserved words used in LAMA are the following: \\
 
 \begin{tabular}{lll}
-{\reserved{and}} &{\reserved{assertion}} &{\reserved{automaton}} \\
-{\reserved{bool}} &{\reserved{constants}} &{\reserved{constr}} \\
+{\reserved{and}} &{\reserved{array}} &{\reserved{assertion}} \\
+{\reserved{automaton}} &{\reserved{bool}} &{\reserved{constants}} \\
 {\reserved{definition}} &{\reserved{div}} &{\reserved{edge}} \\
 {\reserved{enum}} &{\reserved{false}} &{\reserved{initial}} \\
 {\reserved{int}} &{\reserved{invariant}} &{\reserved{ite}} \\
 {\reserved{let}} &{\reserved{local}} &{\reserved{location}} \\
-{\reserved{mod}} &{\reserved{node}} &{\reserved{nodes}} \\
-{\reserved{not}} &{\reserved{or}} &{\reserved{output}} \\
-{\reserved{project}} &{\reserved{real}} &{\reserved{record}} \\
-{\reserved{returns}} &{\reserved{select}} &{\reserved{sint}} \\
+{\reserved{match}} &{\reserved{mod}} &{\reserved{node}} \\
+{\reserved{nodes}} &{\reserved{not}} &{\reserved{or}} \\
+{\reserved{output}} &{\reserved{prod}} &{\reserved{project}} \\
+{\reserved{real}} &{\reserved{returns}} &{\reserved{sint}} \\
 {\reserved{state}} &{\reserved{tel}} &{\reserved{transition}} \\
 {\reserved{true}} &{\reserved{typedef}} &{\reserved{uint}} \\
-{\reserved{use}} &{\reserved{xor}} & \\
+{\reserved{update}} &{\reserved{use}} &{\reserved{xor}} \\
 \end{tabular}\\
 
 The symbols used in LAMA are the following: \\
 
 \begin{tabular}{lll}
-{\symb{;}} &{\symb{,}} &{\symb{{$=$}}} \\
-{\symb{\{}} &{\symb{\}}} &{\symb{:}} \\
-{\symb{\^}} &{\symb{[}} &{\symb{]}} \\
+{\symb{;}} &{\symb{{$=$}}} &{\symb{\{}} \\
+{\symb{\}}} &{\symb{,}} &{\symb{\^}} \\
+{\symb{*}} &{\symb{[}} &{\symb{]}} \\
 {\symb{(}} &{\symb{{$-$}}} &{\symb{)}} \\
-{\symb{/}} &{\symb{{$=$}{$>$}}} &{\symb{{$<$}}} \\
-{\symb{{$>$}}} &{\symb{{$<$}{$=$}}} &{\symb{{$>$}{$=$}}} \\
-{\symb{{$+$}}} &{\symb{*}} & \\
+{\symb{/}} &{\symb{:}} &{\symb{.}} \\
+{\symb{{$=$}{$>$}}} &{\symb{{$<$}}} &{\symb{{$>$}}} \\
+{\symb{{$<$}{$=$}}} &{\symb{{$>$}{$=$}}} &{\symb{{$+$}}} \\
 \end{tabular}\\
 
 \subsection*{Comments}
@@ -96,8 +96,7 @@ All other symbols are terminals.\\
 \end{tabular}\\
 
 \begin{tabular}{lll}
-{\nonterminal{TypeDef}} & {\arrow}  &{\nonterminal{EnumT}}  \\
- & {\delimit}  &{\nonterminal{RecordT}}  \\
+{\nonterminal{TypeDef}} & {\arrow}  &{\terminal{enum}} {\nonterminal{Identifier}} {\terminal{{$=$}}} {\terminal{\{}} {\nonterminal{ListEnumConstr}} {\terminal{\}}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
@@ -110,26 +109,10 @@ All other symbols are terminals.\\
 \end{tabular}\\
 
 \begin{tabular}{lll}
-{\nonterminal{EnumT}} & {\arrow}  &{\terminal{enum}} {\nonterminal{Identifier}} {\terminal{{$=$}}} {\terminal{\{}} {\nonterminal{ListEnumConstr}} {\terminal{\}}}  \\
-\end{tabular}\\
-
-\begin{tabular}{lll}
-{\nonterminal{RecordField}} & {\arrow}  &{\nonterminal{Identifier}} {\terminal{:}} {\nonterminal{Type}}  \\
-\end{tabular}\\
-
-\begin{tabular}{lll}
-{\nonterminal{ListRecordField}} & {\arrow}  &{\nonterminal{RecordField}}  \\
- & {\delimit}  &{\nonterminal{RecordField}} {\terminal{,}} {\nonterminal{ListRecordField}}  \\
-\end{tabular}\\
-
-\begin{tabular}{lll}
-{\nonterminal{RecordT}} & {\arrow}  &{\terminal{record}} {\nonterminal{Identifier}} {\terminal{{$=$}}} {\terminal{\{}} {\nonterminal{ListRecordField}} {\terminal{\}}}  \\
-\end{tabular}\\
-
-\begin{tabular}{lll}
 {\nonterminal{Type}} & {\arrow}  &{\nonterminal{BaseType}}  \\
  & {\delimit}  &{\nonterminal{Identifier}}  \\
  & {\delimit}  &{\nonterminal{BaseType}} {\terminal{\^}} {\nonterminal{Natural}}  \\
+ & {\delimit}  &{\nonterminal{Type}} {\terminal{*}} {\nonterminal{Type}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
@@ -240,7 +223,7 @@ All other symbols are terminals.\\
 \end{tabular}\\
 
 \begin{tabular}{lll}
-{\nonterminal{Declarations}} & {\arrow}  &{\nonterminal{NodeDecls}} {\nonterminal{StateDecls}} {\nonterminal{LocalDecls}}  \\
+{\nonterminal{Declarations}} & {\arrow}  &{\nonterminal{NodeDecls}} {\nonterminal{LocalDecls}} {\nonterminal{StateDecls}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
@@ -254,13 +237,13 @@ All other symbols are terminals.\\
 \end{tabular}\\
 
 \begin{tabular}{lll}
-{\nonterminal{StateDecls}} & {\arrow}  &{\emptyP} \\
- & {\delimit}  &{\terminal{state}} {\nonterminal{VarDecls}}  \\
+{\nonterminal{LocalDecls}} & {\arrow}  &{\emptyP} \\
+ & {\delimit}  &{\terminal{local}} {\nonterminal{VarDecls}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
-{\nonterminal{LocalDecls}} & {\arrow}  &{\emptyP} \\
- & {\delimit}  &{\terminal{local}} {\nonterminal{VarDecls}}  \\
+{\nonterminal{StateDecls}} & {\arrow}  &{\emptyP} \\
+ & {\delimit}  &{\terminal{state}} {\nonterminal{VarDecls}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
@@ -293,7 +276,7 @@ All other symbols are terminals.\\
 \end{tabular}\\
 
 \begin{tabular}{lll}
-{\nonterminal{InstantDefinition}} & {\arrow}  &{\nonterminal{Pattern}} {\terminal{{$=$}}} {\nonterminal{Instant}}  \\
+{\nonterminal{InstantDefinition}} & {\arrow}  &{\nonterminal{Identifier}} {\terminal{{$=$}}} {\nonterminal{Instant}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
@@ -303,16 +286,6 @@ All other symbols are terminals.\\
 
 \begin{tabular}{lll}
 {\nonterminal{Transition}} & {\arrow}  &{\nonterminal{StateId}} {\terminal{{$=$}}} {\nonterminal{Expr}}  \\
-\end{tabular}\\
-
-\begin{tabular}{lll}
-{\nonterminal{Pattern}} & {\arrow}  &{\nonterminal{Identifier}}  \\
- & {\delimit}  &{\terminal{(}} {\nonterminal{List2Id}} {\terminal{)}}  \\
-\end{tabular}\\
-
-\begin{tabular}{lll}
-{\nonterminal{List2Id}} & {\arrow}  &{\nonterminal{Identifier}} {\terminal{,}} {\nonterminal{Identifier}}  \\
- & {\delimit}  &{\nonterminal{Identifier}} {\terminal{,}} {\nonterminal{List2Id}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
@@ -360,14 +333,35 @@ All other symbols are terminals.\\
  & {\delimit}  &{\terminal{(}} {\nonterminal{UnOp}} {\nonterminal{Expr}} {\terminal{)}}  \\
  & {\delimit}  &{\terminal{(}} {\nonterminal{BinOp}} {\nonterminal{Expr}} {\nonterminal{Expr}} {\terminal{)}}  \\
  & {\delimit}  &{\terminal{(}} {\nonterminal{TernOp}} {\nonterminal{Expr}} {\nonterminal{Expr}} {\nonterminal{Expr}} {\terminal{)}}  \\
- & {\delimit}  &{\terminal{(}} {\terminal{constr}} {\nonterminal{Identifier}} {\nonterminal{ListExpr}} {\terminal{)}}  \\
+ & {\delimit}  &{\terminal{(}} {\terminal{prod}} {\nonterminal{ListExpr}} {\terminal{)}}  \\
+ & {\delimit}  &{\terminal{(}} {\terminal{match}} {\nonterminal{Expr}} {\terminal{\{}} {\nonterminal{ListPattern}} {\terminal{\}}} {\terminal{)}}  \\
+ & {\delimit}  &{\terminal{(}} {\terminal{array}} {\nonterminal{ListExpr}} {\terminal{)}}  \\
  & {\delimit}  &{\terminal{(}} {\terminal{project}} {\nonterminal{Identifier}} {\nonterminal{Natural}} {\terminal{)}}  \\
- & {\delimit}  &{\terminal{(}} {\terminal{select}} {\nonterminal{Identifier}} {\nonterminal{Identifier}} {\terminal{)}}  \\
+ & {\delimit}  &{\terminal{(}} {\terminal{update}} {\nonterminal{Identifier}} {\nonterminal{Natural}} {\nonterminal{Expr}} {\terminal{)}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
 {\nonterminal{ListExpr}} & {\arrow}  &{\emptyP} \\
  & {\delimit}  &{\nonterminal{Expr}} {\nonterminal{ListExpr}}  \\
+\end{tabular}\\
+
+\begin{tabular}{lll}
+{\nonterminal{ListPattern}} & {\arrow}  &{\nonterminal{Pattern}}  \\
+ & {\delimit}  &{\nonterminal{Pattern}} {\terminal{,}} {\nonterminal{ListPattern}}  \\
+\end{tabular}\\
+
+\begin{tabular}{lll}
+{\nonterminal{Pattern}} & {\arrow}  &{\nonterminal{PatHead}} {\terminal{.}} {\nonterminal{Expr}}  \\
+\end{tabular}\\
+
+\begin{tabular}{lll}
+{\nonterminal{PatHead}} & {\arrow}  &{\nonterminal{EnumConstr}}  \\
+ & {\delimit}  &{\terminal{(}} {\terminal{prod}} {\nonterminal{List2Id}} {\terminal{)}}  \\
+\end{tabular}\\
+
+\begin{tabular}{lll}
+{\nonterminal{List2Id}} & {\arrow}  &{\nonterminal{Identifier}} {\nonterminal{Identifier}}  \\
+ & {\delimit}  &{\nonterminal{Identifier}} {\nonterminal{List2Id}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
