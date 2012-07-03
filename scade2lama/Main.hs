@@ -20,6 +20,7 @@ import qualified Lang.LAMA.Structure.SimpIdentUntyped as L
 data Options = Options
   { optInput :: FilePath
   , optOutput :: FilePath
+  , optTopNode :: String
   , optDebug :: Bool
   , optDumpScade :: Bool
   , optDumpLama :: Bool
@@ -30,6 +31,7 @@ defaultOptions :: Options
 defaultOptions = Options
   { optInput              = "-"
   , optOutput             = "-"
+  , optTopNode            = ""
   , optDebug              = False
   , optDumpScade          = False
   , optDumpLama           = False
@@ -59,7 +61,7 @@ options =
 
 interpreterOpts :: [String] -> IO Options
 interpreterOpts argv =
-  case getOpt (ReturnInOrder (\f opts -> opts {optInput = f})) options argv of
+  case getOpt (ReturnInOrder (\f opts -> opts {optTopNode = f})) options argv of
     (o,[],[]) ->
       let opts = foldl (flip id) defaultOptions o
       in return opts
@@ -68,7 +70,7 @@ interpreterOpts argv =
 
 usage :: String
 usage = usageInfo header options
-  where header = "Usage: scade2lama [OPTION...] file"
+  where header = "Usage: scade2lama [OPTION...] NODE"
 
 main :: IO ()
 main = do
@@ -93,7 +95,7 @@ run :: Options -> FilePath -> String -> MaybeT IO String
 run opts f inp = do
   s <- checkScadeError $ scade $ alexScanTokens inp
   liftIO $ when (optDumpScade opts) (putStrLn $ show s)
-  l <- checkTransformError $ transform s
+  l <- checkTransformError $ transform (optTopNode opts) s
   liftIO $ when (optDumpLama opts) (putStrLn $ show l)
   return $ prettyLama l
 

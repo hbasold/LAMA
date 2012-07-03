@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell, FlexibleContexts #-}
 
 module Transform (transform) where
 
@@ -34,30 +34,43 @@ updateVarName f (L.Variable (L.SimpIdent x) t) = L.Variable (L.SimpIdent $ f x) 
 type Type = L.Type L.SimpIdent
 type TypeAlias = L.TypeAlias L.SimpIdent
 
-data Decls = Decls { types :: Map TypeAlias (Either Type L.EnumDef), constants :: [S.ConstDecl], packages :: Map String [S.Declaration] }
+data Decls = Decls {
+  types :: Map TypeAlias (Either Type L.EnumDef),
+  nodes :: Map L.SimpIdent L.Node,
+  constants :: [S.ConstDecl],
+  packages :: Map String [S.Declaration] }
 emptyDecls :: Decls
-emptyDecls = Decls Map.empty [] Map.empty
+emptyDecls = Decls Map.empty Map.empty [] Map.empty
 
 type TransM = StateT Decls (Either String)
 
-lookupErr :: (MonadError e m, Ord k) => e -> Map k v -> k -> m v
-lookupErr err m k = case Map.lookup k m of
+lookupErr :: (MonadError e m, Ord k) => e -> k -> Map k v -> m v
+lookupErr err k m = case Map.lookup k m of
   Nothing -> throwError err
   Just v -> return v
 
-transform :: [S.Declaration] -> Either String L.Program
-transform ds =
+declareNode :: (MonadState Decls m) => L.SimpIdent -> L.Node -> m ()
+declareNode x n = modify (\d -> d { nodes = Map.insert x n $ nodes d })
+
+getNode :: (MonadState Decls m, MonadError String m) => L.SimpIdent -> m (L.SimpIdent, L.Node)
+getNode x = gets nodes >>= lookupErr ("Undeclared node " ++ L.identPretty x) x >>= \n -> return (x, n)
+
+transform :: String -> [S.Declaration] -> Either String L.Program
+transform topNode ds =
   let ds' = rewrite ds
-  in case runStateT (mapM trDeclaration ds') emptyDecls of
+      topNode' = fromString topNode
+  in case runStateT (mapM_ trDeclaration ds') emptyDecls of
     Left e -> Left e
-    Right (nodes, decls) ->
-      let nodesMap = Map.fromList $ catMaybes nodes
-          (flowLocals, flowStates, flowInit, topFlow) = mkTopFlow nodesMap
-      in Right $ L.Program
-        (mkEnumDefs $ types decls) (mkConstDefs $ constants decls)
-        (L.Declarations nodesMap flowStates flowLocals)
-        topFlow flowInit
-        (L.constAtExpr $ L.boolConst True) (L.constAtExpr $ L.boolConst True)
+    Right ((), decls) ->
+      case Map.lookup topNode' (nodes decls) of
+        Nothing -> throwError $ "Unknown node " ++ topNode
+        Just n ->
+          let (flowLocals, flowStates, flowInit, topFlow) = mkFreeFlow (topNode', n)
+          in Right $ L.Program
+             (mkEnumDefs $ types decls) (mkConstDefs $ constants decls)
+             (L.Declarations (Map.singleton topNode' n) flowLocals flowStates)
+             topFlow flowInit
+             (L.constAtExpr $ L.boolConst True) (L.constAtExpr $ L.boolConst True)
   where
     mkTopFlow :: Map L.SimpIdent L.Node -> ([L.Variable], [L.Variable], L.StateInit, L.Flow)
     mkTopFlow = mergeFlows . foldl (\fs n -> mkFreeFlow n : fs) [] . Map.toList
@@ -104,16 +117,16 @@ mkProdProject from xs x
     (L.Fix $ L.AtExpr $ L.AtomVar from)
     [L.Pattern (L.ProdPat xs) (L.Fix $ L.AtExpr $ L.AtomVar x)]
 
-trDeclaration :: S.Declaration -> TransM (Maybe (L.SimpIdent, L.Node))
+trDeclaration :: S.Declaration -> TransM ()
 trDeclaration (S.OpenDecl path) = $notImplemented
 trDeclaration (S.TypeBlock decls) =
   let tds = Map.fromList $ map trTypeDecl decls
-  in modify (\ds -> ds { types = types ds `Map.union` tds }) >> return Nothing
+  in modify (\ds -> ds { types = types ds `Map.union` tds })
 trDeclaration (S.PackageDecl vis name decls) = $notImplemented
-trDeclaration op@(S.UserOpDecl {}) = fmap Just $ trOpDecl op
+trDeclaration op@(S.UserOpDecl {}) = trOpDecl op
 trDeclaration (S.ConstBlock consts) = $notImplemented
 
-trOpDecl :: S.Declaration -> TransM (L.SimpIdent, L.Node)
+trOpDecl :: S.Declaration -> TransM ()
 trOpDecl (S.UserOpDecl {
             S.userOpKind = kind
             , S.userOpImported = isImported
@@ -125,7 +138,7 @@ trOpDecl (S.UserOpDecl {
             , S.userOpNumerics = numerics
             , S.userOpContent = content }) = do
   node <- mkNode (concat $ map trVarDecl params) (concat $ map trVarDecl returns) content
-  return (fromString name, node)
+  declareNode (fromString name) node
   where
     mkNode :: [L.Variable] -> [L.Variable] -> S.DataDef -> TransM L.Node
     mkNode inp outp (S.DataDef { S.dataSignals = sigs, S.dataLocals = locs, S.dataEquations = equations }) =
@@ -138,17 +151,23 @@ trOpDecl (S.UserOpDecl {
           outputDefs = foldr
                        (\(x, x') ds -> (L.InstantDef (L.varIdent x') $ L.mkInstantExpr $ L.mkAtomVar (L.varIdent x)) : ds )
                        [] $ zip outp outp'
-          subNodes = Map.empty
           automata = Map.empty
       in do
         ((definitions, transitions), stateInits) <- liftM ((partitionEithers *** concat) . unzip) $ mapM trEquation equations
+        let usedNodes = catMaybes $ map usedNode definitions
+        -- FIXME: respect multiple points of usages!??
+        subNodes <- Map.fromList <$> mapM getNode usedNodes
         let inits = Map.fromList stateInits
-        stateVars <- mapM (\x -> lookupErr ("Unknown variable " ++ show x) vars x) $ Map.keys inits
+        stateVars <- mapM (\x -> lookupErr ("Unknown variable " ++ show x) x vars) $ Map.keys inits
         let localVars = Map.elems vars \\ stateVars
         return $ L.Node inp outp'
-          (L.Declarations subNodes stateVars localVars)
+          (L.Declarations subNodes localVars stateVars)
           (L.Flow definitions transitions)
           outputDefs automata inits
+
+    usedNode (L.InstantDef _ (L.Fix (L.NodeUsage x _))) = Just x
+    usedNode _ = Nothing
+
 trOpDecl _ = undefined
 
 -- | Gives back either 
@@ -205,14 +224,20 @@ trTypeExpr (S.TypeEnum ctors) = $notImplemented -- [String]
 --    beforehand):
 --    A temporal expression must be of the form "e1 -> pre e2" where
 --    e1 and e2 are non-temporal expressions. The same must also
---    hold for the application of operators
+--    hold for the application of operators.
+--    Returns the instant which is a node application if needed.
+--    The second part is the initialisation of a temparol
+--    operator if one is given.
 trExpr :: S.Expr -> TransM (L.Instant, Maybe L.ConstExpr)
 trExpr expr = case expr of 
     S.FBYExpr _ _ _ -> undefined
     S.LastExpr x -> $notImplemented
     S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2)
       -> (L.mkInstantExpr *** Just) <$> ((,) <$> trExpr' e2 <*> trConstExpr e1)
-    S.ApplyExpr op es -> $notImplemented
+    S.ApplyExpr op es -> do
+      es' <- mapM trExpr' es
+      ap <- trOpApply op es'
+      return (ap, Nothing)
     normalExpr -> (L.mkInstantExpr &&& (const Nothing)) <$> trExpr' normalExpr
   where
     trExpr' :: S.Expr -> TransM L.Expr
@@ -238,6 +263,10 @@ trExpr expr = case expr of
     trExpr' (S.TransposeExpr e i1 i2) = $notImplemented
     trExpr' (S.TimesExpr e1 e2) = $notImplemented
     trExpr' _ = undefined -- s. trExpr
+
+trOpApply :: S.Operator -> [L.Expr] -> TransM L.Instant
+trOpApply (S.PrefixOp (S.PrefixPath (S.Path [x]))) es = return $ L.mkNodeUsage (fromString x) es
+trOpApply _ _ = $notImplemented
 
 trConstExpr :: S.Expr -> TransM L.ConstExpr
 trConstExpr (S.ConstIntExpr c) = L.mkConst <$> pure (L.mkIntConst c)
