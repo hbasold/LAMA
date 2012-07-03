@@ -34,7 +34,7 @@ updateVarName f (L.Variable (L.SimpIdent x) t) = L.Variable (L.SimpIdent $ f x) 
 type Type = L.Type L.SimpIdent
 type TypeAlias = L.TypeAlias L.SimpIdent
 
-data Decls = Decls { types :: Map TypeAlias (Either Type L.TypeDef), constants :: [S.ConstDecl], packages :: Map String [S.Declaration] }
+data Decls = Decls { types :: Map TypeAlias (Either Type L.EnumDef), constants :: [S.ConstDecl], packages :: Map String [S.Declaration] }
 emptyDecls :: Decls
 emptyDecls = Decls Map.empty [] Map.empty
 
@@ -54,7 +54,7 @@ transform ds =
       let nodesMap = Map.fromList $ catMaybes nodes
           (flowLocals, flowStates, flowInit, topFlow) = mkTopFlow nodesMap
       in Right $ L.Program
-        (mkTypeDefs $ types decls) (mkConstDefs $ constants decls)
+        (mkEnumDefs $ types decls) (mkConstDefs $ constants decls)
         (L.Declarations nodesMap flowStates flowLocals)
         topFlow flowInit
         (L.constAtExpr $ L.boolConst True) (L.constAtExpr $ L.boolConst True)
@@ -66,11 +66,17 @@ transform ds =
     mkFreeFlow (x, n) =
       let scopedInp = map (updateVarName $ BS.append (BS.snoc (L.identBS x) '_')) $ L.nodeInputs n
           scopedOutp = map (updateVarName $ BS.append (BS.snoc (L.identBS x) '_')) $ L.nodeOutputs n
-          locs = scopedInp ++ scopedOutp
+          scopedOutpIdent = map L.varIdent scopedOutp
+          outpVar = L.Variable
+                    (L.SimpIdent $ L.identBS x `BS.append` BS.pack "_result")
+                    (L.mkProductT $ map L.varType $ L.nodeOutputs n)
+          locs = scopedInp ++ scopedOutp ++ [outpVar]
+          projectExprs = map (L.Fix . L.InstantExpr . mkProdProject (L.varIdent outpVar) scopedOutpIdent) scopedOutpIdent
+          projects = map (uncurry L.InstantDef) $ zip scopedOutpIdent projectExprs
           sts = []
           stInit = Map.empty
           use = L.mkNodeUsage x $ map (L.mkAtomVar . L.varIdent) scopedInp
-          flow = L.Flow [L.InstantDef (map L.varIdent scopedOutp) use] []
+          flow = L.Flow ([L.InstantDef (L.varIdent outpVar) use] ++ projects) []
       in (locs, sts, stInit, flow)
     
     mergeFlows :: [([L.Variable], [L.Variable], L.StateInit, L.Flow)] -> ([L.Variable], [L.Variable], L.StateInit, L.Flow)
@@ -82,13 +88,21 @@ transform ds =
     mergeFlow :: L.Flow -> L.Flow -> L.Flow
     mergeFlow (L.Flow def tr) (L.Flow def' tr') = L.Flow (def' ++ def) (tr' ++ tr)
     
-    mkTypeDefs :: Map L.SimpIdent (Either Type L.TypeDef) -> Map TypeAlias L.TypeDef
-    mkTypeDefs = Map.fromAscList . foldr (\(x, t) tds -> either (const tds) (\td -> (x,td):tds) t) [] . Map.toAscList
+    mkEnumDefs :: Map L.SimpIdent (Either Type L.EnumDef) -> Map TypeAlias L.EnumDef
+    mkEnumDefs = Map.fromAscList . foldr (\(x, t) tds -> either (const tds) (\td -> (x,td):tds) t) [] . Map.toAscList
     
     mkConstDefs :: [S.ConstDecl] -> Map L.SimpIdent L.Constant
     mkConstDefs = Map.fromList . map trConstDecl
     
     rewrite = Unroll.rewrite . OpApp.rewrite . Temporal.rewrite . FlattenList.rewrite
+
+mkProdProject :: L.SimpIdent -> [L.SimpIdent] -> L.SimpIdent -> L.Expr
+mkProdProject _ [] _ = undefined
+mkProdProject from [_] _ = L.Fix $ L.AtExpr $ L.AtomVar from
+mkProdProject from xs x
+  = L.Fix $ L.Match
+    (L.Fix $ L.AtExpr $ L.AtomVar from)
+    [L.Pattern (L.ProdPat xs) (L.Fix $ L.AtExpr $ L.AtomVar x)]
 
 trDeclaration :: S.Declaration -> TransM (Maybe (L.SimpIdent, L.Node))
 trDeclaration (S.OpenDecl path) = $notImplemented
@@ -121,7 +135,9 @@ trOpDecl (S.UserOpDecl {
           -- create new output variables (x -> x_out) ...
           outp' = map (updateVarName $ flip BS.append $ BS.pack "_out") outp
           -- and assign the corresponding value to them (x_out = x)
-          outputDefs = foldr (\(x, x') ds -> (L.InstantDef [L.varIdent x'] $ L.mkInstantExpr $ L.mkAtomVar (L.varIdent x)) : ds ) [] $ zip outp outp'
+          outputDefs = foldr
+                       (\(x, x') ds -> (L.InstantDef (L.varIdent x') $ L.mkInstantExpr $ L.mkAtomVar (L.varIdent x)) : ds )
+                       [] $ zip outp outp'
           subNodes = Map.empty
           automata = Map.empty
       in do
@@ -141,7 +157,9 @@ trEquation (S.SimpleEquation lhsIds expr) = do
   let ids = map trLhsId lhsIds
   (inst, stateInit) <- trExpr expr
   case stateInit of
-    Nothing -> return (Left $ L.InstantDef ids inst, [])
+    Nothing -> case ids of
+      [x] -> return (Left $ L.InstantDef x inst, [])
+      _ -> $notImplemented
     Just init -> case ids of
       [x] -> case inst of
         (L.Fix (L.InstantExpr expr')) -> return (Right $ L.StateTransition x expr', [(x, init)])
@@ -158,7 +176,7 @@ trVarDecl (S.VarDecl xs ty defaultVal lastVal) =
       ty' = trTypeExpr ty
   in map (flip L.Variable ty') xs'
 
-trTypeDecl :: S.TypeDecl -> (TypeAlias, Either Type L.TypeDef)
+trTypeDecl :: S.TypeDecl -> (TypeAlias, Either Type L.EnumDef)
 trTypeDecl = $notImplemented
 
 trConstDecl :: S.ConstDecl -> (L.SimpIdent, L.Constant)
