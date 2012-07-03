@@ -22,6 +22,7 @@ data Options = Options
   , optOutput :: FilePath
   , optDebug :: Bool
   , optDumpScade :: Bool
+  , optDumpLama :: Bool
   , optShowHelp :: Bool
   }
 
@@ -31,12 +32,14 @@ defaultOptions = Options
   , optOutput             = "-"
   , optDebug              = False
   , optDumpScade          = False
+  , optDumpLama           = False
   , optShowHelp           = False
   }
 
 resolveDebug :: Maybe String -> Options -> Options
 resolveDebug Nothing opts = opts {optDebug = True}
 resolveDebug (Just "dump-scade") opts = opts {optDumpScade = True}
+resolveDebug (Just "dump-lama") opts = opts {optDumpLama = True}
 resolveDebug _ opts = opts
 
 options :: [OptDescr (Options -> Options)]
@@ -91,6 +94,7 @@ run opts f inp = do
   s <- checkScadeError $ scade $ alexScanTokens inp
   liftIO $ when (optDumpScade opts) (putStrLn $ show s)
   l <- checkTransformError $ transform s
+  liftIO $ when (optDumpLama opts) (putStrLn $ show l)
   return $ prettyLama l
 
 checkScadeError :: [Declaration] -> MaybeT IO [Declaration]
