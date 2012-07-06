@@ -1,0 +1,25 @@
+package SubNodes
+  node Count(x : bool; reset : bool)
+  returns (c : int)
+  let
+    c = if not reset
+      then (0 -> pre c) +
+        if x then 1 else 0
+      else 0;
+  tel
+
+  node Switch(on, off : bool)
+  returns (s : bool)
+  let
+    s = if false -> pre s then not off else on;
+  tel
+end;
+
+node User(on : bool; off : bool)
+returns (c : int)
+var
+  s : bool;
+let
+  c = SubNodes::Count(s, false);
+  s = SubNodes::Switch(on, off);
+tel

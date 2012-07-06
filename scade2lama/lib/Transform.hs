@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TemplateHaskell, FlexibleContexts #-}
 
 module Transform (transform) where
@@ -10,6 +11,8 @@ import Data.Maybe (catMaybes)
 import Data.String (fromString)
 import Data.Either (partitionEithers, either)
 import Data.List ((\\))
+import qualified  Data.Set as Set
+import Data.Set (Set)
 import qualified Data.ByteString.Char8 as BS
 import Data.Ratio
 
@@ -17,6 +20,8 @@ import Control.Monad.State
 import Control.Monad.Error (MonadError(..))
 import Control.Arrow ((***), (&&&))
 import Control.Applicative (Applicative(..), (<$>))
+import Control.Monad.Reader
+import Control.Monad.Writer
 
 import qualified Language.Scade.Syntax as S
 import qualified Lang.LAMA.Structure.SimpIdentUntyped as L
@@ -35,14 +40,19 @@ type Type = L.Type L.SimpIdent
 type TypeAlias = L.TypeAlias L.SimpIdent
 
 data Decls = Decls {
-  types :: Map TypeAlias (Either Type L.EnumDef),
-  nodes :: Map L.SimpIdent L.Node,
-  constants :: [S.ConstDecl],
-  packages :: Map String [S.Declaration] }
+     types :: Map TypeAlias (Either Type L.EnumDef),
+     nodes :: Map L.SimpIdent L.Node, -- ^ Maps an identifier to the declared nodes in the current package
+     packages :: Map L.SimpIdent Decls,
+     constants :: [S.ConstDecl]
+  }
 emptyDecls :: Decls
-emptyDecls = Decls Map.empty Map.empty [] Map.empty
+emptyDecls = Decls Map.empty Map.empty Map.empty []
 
 type TransM = StateT Decls (Either String)
+type TransReader = ReaderT Decls (Either String) -- ^ We use this type to force only reading
+
+asReader :: (Monad m, MonadTrans t, MonadState s (t m)) => ReaderT s m a -> t m a
+asReader m = get >>= lift . runReaderT m
 
 lookupErr :: (MonadError e m, Ord k) => e -> k -> Map k v -> m v
 lookupErr err k m = case Map.lookup k m of
@@ -52,8 +62,33 @@ lookupErr err k m = case Map.lookup k m of
 declareNode :: (MonadState Decls m) => L.SimpIdent -> L.Node -> m ()
 declareNode x n = modify (\d -> d { nodes = Map.insert x n $ nodes d })
 
-getNode :: (MonadState Decls m, MonadError String m) => L.SimpIdent -> m (L.SimpIdent, L.Node)
-getNode x = gets nodes >>= lookupErr ("Undeclared node " ++ L.identPretty x) x >>= \n -> return (x, n)
+declarePackage :: (MonadState Decls m) => L.SimpIdent -> Decls -> m ()
+declarePackage x p = modify (\d -> d { packages = Map.insert x p $ packages d })
+
+addReqNode :: (MonadState Decls m) => L.SimpIdent -> S.Path -> m ()
+addReqNode = undefined
+
+-- | Finds the package in which something is declared.
+-- Returns the base name of it and the corresponding package
+findPackage :: (MonadReader Decls m, MonadError String m) => S.Path -> m (L.SimpIdent, Decls)
+findPackage (S.Path p) = findPackage' p
+  where
+    findPackage' [] = throwError $ "Invalid path: empty path"
+    findPackage' [x] = ask >>= return . (fromString x,)
+    findPackage' (x:xs) = do
+      ds <- reader packages
+      case Map.lookup (fromString x) ds of
+        Nothing -> throwError $ "Unknown package " ++ x
+        Just ds' -> local (const ds') $ findPackage' xs
+
+getNode :: S.Path -> TransReader (L.SimpIdent, L.Node)
+getNode x = do
+            (x', ds) <- findPackage x
+            n <- lookupErr ("Unknown node " ++ L.identPretty x') x' (nodes ds)
+            return (x', n)
+
+resolveNodeName :: S.Path -> TransReader L.SimpIdent
+resolveNodeName = liftM fst . findPackage
 
 transform :: String -> [S.Declaration] -> Either String L.Program
 transform topNode ds =
@@ -122,7 +157,10 @@ trDeclaration (S.OpenDecl path) = $notImplemented
 trDeclaration (S.TypeBlock decls) =
   let tds = Map.fromList $ map trTypeDecl decls
   in modify (\ds -> ds { types = types ds `Map.union` tds })
-trDeclaration (S.PackageDecl vis name decls) = $notImplemented
+trDeclaration (S.PackageDecl vis name decls) =
+  case runStateT (mapM_ trDeclaration decls) emptyDecls of
+    Left e -> throwError e
+    Right ((), ds) -> declarePackage (fromString name) ds
 trDeclaration op@(S.UserOpDecl {}) = trOpDecl op
 trDeclaration (S.ConstBlock consts) = $notImplemented
 
@@ -153,10 +191,11 @@ trOpDecl (S.UserOpDecl {
                        [] $ zip outp outp'
           automata = Map.empty
       in do
-        ((definitions, transitions), stateInits) <- liftM ((partitionEithers *** concat) . unzip) $ mapM trEquation equations
-        let usedNodes = catMaybes $ map usedNode definitions
+        (((definitions, transitions), stateInits), usedNodes) <-
+          runWriterT $
+            liftM ((partitionEithers *** concat) . unzip) $ mapM trEquation equations
         -- FIXME: respect multiple points of usages!??
-        subNodes <- Map.fromList <$> mapM getNode usedNodes
+        subNodes <- Map.fromList <$> mapM (asReader . getNode) (Set.toList usedNodes)
         let inits = Map.fromList stateInits
         stateVars <- mapM (\x -> lookupErr ("Unknown variable " ++ show x) x vars) $ Map.keys inits
         let localVars = Map.elems vars \\ stateVars
@@ -170,8 +209,14 @@ trOpDecl (S.UserOpDecl {
 
 trOpDecl _ = undefined
 
+-- | Extends TransM by a writer which tracks used nodes
+type TrackUsedNodes = WriterT (Set S.Path) TransM
+
+tellNode :: MonadWriter (Set S.Path) m => S.Path -> m ()
+tellNode = tell . Set.singleton
+
 -- | Gives back either 
-trEquation :: S.Equation -> TransM (Either L.InstantDefinition L.StateTransition, [(L.SimpIdent, L.ConstExpr)])
+trEquation :: S.Equation -> TrackUsedNodes (Either L.InstantDefinition L.StateTransition, [(L.SimpIdent, L.ConstExpr)])
 trEquation (S.SimpleEquation lhsIds expr) = do
   let ids = map trLhsId lhsIds
   (inst, stateInit) <- trExpr expr
@@ -228,19 +273,19 @@ trTypeExpr (S.TypeEnum ctors) = $notImplemented -- [String]
 --    Returns the instant which is a node application if needed.
 --    The second part is the initialisation of a temparol
 --    operator if one is given.
-trExpr :: S.Expr -> TransM (L.Instant, Maybe L.ConstExpr)
+trExpr :: S.Expr -> TrackUsedNodes (L.Instant, Maybe L.ConstExpr)
 trExpr expr = case expr of 
     S.FBYExpr _ _ _ -> undefined
     S.LastExpr x -> $notImplemented
     S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2)
-      -> (L.mkInstantExpr *** Just) <$> ((,) <$> trExpr' e2 <*> trConstExpr e1)
+      -> (L.mkInstantExpr *** Just) <$> ((,) <$> trExpr' e2 <*> lift (trConstExpr e1))
     S.ApplyExpr op es -> do
       es' <- mapM trExpr' es
       ap <- trOpApply op es'
       return (ap, Nothing)
     normalExpr -> (L.mkInstantExpr &&& (const Nothing)) <$> trExpr' normalExpr
   where
-    trExpr' :: S.Expr -> TransM L.Expr
+    trExpr' :: S.Expr -> TrackUsedNodes L.Expr
     trExpr' (S.IdExpr (S.Path [x])) = pure $ L.mkAtomVar (fromString x)
     trExpr' (S.IdExpr path) = $notImplemented
     trExpr' (S.NameExpr name) = $notImplemented
@@ -264,8 +309,9 @@ trExpr expr = case expr of
     trExpr' (S.TimesExpr e1 e2) = $notImplemented
     trExpr' _ = undefined -- s. trExpr
 
-trOpApply :: S.Operator -> [L.Expr] -> TransM L.Instant
-trOpApply (S.PrefixOp (S.PrefixPath (S.Path [x]))) es = return $ L.mkNodeUsage (fromString x) es
+trOpApply :: S.Operator -> [L.Expr] -> TrackUsedNodes L.Instant
+trOpApply (S.PrefixOp (S.PrefixPath p)) es =
+          lift (asReader (resolveNodeName p)) >>= \x -> return (L.mkNodeUsage x es) <* tellNode p
 trOpApply _ _ = $notImplemented
 
 trConstExpr :: S.Expr -> TransM L.ConstExpr
