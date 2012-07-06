@@ -7,9 +7,9 @@ import Development.Placeholders
 
 import qualified Data.Map as Map
 import Data.Map (Map)
-import Data.Maybe (catMaybes)
+
 import Data.String (fromString)
-import Data.Either (partitionEithers, either)
+import Data.Either (partitionEithers)
 import Data.List ((\\))
 import qualified  Data.Set as Set
 import Data.Set (Set)
@@ -107,9 +107,6 @@ transform topNode ds =
              topFlow flowInit
              (L.constAtExpr $ L.boolConst True) (L.constAtExpr $ L.boolConst True)
   where
-    mkTopFlow :: Map L.SimpIdent L.Node -> ([L.Variable], [L.Variable], L.StateInit, L.Flow)
-    mkTopFlow = mergeFlows . foldl (\fs n -> mkFreeFlow n : fs) [] . Map.toList
-    
     mkFreeFlow :: (L.SimpIdent, L.Node) -> ([L.Variable], [L.Variable], L.StateInit, L.Flow)
     mkFreeFlow (x, n) =
       let scopedInp = map (updateVarName $ BS.append (BS.snoc (L.identBS x) '_')) $ L.nodeInputs n
@@ -126,15 +123,6 @@ transform topNode ds =
           use = L.mkNodeUsage x $ map (L.mkAtomVar . L.varIdent) scopedInp
           flow = L.Flow ([L.InstantDef (L.varIdent outpVar) use] ++ projects) []
       in (locs, sts, stInit, flow)
-    
-    mergeFlows :: [([L.Variable], [L.Variable], L.StateInit, L.Flow)] -> ([L.Variable], [L.Variable], L.StateInit, L.Flow)
-    mergeFlows
-      = foldl
-          (\(l, s, i, f) (l', s', i', f') -> (l' ++ l, s' ++ s, i `Map.union` i', mergeFlow f f'))
-          ([], [], Map.empty, L.Flow [] [])
-    
-    mergeFlow :: L.Flow -> L.Flow -> L.Flow
-    mergeFlow (L.Flow def tr) (L.Flow def' tr') = L.Flow (def' ++ def) (tr' ++ tr)
     
     mkEnumDefs :: Map L.SimpIdent (Either Type L.EnumDef) -> Map TypeAlias L.EnumDef
     mkEnumDefs = Map.fromAscList . foldr (\(x, t) tds -> either (const tds) (\td -> (x,td):tds) t) [] . Map.toAscList
@@ -224,15 +212,15 @@ trEquation (S.SimpleEquation lhsIds expr) = do
     Nothing -> case ids of
       [x] -> return (Left $ L.InstantDef x inst, [])
       _ -> $notImplemented
-    Just init -> case ids of
+    Just sInit -> case ids of
       [x] -> case inst of
-        (L.Fix (L.InstantExpr expr')) -> return (Right $ L.StateTransition x expr', [(x, init)])
+        (L.Fix (L.InstantExpr expr')) -> return (Right $ L.StateTransition x expr', [(x, sInit)])
         _ -> throwError $ "Cannot use not state equation"
       _ -> throwError $ "Cannot pattern match in state equation"
 trEquation (S.AssertEquation aType name expr) = $notImplemented
 trEquation (S.EmitEquation body) = $notImplemented
-trEquation (S.StateEquation sm return returnsAll) = $notImplemented
-trEquation (S.ClockedEquation name block return returnsAll) = $notImplemented
+trEquation (S.StateEquation sm ret returnsAll) = $notImplemented
+trEquation (S.ClockedEquation name block ret returnsAll) = $notImplemented
 
 trVarDecl :: S.VarDecl -> [L.Variable]
 trVarDecl (S.VarDecl xs ty defaultVal lastVal) =
@@ -271,7 +259,7 @@ trTypeExpr (S.TypeEnum ctors) = $notImplemented -- [String]
 --    e1 and e2 are non-temporal expressions. The same must also
 --    hold for the application of operators.
 --    Returns the instant which is a node application if needed.
---    The second part is the initialisation of a temparol
+--    The second part is the initialisation of a temporal
 --    operator if one is given.
 trExpr :: S.Expr -> TrackUsedNodes (L.Instant, Maybe L.ConstExpr)
 trExpr expr = case expr of 
@@ -281,8 +269,8 @@ trExpr expr = case expr of
       -> (L.mkInstantExpr *** Just) <$> ((,) <$> trExpr' e2 <*> lift (trConstExpr e1))
     S.ApplyExpr op es -> do
       es' <- mapM trExpr' es
-      ap <- trOpApply op es'
-      return (ap, Nothing)
+      app <- trOpApply op es'
+      return (app, Nothing)
     normalExpr -> (L.mkInstantExpr &&& (const Nothing)) <$> trExpr' normalExpr
   where
     trExpr' :: S.Expr -> TrackUsedNodes L.Expr
