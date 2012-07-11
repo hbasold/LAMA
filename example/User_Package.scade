@@ -1,3 +1,12 @@
+node User(on : bool; off : bool)
+returns (c : int)
+var
+  s : bool;
+let
+  c = SubNodes::Count(s, false);
+  s = SubNodes::Switch(on, off);
+tel
+
 package SubNodes
   node Count(x : bool; reset : bool)
   returns (c : int)
@@ -14,12 +23,3 @@ package SubNodes
     s = if false -> pre s then not off else on;
   tel
 end;
-
-node User(on : bool; off : bool)
-returns (c : int)
-var
-  s : bool;
-let
-  c = SubNodes::Count(s, false);
-  s = SubNodes::Switch(on, off);
-tel
