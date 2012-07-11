@@ -8,10 +8,11 @@ Description:
 Executable scade2lama
   default-language: Haskell2010
   Build-Depends: base, containers, language-scade, language-lama,
-    transformers, placeholders, mtl, bytestring
+    transformers, placeholders, mtl, bytestring, split, pretty
   Hs-Source-Dirs: . lib
   GHC-Options: -Wall
   other-modules:
+    ExtractPackages
     FlattenListExpr
     RewriteOperatorApp
     RewriteTemporal

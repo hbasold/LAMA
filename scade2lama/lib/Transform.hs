@@ -15,9 +15,10 @@ import qualified  Data.Set as Set
 import Data.Set (Set)
 import qualified Data.ByteString.Char8 as BS
 import Data.Ratio
+import Data.List.Split (splitOn)
 
 import Control.Monad.State
-import Control.Monad.Error (MonadError(..))
+import Control.Monad.Error (MonadError(..), ErrorT(..))
 import Control.Arrow ((***), (&&&))
 import Control.Applicative (Applicative(..), (<$>))
 import Control.Monad.Reader
@@ -32,6 +33,7 @@ import qualified FlattenListExpr as FlattenList
 import qualified RewriteTemporal as Temporal
 import qualified RewriteOperatorApp as OpApp
 import qualified UnrollTemporal as Unroll
+import ExtractPackages as Extract
 
 updateVarName :: (BS.ByteString -> BS.ByteString) -> L.Variable -> L.Variable
 updateVarName f (L.Variable (L.SimpIdent x) t) = L.Variable (L.SimpIdent $ f x) t
@@ -41,18 +43,77 @@ type TypeAlias = L.TypeAlias L.SimpIdent
 
 data Decls = Decls {
      types :: Map TypeAlias (Either Type L.EnumDef),
-     nodes :: Map L.SimpIdent L.Node, -- ^ Maps an identifier to the declared nodes in the current package
+     -- | Maps an identifier to the declared nodes in the current package
+     nodes :: Map L.SimpIdent L.Node,
      packages :: Map L.SimpIdent Decls,
      constants :: [S.ConstDecl]
-  }
+  } deriving Show
 emptyDecls :: Decls
 emptyDecls = Decls Map.empty Map.empty Map.empty []
 
-type TransM = StateT Decls (Either String)
-type TransReader = ReaderT Decls (Either String) -- ^ We use this type to force only reading
+type PackageEnv = Reader Package
+type TransM = StateT Decls (ErrorT String PackageEnv)
 
-asReader :: (Monad m, MonadTrans t, MonadState s (t m)) => ReaderT s m a -> t m a
-asReader m = get >>= lift . runReaderT m
+runTransM :: TransM a -> Package -> Either String (a, Decls)
+runTransM m = runReader $ runErrorT $ runStateT m emptyDecls
+
+-- | Executes an action with a local state. The resulting state
+-- is then combined with that befor using the given function
+-- (comb newState oldState).
+localState :: MonadState s m => (s -> s -> s) -> (s -> s) -> m a -> m a
+localState comb f m =
+  do curr <- get
+     put $ f curr
+     x <- m
+     new <- get
+     put $ comb new curr
+     return x
+
+updatePackage :: L.SimpIdent -> Decls -> Decls -> Decls
+updatePackage n p ds = ds { packages = Map.adjust (const p) n $ packages ds }
+
+createPackage :: L.SimpIdent -> TransM Decls
+createPackage p = gets packages >>= return . Map.findWithDefault emptyDecls p
+
+openPackage :: [String] -> TransM a -> TransM a
+openPackage [] m = m
+openPackage (p:ps) m =
+  do currPkg <- ask
+     case Map.lookup p (pkgSubPackages currPkg) of
+       Nothing -> throwError $ "Unknown package " ++ p
+       Just scadePkg ->
+         let p' = fromString p
+         in do pkg <- createPackage p'
+               localState (updatePackage p') (const pkg) $
+                 local (const scadePkg) m
+
+-- | Checks if there is a node with the given name in the current package
+packageHasNode :: L.SimpIdent -> TransM Bool
+packageHasNode x = gets nodes >>= return . Map.member x
+
+getNode :: S.Path -> TransM (L.SimpIdent, L.Node)
+getNode (S.Path p) =
+  let pkgName = init p
+      n = last p
+      n' = fromString n
+  in openPackage pkgName $
+     do nodeTranslated <- packageHasNode n'
+        when (not nodeTranslated)
+          (reader pkgUserOps >>= lookupErr ("Unknown operator" ++ n) n >>= trOpDecl)
+        liftM (n',) $ lookupNode n'
+  where
+    lookupNode nName = gets nodes >>= lookupErr ("Unknown node" ++ L.identPretty nName) nName
+
+resolveNodeName :: S.Path -> TransM L.SimpIdent
+resolveNodeName (S.Path p) =
+  let pkgName = init p
+      n = last p
+  in openPackage pkgName $
+     do opExists <- packageHasOperator n
+        if opExists then return $ fromString n
+          else throwError $ "Unknown node " ++ n
+  where
+    packageHasOperator nName = reader pkgUserOps >>= return . Map.member nName
 
 lookupErr :: (MonadError e m, Ord k) => e -> k -> Map k v -> m v
 lookupErr err k m = case Map.lookup k m of
@@ -68,44 +129,21 @@ declarePackage x p = modify (\d -> d { packages = Map.insert x p $ packages d })
 addReqNode :: (MonadState Decls m) => L.SimpIdent -> S.Path -> m ()
 addReqNode = undefined
 
--- | Finds the package in which something is declared.
--- Returns the base name of it and the corresponding package
-findPackage :: (MonadReader Decls m, MonadError String m) => S.Path -> m (L.SimpIdent, Decls)
-findPackage (S.Path p) = findPackage' p
-  where
-    findPackage' [] = throwError $ "Invalid path: empty path"
-    findPackage' [x] = ask >>= return . (fromString x,)
-    findPackage' (x:xs) = do
-      ds <- reader packages
-      case Map.lookup (fromString x) ds of
-        Nothing -> throwError $ "Unknown package " ++ x
-        Just ds' -> local (const ds') $ findPackage' xs
-
-getNode :: S.Path -> TransReader (L.SimpIdent, L.Node)
-getNode x = do
-            (x', ds) <- findPackage x
-            n <- lookupErr ("Unknown node " ++ L.identPretty x') x' (nodes ds)
-            return (x', n)
-
-resolveNodeName :: S.Path -> TransReader L.SimpIdent
-resolveNodeName = liftM fst . findPackage
+mkPath :: String -> S.Path
+mkPath = S.Path . splitOn "::"
 
 transform :: String -> [S.Declaration] -> Either String L.Program
 transform topNode ds =
-  let ds' = rewrite ds
-      topNode' = fromString topNode
-  in case runStateT (mapM_ trDeclaration ds') emptyDecls of
+  let ds' = Extract.extract $ rewrite ds
+  in case runTransM (getNode $ mkPath $ topNode) ds' of
     Left e -> Left e
-    Right ((), decls) ->
-      case Map.lookup topNode' (nodes decls) of
-        Nothing -> throwError $ "Unknown node " ++ topNode
-        Just n ->
-          let (flowLocals, flowStates, flowInit, topFlow) = mkFreeFlow (topNode', n)
-          in Right $ L.Program
-             (mkEnumDefs $ types decls) (mkConstDefs $ constants decls)
-             (L.Declarations (Map.singleton topNode' n) flowLocals flowStates)
-             topFlow flowInit
-             (L.constAtExpr $ L.boolConst True) (L.constAtExpr $ L.boolConst True)
+    Right ((topNodeName, n), decls) ->
+      let (flowLocals, flowStates, flowInit, topFlow) = mkFreeFlow (topNodeName, n)
+      in Right $ L.Program
+         (mkEnumDefs $ types decls) (mkConstDefs $ constants decls)
+         (L.Declarations (Map.singleton topNodeName n) flowLocals flowStates)
+         topFlow flowInit
+         (L.constAtExpr $ L.boolConst True) (L.constAtExpr $ L.boolConst True)
   where
     mkFreeFlow :: (L.SimpIdent, L.Node) -> ([L.Variable], [L.Variable], L.StateInit, L.Flow)
     mkFreeFlow (x, n) =
@@ -129,8 +167,12 @@ transform topNode ds =
     
     mkConstDefs :: [S.ConstDecl] -> Map L.SimpIdent L.Constant
     mkConstDefs = Map.fromList . map trConstDecl
-    
-    rewrite = Unroll.rewrite . OpApp.rewrite . Temporal.rewrite . FlattenList.rewrite
+
+    rewrite :: [S.Declaration] -> [S.Declaration]
+    rewrite = FlattenList.rewrite .
+              Temporal.rewrite .
+              OpApp.rewrite .
+              Unroll.rewrite
 
 mkProdProject :: L.SimpIdent -> [L.SimpIdent] -> L.SimpIdent -> L.Expr
 mkProdProject _ [] _ = undefined
@@ -139,18 +181,6 @@ mkProdProject from xs x
   = L.Fix $ L.Match
     (L.Fix $ L.AtExpr $ L.AtomVar from)
     [L.Pattern (L.ProdPat xs) (L.Fix $ L.AtExpr $ L.AtomVar x)]
-
-trDeclaration :: S.Declaration -> TransM ()
-trDeclaration (S.OpenDecl path) = $notImplemented
-trDeclaration (S.TypeBlock decls) =
-  let tds = Map.fromList $ map trTypeDecl decls
-  in modify (\ds -> ds { types = types ds `Map.union` tds })
-trDeclaration (S.PackageDecl vis name decls) =
-  case runStateT (mapM_ trDeclaration decls) emptyDecls of
-    Left e -> throwError e
-    Right ((), ds) -> declarePackage (fromString name) ds
-trDeclaration op@(S.UserOpDecl {}) = trOpDecl op
-trDeclaration (S.ConstBlock consts) = $notImplemented
 
 trOpDecl :: S.Declaration -> TransM ()
 trOpDecl (S.UserOpDecl {
@@ -183,9 +213,9 @@ trOpDecl (S.UserOpDecl {
           runWriterT $
             liftM ((partitionEithers *** concat) . unzip) $ mapM trEquation equations
         -- FIXME: respect multiple points of usages!??
-        subNodes <- Map.fromList <$> mapM (asReader . getNode) (Set.toList usedNodes)
+        subNodes <- Map.fromList <$> mapM getNode (Set.toList usedNodes)
         let inits = Map.fromList stateInits
-        stateVars <- mapM (\x -> lookupErr ("Unknown variable " ++ show x) x vars) $ Map.keys inits
+        stateVars <- mapM (\x -> lookupErr ("Unknown variable " ++ L.identPretty x) x vars) $ Map.keys inits
         let localVars = Map.elems vars \\ stateVars
         return $ L.Node inp outp'
           (L.Declarations subNodes localVars stateVars)
@@ -299,7 +329,7 @@ trExpr expr = case expr of
 
 trOpApply :: S.Operator -> [L.Expr] -> TrackUsedNodes L.Instant
 trOpApply (S.PrefixOp (S.PrefixPath p)) es =
-          lift (asReader (resolveNodeName p)) >>= \x -> return (L.mkNodeUsage x es) <* tellNode p
+          lift (resolveNodeName p) >>= \x -> return (L.mkNodeUsage x es) <* tellNode p
 trOpApply _ _ = $notImplemented
 
 trConstExpr :: S.Expr -> TransM L.ConstExpr
