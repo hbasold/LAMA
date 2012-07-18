@@ -14,16 +14,14 @@ nodes
     initial s_1 = false;
   tel
 local on, off, s : bool;
-state on_1, off_1, s_1 : bool;
+state s_1 : bool;
 definition s = (use Switch on off);
 transition
-  on_1' = on;
-  off_1' = off;
   s_1' = s;
-initial on_1 = false, off_1 = false, s_1 = false;
+initial s_1 = false;
 invariant
   (and
     (and
-      (=> on_1 s)
-      (=> off_1 (not s)))
-    (=> (and (not off_1) (not on_1)) (= s s_1)));
+      (=> (and on (not off)) s)
+      (=> (and off (not on)) (not s)))
+    (=> (and (not off) (not on)) (= s s_1)));

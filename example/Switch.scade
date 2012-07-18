@@ -5,7 +5,7 @@ let
 tel
 
 /* Properties:
-always(on implies (next s));
-always(off implies (next not s));
+always(on implies s);
+always(off implies (not s));
 always((not off and not on) implies (exists ls = s: next (s = ls)));
 */
