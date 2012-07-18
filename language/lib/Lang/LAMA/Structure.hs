@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-| Structure of LAMA programs -}
 module Lang.LAMA.Structure (
   GProgram(..),
@@ -25,6 +26,7 @@ module Lang.LAMA.Structure (
 
 import Data.Natural
 import Data.Map
+import Data.Typeable
 
 import Lang.LAMA.Identifier
 import Data.String (IsString(..))
@@ -44,7 +46,7 @@ data GProgram i const expr cexpr inst = Program {
 ---- Type definitions -----
 
 -- | Naming of enum constructors
-newtype GEnumConstr i = EnumCons { runEnumCons :: i } deriving (Eq, Ord, Show)
+newtype GEnumConstr i = EnumCons { runEnumCons :: i } deriving (Eq, Ord, Show, Typeable)
 instance Ident i => Ident (GEnumConstr i) where
   identBS (EnumCons x) = identBS x
   identPretty (EnumCons x) = identPretty x
