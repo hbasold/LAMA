@@ -16,4 +16,14 @@ nodes
     initial s = (- 1), up = true;
   tel
 local x : int;
+state x_1 : int;
+
 definition x = (use UpDown);
+transition x_1' = x;
+initial x_1 = (- 1);
+
+invariant
+  (and
+    (and (>= x 0) (<= x 10)) -- ranges only from 0 to 10
+    (or (= (- x_1 x) 1) (= (- x_1 x) (- 1))) -- always moves just one step
+  );
