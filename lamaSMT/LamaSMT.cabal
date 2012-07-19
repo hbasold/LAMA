@@ -9,7 +9,8 @@ Executable lamasmt
   default-language: Haskell2010
   Build-Depends: base, containers, language-lama, smtlib2,
                  transformers, bytestring, natural-numbers,
-                 attoparsec, atto-lisp, text, mtl, placeholders
+                 attoparsec, atto-lisp, text, mtl, placeholders,
+                 pretty
   Hs-Source-Dirs: . lib
   GHC-Options: -Wall
   other-modules:

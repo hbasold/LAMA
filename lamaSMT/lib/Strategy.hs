@@ -4,11 +4,12 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 module Strategy where
 
+import Data.Sequence
 import Control.Monad.Error
 
 import Language.SMTLib2
 
-import Lang.LAMA.Identifier
+
 
 import Transform
 import Model
@@ -20,12 +21,10 @@ data Strategy = forall s. StrategyClass s => Strategy s
 class StrategyClass s where
   defaultStrategyOpts :: s
   readOptions :: String -> s -> s
-  check :: s -> ProgDefs -> SMTErr Bool
+  check :: s -> (Seq StreamPos -> SMT (Model i)) -> ProgDefs -> SMTErr (Maybe (Model i))
 
-checkWithModel :: (Ident i) => Strategy -> ProgDefs -> VarEnv i -> SMTErr (Maybe (Model i))
-checkWithModel (Strategy s) d env =
-  do ok <- check s d
-     if ok then return Nothing else liftSMT . fmap Just $ getModel env
+checkWithModel :: Strategy -> ProgDefs -> VarEnv i -> SMTErr (Maybe (Model i))
+checkWithModel (Strategy s) d env = check s (getModel env) d
 
 readOptions' :: String -> Strategy -> Strategy
 readOptions' o (Strategy s) = Strategy $ readOptions o s

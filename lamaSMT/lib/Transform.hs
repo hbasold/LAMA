@@ -139,6 +139,7 @@ liftReal2 _ _ _ = error "liftReal2: argument types are not rational"
 data NodeEnv i = NodeEnv
                  { nodeEnvIn :: [TypedStream i]
                  , nodeEnvOut :: [TypedStream i]
+                 , nodeEnvVars :: VarEnv i
                  }
 
 data VarEnv i = VarEnv
@@ -266,7 +267,8 @@ declareNode n =
      outDefs <- fmap concat . mapM declareInstantDef $ nodeOutputDefs n
      automDefs <- fmap concat . mapM declareAutomaton . Map.elems $ nodeAutomata n
      assertInits $ nodeInitial n
-     return (NodeEnv ins outs,
+     varDefs <- gets varEnv
+     return (NodeEnv ins outs varDefs,
              declDefs ++ flowDefs ++ outDefs ++ automDefs)
 
 declareInstantDef :: Ident i => InstantDefinition i -> DeclM i [Definition]

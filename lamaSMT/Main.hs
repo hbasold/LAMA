@@ -4,6 +4,7 @@ module Main (main) where
 
 import qualified Data.ByteString.Lazy.Char8 as BL
 import Data.List (intercalate)
+import Text.PrettyPrint (render)
 
 import System.IO (stdin)
 import System.Environment (getArgs)
@@ -133,4 +134,4 @@ runCheck opts = chooseSolver (optDebug opts) . checkError
 
 checkModel :: Ident i => Maybe (Model i) -> IO ()
 checkModel Nothing = putStrLn "42"
-checkModel (Just m) = print m
+checkModel (Just m) = putStrLn . render $ prettyModel m

@@ -3,11 +3,13 @@ module Strategies.BMC where
 
 import Data.Natural
 import Data.List (stripPrefix)
+import Data.Sequence as Seq
 
 import Language.SMTLib2
 
 import Strategy
 import Transform
+import Model (Model)
 
 data BMC = BMC { bmcDepth :: Maybe Natural }
 
@@ -20,19 +22,21 @@ instance StrategyClass BMC where
       _ -> s { bmcDepth = Just $ read d }
   readOptions o _ = error $ "Invalid BMC option: " ++ o
 
-  check s defs =
+  check s getModel defs =
     let base = 0
     in do baseDef <- liftSMT . defConst $ constant base
-          check' s defs base baseDef
+          check' s getModel defs (Seq.singleton baseDef) base baseDef
 
-check' :: BMC -> ProgDefs -> Natural -> SMTExpr Natural -> SMTErr Bool
-check' s defs i iDef =
+check' :: BMC -> (Seq StreamPos -> SMT (Model i))
+          -> ProgDefs -> Seq StreamPos -> Natural -> StreamPos -> SMTErr (Maybe (Model i))
+check' s getModel defs is i iDef =
   do liftSMT $ assertDefs iDef (flowDef defs)
      liftSMT $ assertPrecond iDef (precondition defs)
-     r <- liftSMT . stack . checkInvariant iDef $ invariantDef defs
-     if r
-       then return False
-       else next (check' s defs) s i iDef
+     let invs = invariantDef defs
+     r <- liftSMT . stack $ (checkGetModel getModel is =<< checkInvariant iDef invs)
+     case r of
+       Nothing -> next (check' s getModel defs) s is i iDef
+       Just m -> return $ Just m
 
 assertDefs :: SMTExpr Natural -> [Definition] -> SMT ()
 assertDefs i = mapM_ (assertDef i)
@@ -48,14 +52,19 @@ checkInvariant i p =
   do assert . not' $ app p i
      checkSat
 
-next :: (Natural -> SMTExpr Natural -> SMTErr Bool)
-        -> BMC -> Natural -> SMTExpr Natural -> SMTErr Bool
-next f s i iDef =
+checkGetModel :: (Seq StreamPos -> SMT (Model i)) -> Seq StreamPos -> Bool -> SMT (Maybe (Model i))
+checkGetModel getModel indices r =
+  if r then fmap Just $ getModel indices else return Nothing
+
+next :: (Seq StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (Model i)))
+        -> BMC -> Seq StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (Model i))
+next f s is i iDef =
   do let i' = succ i
      iDef' <- liftSMT . defConst $ succ' iDef
+     let is' = is |> iDef'
      case bmcDepth s of
-       Nothing -> f i' iDef'
+       Nothing -> f is' i' iDef'
        Just l ->
          if i' < l
-         then f i' iDef'
-         else return True
+         then f is' i' iDef'
+         else return Nothing
