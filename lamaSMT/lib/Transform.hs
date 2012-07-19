@@ -33,7 +33,7 @@ import Data.Traversable
 import Control.Monad.State (StateT, MonadState(..), evalStateT, modify, gets)
 
 import Control.Monad.Error (ErrorT(..), MonadError(..))
-import Control.Monad.Reader (ReaderT(..), MonadReader(..), asks)
+import Control.Monad.Reader (ReaderT(..), asks)
 import Control.Applicative (Applicative(..), (<$>))
 zero' :: SMTExpr Natural
 zero' = Var "zero" unit
@@ -53,6 +53,7 @@ data TypedStream i
   = BoolStream (Stream Bool)
   | IntStream (Stream Integer)
   | RealStream (Stream Rational)
+  deriving Show
 
 type Definition = Stream Bool
 
@@ -236,7 +237,10 @@ declareDecls d =
     splitIfDefs = mapAccumL (\ds (x, ds') -> (ds' ++ ds, x)) [] 
 
 declareVars :: Ident i => [Variable i] -> DeclM i (Map i (TypedStream i))
-declareVars = fmap Map.fromList . mapM declareVar
+declareVars = fmap Map.fromList . declareVarList
+
+declareVarList :: Ident i => [Variable i] -> DeclM i [(i, TypedStream i)]
+declareVarList = mapM declareVar
 
 declareVar :: Ident i => Variable i -> DeclM i (i, TypedStream i)
 declareVar (Variable x t) =
@@ -251,22 +255,25 @@ declareVar (Variable x t) =
 
 declareNode :: Ident i => Node i -> DeclM i (NodeEnv i, [Definition])
 declareNode n =
-  do declDefs <- declareDecls $ nodeDecls n
-     ins <- declareVars $ nodeInputs n
-     outs <- declareVars $ nodeOutputs n
-     modifyVars $ Map.union (ins `Map.union` outs)
+  do inDecls <- declareVarList $ nodeInputs n
+     outDecls <- declareVarList $ nodeOutputs n
+     let ins = map snd inDecls
+     let outs = map snd outDecls
+     modifyVars $ Map.union ((Map.fromList inDecls) `Map.union` (Map.fromList outDecls))
+     declDefs <- declareDecls $ nodeDecls n
      flowDefs <- declareFlow $ nodeFlow n
      outDefs <- fmap concat . mapM declareInstantDef $ nodeOutputDefs n
      automDefs <- fmap concat . mapM declareAutomaton . Map.elems $ nodeAutomata n
      assertInits $ nodeInitial n
-     return (NodeEnv (Map.elems ins) (Map.elems outs),
+     return (NodeEnv ins outs,
              declDefs ++ flowDefs ++ outDefs ++ automDefs)
 
 declareInstantDef :: Ident i => InstantDefinition i -> DeclM i [Definition]
 declareInstantDef (InstantExpr x e) = (:[]) <$> (lookupVar x >>= \x' -> declareDef id x' (trExpr e))
 declareInstantDef (NodeUsage x n es) =
   do nEnv <- lookupNode n
-     inpDefs <- mapM (uncurry $ declareDef id) $ zip (nodeEnvIn nEnv) (map trExpr es)
+     let esTr = map trExpr es
+     inpDefs <- mapM (uncurry $ declareDef id) $ zip (nodeEnvIn nEnv) esTr
      outpDefs <- declareAssign x (nodeEnvOut nEnv)
      return $ inpDefs ++ outpDefs
 
