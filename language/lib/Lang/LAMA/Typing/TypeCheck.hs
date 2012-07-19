@@ -286,21 +286,22 @@ checkFlow (Flow definitions transitions) =
     mapM checkStateTransition transitions
 
 checkInstantDef :: Ident i => UT.InstantDefinition i -> Result i (InstantDefinition i)
-checkInstantDef (InstantDef x i) = do
-    putPos x
-    i' <- checkInstant i
-    t <- envLookupWritable x
-    void $ unify (getGround i') (mkGround t)
-    return $ InstantDef x i'
-
-checkInstant :: Ident i => UT.Instant i -> Result i (Instant i)
-checkInstant (Fix (InstantExpr e)) = preserveType InstantExpr <$> checkExpr e
-checkInstant (Fix (NodeUsage n params)) = do
-  params' <- mapM checkExpr params
-  let inTypes = map getType params'
-  (nInp, nOutp) <- envLookupNodeSignature n
-  checkNodeTypes "input" n nInp inTypes
-  return $ mkTyped (NodeUsage n params') (mkProductT $ map varType nOutp)
+checkInstantDef (InstantExpr x e) =
+  do putPos x
+     e' <- checkExpr e
+     t <- envLookupWritable x
+     void $ unify (getGround e') (mkGround t)
+     return $ InstantExpr x e'
+checkInstantDef (NodeUsage x n params) =
+  do putPos x
+     params' <- mapM checkExpr params
+     let inTypes = map getType params'
+     (nInp, nOutp) <- envLookupNodeSignature n
+     checkNodeTypes "input" n nInp inTypes
+     let outT = mkProductT $ map varType nOutp
+     t <- envLookupWritable x
+     void $ unify (mkGround outT) (mkGround t)
+     return $ NodeUsage x n params'
 
 checkStateTransition :: Ident i => UT.StateTransition i -> Result i (StateTransition i)
 checkStateTransition (StateTransition x e) = do

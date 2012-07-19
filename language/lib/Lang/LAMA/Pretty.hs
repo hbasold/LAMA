@@ -138,11 +138,10 @@ trOutputs :: Ident i => [InstantDefinition i] -> Abs.Outputs
 trOutputs = mapDefault Abs.NoOutputs (Abs.JustOutputs . map trInstantDefinition)
 
 trInstantDefinition :: Ident i => InstantDefinition i -> Abs.InstantDefinition
-trInstantDefinition (InstantDef x inst) = Abs.InstantDef (trIdent x) (trInstant inst)
-
-trInstant :: Ident i => Instant i -> Abs.Instant
-trInstant (Fix (InstantExpr e)) = Abs.InstantExpr $ trExpr e
-trInstant (Fix (NodeUsage n params)) = Abs.NodeUsage (trIdent n) (map trExpr params)
+trInstantDefinition (InstantExpr x e) =
+  Abs.InstantExpr (trIdent x) (trExpr e)
+trInstantDefinition (NodeUsage x n params) =
+  Abs.NodeUsage (trIdent x) (trIdent n) (map trExpr params)
 
 trControlStructure :: Ident i => Map Int (Automaton i) -> Abs.ControlStructure
 trControlStructure = Abs.ControlStructure . map trAutomaton . Map.elems

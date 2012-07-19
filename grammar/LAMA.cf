@@ -108,9 +108,8 @@ JustOutputs. Outputs    ::= "output" [InstantDefinition] ;
 
 terminator nonempty InstantDefinition ";" ;
 terminator nonempty Transition ";" ;
-InstantDef. InstantDefinition ::= Identifier "=" Instant ;
-InstantExpr. Instant ::= Expr ;
-NodeUsage. Instant ::= "(" "use" Identifier [Expr] ")" ;
+InstantExpr. InstantDefinition ::= Identifier "=" Expr ;
+NodeUsage. InstantDefinition ::= Identifier "=" "(" "use" Identifier [Expr] ")" ;
 Transition. Transition ::= StateId "=" Expr ;
 
 -----

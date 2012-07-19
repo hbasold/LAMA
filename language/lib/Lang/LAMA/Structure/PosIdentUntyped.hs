@@ -12,7 +12,7 @@ module Lang.LAMA.Structure.PosIdentUntyped (
   -- * Data flow
   Flow,
   -- ** Definition of local and output variables
-  InstantDefinition, Instant,
+  InstantDefinition,
   -- ** Definition of state variables
   StateTransition, StateInit,
   -- * Automata
@@ -41,7 +41,6 @@ type Node = S.Node PosIdent
 type Declarations = S.Declarations PosIdent
 type Flow = S.Flow PosIdent
 type InstantDefinition = S.InstantDefinition PosIdent
-type Instant = S.Instant PosIdent
 type StateTransition = S.StateTransition PosIdent
 type StateInit = S.StateInit PosIdent
 type Location = S.Location PosIdent

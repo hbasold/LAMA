@@ -12,7 +12,7 @@ module Lang.LAMA.Structure (
   -- * Data flow
   GFlow(..),
   -- ** Definition of local and output variables
-  GInstantDefinition(..), GInstant(..),
+  GInstantDefinition(..),
   -- ** Definition of state variables
   GStateTransition(..), GStateInit,
   -- * Automata
@@ -32,11 +32,11 @@ import Lang.LAMA.Identifier
 import Data.String (IsString(..))
 import Lang.LAMA.Types
 
-data GProgram i const expr cexpr inst = Program {
+data GProgram i const expr cexpr = Program {
     progEnumDefinitions     :: Map (TypeAlias i) (GEnumDef i),
     progConstantDefinitions :: Map i const,
-    progDecls               :: GDeclarations i expr cexpr inst,
-    progFlow                :: GFlow i expr inst,
+    progDecls               :: GDeclarations i expr cexpr,
+    progFlow                :: GFlow i expr,
     progInitial             :: GStateInit i cexpr,
     progAssertion           :: expr,
     progInvariant           :: expr
@@ -70,13 +70,13 @@ data GConst f
 
 ---- Nodes -----
 
-data GNode i expr cexpr inst = Node {
+data GNode i expr cexpr = Node {
     nodeInputs      :: [GVariable i],
     nodeOutputs     :: [GVariable i],
-    nodeDecls       :: GDeclarations i expr cexpr inst,
-    nodeFlow        :: GFlow i expr inst,
-    nodeOutputDefs  :: [GInstantDefinition i inst],
-    nodeAutomata    :: Map Int (GAutomaton i expr inst),
+    nodeDecls       :: GDeclarations i expr cexpr,
+    nodeFlow        :: GFlow i expr,
+    nodeOutputDefs  :: [GInstantDefinition i expr],
+    nodeAutomata    :: Map Int (GAutomaton i expr),
     nodeInitial     :: GStateInit i cexpr
   } deriving (Eq, Show)
   
@@ -88,24 +88,22 @@ varIdent (Variable x _) = x
 varType :: GVariable i -> Type i
 varType (Variable _ t) = t
 
-data GDeclarations i expr cexpr inst = Declarations {
-    declsNode   :: Map i (GNode i expr cexpr inst),
+data GDeclarations i expr cexpr = Declarations {
+    declsNode   :: Map i (GNode i expr cexpr),
     declsLocal  :: [GVariable i],
     declsState  :: [GVariable i]
   } deriving (Eq, Show)
 
 ---- Data flow -----
 
-data GFlow i expr inst = Flow {
-    flowDefinitions :: [GInstantDefinition i inst],
+data GFlow i expr = Flow {
+    flowDefinitions :: [GInstantDefinition i expr],
     flowTransitions :: [GStateTransition i expr]
   } deriving (Eq, Show)
 
-
-data GInstantDefinition i inst = InstantDef i inst deriving (Eq, Show)
-data GInstant i expr f
-  = InstantExpr (expr)
-  | NodeUsage i [expr]     -- ^ Using a node
+data GInstantDefinition i expr
+  = InstantExpr i expr
+  | NodeUsage i i [expr]     -- ^ Using a node
   deriving (Eq, Show)
 
 data GStateTransition i expr = StateTransition i expr deriving (Eq, Show)
@@ -115,10 +113,10 @@ type GStateInit i cexpr = Map i cexpr
 ---- Automaton -----
 
 type GLocationId i = i
-data GLocation i expr inst = Location (GLocationId i) (GFlow i expr inst) deriving (Eq, Show)
+data GLocation i expr = Location (GLocationId i) (GFlow i expr) deriving (Eq, Show)
 data GEdge i expr = Edge (GLocationId i) (GLocationId i) expr deriving (Eq, Show)
-data GAutomaton i expr inst = Automaton {
-    automLocations :: [GLocation i expr inst],
+data GAutomaton i expr = Automaton {
+    automLocations :: [GLocation i expr],
     automInitial :: GLocationId i,
     automEdges :: [GEdge i expr]
   } deriving (Eq, Show)
@@ -182,9 +180,6 @@ instance EqFunctor GArray where
 instance EqFunctor GConst where
   eqF = (==)
 
-instance (Ident i, Eq expr) => EqFunctor (GInstant i expr) where
-  eqF = (==)
-  
 instance (Ident i, Eq const) => EqFunctor (GConstExpr i const) where
   eqF = (==)
 
@@ -204,9 +199,6 @@ instance ShowFunctor GArray where
 instance ShowFunctor GConst where
   showF = show
 
-instance (Ident i, Show expr) => ShowFunctor (GInstant i expr) where
-  showF = show
-  
 instance (Ident i, Show const) => ShowFunctor (GConstExpr i const) where
   showF = show
 

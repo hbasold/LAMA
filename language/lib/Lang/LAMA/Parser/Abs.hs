@@ -148,12 +148,8 @@ data Outputs =
   deriving (Eq,Ord,Show)
 
 data InstantDefinition =
-   InstantDef Identifier Instant
-  deriving (Eq,Ord,Show)
-
-data Instant =
-   InstantExpr Expr
- | NodeUsage Identifier [Expr]
+   InstantExpr Identifier Expr
+ | NodeUsage Identifier Identifier [Expr]
   deriving (Eq,Ord,Show)
 
 data Transition =

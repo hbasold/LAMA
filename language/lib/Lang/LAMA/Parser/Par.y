@@ -277,12 +277,8 @@ ListTransition : Transition ';' { (:[]) $1 }
 
 
 InstantDefinition :: { InstantDefinition }
-InstantDefinition : Identifier '=' Instant { InstantDef $1 $3 } 
-
-
-Instant :: { Instant }
-Instant : Expr { InstantExpr $1 } 
-  | '(' 'use' Identifier ListExpr ')' { NodeUsage $3 (reverse $4) }
+InstantDefinition : Identifier '=' Expr { InstantExpr $1 $3 } 
+  | Identifier '=' '(' 'use' Identifier ListExpr ')' { NodeUsage $1 $5 (reverse $6) }
 
 
 Transition :: { Transition }

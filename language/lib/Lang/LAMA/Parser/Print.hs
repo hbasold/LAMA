@@ -282,17 +282,12 @@ instance Print Outputs where
 
 instance Print InstantDefinition where
   prt i e = case e of
-   InstantDef identifier instant -> prPrec i 0 (concatD [prt 0 identifier , doc (showString "=") , prt 0 instant])
+   InstantExpr identifier expr -> prPrec i 0 (concatD [prt 0 identifier , doc (showString "=") , prt 0 expr])
+   NodeUsage identifier0 identifier exprs -> prPrec i 0 (concatD [prt 0 identifier0 , doc (showString "=") , doc (showString "(") , doc (showString "use") , prt 0 identifier , prt 0 exprs , doc (showString ")")])
 
   prtList es = case es of
    [x] -> (concatD [prt 0 x , doc (showString ";")])
    x:xs -> (concatD [prt 0 x , doc (showString ";") , prt 0 xs])
-
-instance Print Instant where
-  prt i e = case e of
-   InstantExpr expr -> prPrec i 0 (concatD [prt 0 expr])
-   NodeUsage identifier exprs -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "use") , prt 0 identifier , prt 0 exprs , doc (showString ")")])
-
 
 instance Print Transition where
   prt i e = case e of

@@ -270,16 +270,15 @@ transNodeDecls x = case x of
   Abs.JustNodeDecls nodes  -> fmap Map.fromList $ mapM transNode nodes
 
 
-transStateDecls :: Abs.StateDecls -> Result [Variable]
-transStateDecls x = case x of
-  Abs.NoStateDecls  -> return []
-  Abs.JustStateDecls vardecls  -> transVarDecls vardecls
-
-
 transLocalDecls :: Abs.LocalDecls -> Result [Variable]
 transLocalDecls x = case x of
   Abs.NoLocals  -> return []
   Abs.JustLocalDecls vardecls  -> transVarDecls vardecls
+
+transStateDecls :: Abs.StateDecls -> Result [Variable]
+transStateDecls x = case x of
+  Abs.NoStateDecls  -> return []
+  Abs.JustStateDecls vardecls  -> transVarDecls vardecls
 
 
 transFlow :: Abs.Flow -> Result Flow
@@ -309,14 +308,13 @@ transOutputs x = case x of
 
 transInstantDefinition :: Abs.InstantDefinition -> Result InstantDefinition
 transInstantDefinition x = case x of
-  Abs.InstantDef identifier instant  -> InstantDef <$> (transIdentifier identifier) <*> (transInstant instant)
-
-
-transInstant :: Abs.Instant -> Result Instant
-transInstant x = case x of
-  Abs.InstantExpr expr  -> Fix . InstantExpr <$> transExpr expr
-  Abs.NodeUsage identifier exprs  ->
-    Fix <$> (NodeUsage <$> transIdentifier identifier <*> mapM transExpr exprs)
+  Abs.InstantExpr identifier expr  ->
+    InstantExpr <$> transIdentifier identifier <*> transExpr expr
+  Abs.NodeUsage identifier1 identifier2 exprs  ->
+    NodeUsage
+    <$> transIdentifier identifier1
+    <*> transIdentifier identifier2
+    <*> mapM transExpr exprs
 
 
 transTransition :: Abs.Transition -> Result StateTransition

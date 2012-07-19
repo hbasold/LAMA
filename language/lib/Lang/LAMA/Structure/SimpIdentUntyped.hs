@@ -12,7 +12,7 @@ module Lang.LAMA.Structure.SimpIdentUntyped (
   -- * Data flow
   Flow,
   -- ** Definition of local and output variables
-  InstantDefinition, Instant,
+  InstantDefinition,
   -- ** Definition of state variables
   StateTransition, StateInit,
   -- * Automata
@@ -22,14 +22,14 @@ module Lang.LAMA.Structure.SimpIdentUntyped (
   Atom, Expr, ConstExpr,
   -- * Constructors
   boolConst, mkIntConst, mkRealConst, constAtExpr, mkAtomVar,
-  mkInstantExpr, mkNodeUsage, mkIte, mkLogNot, mkExpr2, mkConst,
+  mkIte, mkLogNot, mkExpr2, mkConst,
   module Lang.LAMA.Fix
 ) where
 
 import Lang.LAMA.Identifier
 import qualified Lang.LAMA.UnTypedStructure as S
 import Lang.LAMA.Structure
-import Lang.LAMA.UnTypedStructure (boolConst, mkIntConst, mkRealConst, constAtExpr, mkAtomVar, mkInstantExpr, mkNodeUsage, mkIte, mkLogNot, mkExpr2, mkConst)
+import Lang.LAMA.UnTypedStructure (boolConst, mkIntConst, mkRealConst, constAtExpr, mkAtomVar, mkIte, mkLogNot, mkExpr2, mkConst)
 import Lang.LAMA.Fix
 
 type Constant = S.Constant
@@ -42,7 +42,6 @@ type Node = S.Node SimpIdent
 type Declarations = S.Declarations SimpIdent
 type Flow = S.Flow SimpIdent
 type InstantDefinition = S.InstantDefinition SimpIdent
-type Instant = S.Instant SimpIdent
 type StateTransition = S.StateTransition SimpIdent
 type StateInit = S.StateInit SimpIdent
 type Location = S.Location SimpIdent

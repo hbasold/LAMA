@@ -13,7 +13,7 @@ module Lang.LAMA.Typing.TypedStructure (
   -- * Data flow
   Flow,
   -- ** Definition of local and output variables
-  InstantDefinition, Instant,
+  InstantDefinition,
   -- ** Definition of state variables
   StateTransition, StateInit,
   -- * Automata
@@ -39,17 +39,16 @@ type Expr i = Typed i (GExpr i (Constant i) (Atom i))             -- ^ Typed exp
 type Atom i = Typed i (GAtom i (Constant i))             -- ^ Typed atom
 type ConstExpr i = Typed i (GConstExpr i (Constant i))   -- ^ Typed constant expression
 
-type Program i = GProgram i (Constant i) (Expr i) (ConstExpr i) (Instant i)
-type Node i = GNode i (Expr i) (ConstExpr i) (Instant i)
-type Declarations i = GDeclarations i (Expr i) (ConstExpr i) (Instant i)
-type Flow i = GFlow i (Expr i) (Instant i)
-type InstantDefinition i = GInstantDefinition i (Instant i)
-type Instant i = Typed i (GInstant i (Expr i))
+type Program i = GProgram i (Constant i) (Expr i) (ConstExpr i)
+type Node i = GNode i (Expr i) (ConstExpr i)
+type Declarations i = GDeclarations i (Expr i) (ConstExpr i)
+type Flow i = GFlow i (Expr i)
+type InstantDefinition i = GInstantDefinition i (Expr i)
 type StateTransition i = GStateTransition i (Expr i)
 type StateInit i = GStateInit i (ConstExpr i)
-type Location i = GLocation i (Expr i) (Instant i)
+type Location i = GLocation i (Expr i)
 type Edge i = GEdge i (Expr i)
-type Automaton i = GAutomaton i (Expr i) (Instant i)
+type Automaton i = GAutomaton i (Expr i)
 
 type EnumDef i = GEnumDef i
 type EnumConstr i = GEnumConstr i

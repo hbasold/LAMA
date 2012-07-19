@@ -13,7 +13,7 @@ module Lang.LAMA.UnTypedStructure (
   -- * Data flow
   Flow,
   -- ** Definition of local and output variables
-  InstantDefinition, Instant,
+  InstantDefinition,
   -- ** Definition of state variables
   StateTransition, StateInit,
   -- * Automata
@@ -23,7 +23,7 @@ module Lang.LAMA.UnTypedStructure (
   Atom, Expr, ConstExpr,
   -- * Constructors
   boolConst, mkIntConst, mkRealConst, constAtExpr, mkAtomVar,
-  mkInstantExpr, mkNodeUsage, mkIte, mkLogNot, mkExpr2, mkConst,
+  mkIte, mkLogNot, mkExpr2, mkConst,
   module Lang.LAMA.Fix
 ) where
 
@@ -37,17 +37,16 @@ type Expr i = Fix (GExpr i Constant (Atom i))         -- ^ expression
 type Atom i = Fix (GAtom i Constant)              -- ^ atom
 type ConstExpr i = Fix (GConstExpr i Constant)    -- ^ constant expression
 
-type Program i = GProgram i Constant (Expr i) (ConstExpr i) (Instant i)
-type Node i = GNode i (Expr i) (ConstExpr i) (Instant i)
-type Declarations i = GDeclarations i (Expr i) (ConstExpr i) (Instant i)
-type Flow i = GFlow i (Expr i) (Instant i)
-type InstantDefinition i = GInstantDefinition i (Instant i)
-type Instant i = Fix (GInstant i (Expr i))
+type Program i = GProgram i Constant (Expr i) (ConstExpr i)
+type Node i = GNode i (Expr i) (ConstExpr i)
+type Declarations i = GDeclarations i (Expr i) (ConstExpr i)
+type Flow i = GFlow i (Expr i)
+type InstantDefinition i = GInstantDefinition i (Expr i)
 type StateTransition i = GStateTransition i (Expr i)
 type StateInit i = GStateInit i (ConstExpr i)
-type Location i = GLocation i (Expr i) (Instant i)
+type Location i = GLocation i (Expr i)
 type Edge i = GEdge i (Expr i)
-type Automaton i = GAutomaton i (Expr i) (Instant i)
+type Automaton i = GAutomaton i (Expr i)
 
 type EnumDef i = GEnumDef i
 type EnumConstr i = GEnumConstr i
@@ -72,12 +71,6 @@ constAtExpr c = Fix (AtExpr (AtomConst c))
 
 mkAtomVar :: i -> Expr i
 mkAtomVar = Fix . AtExpr . AtomVar
-
-mkInstantExpr :: Expr i -> Instant i
-mkInstantExpr = Fix . InstantExpr
-
-mkNodeUsage :: i -> [Expr i] -> Instant i
-mkNodeUsage x = Fix . NodeUsage x
 
 mkIte :: Expr i -> Expr i -> Expr i -> Expr i
 mkIte c e1 = Fix . Ite c e1
