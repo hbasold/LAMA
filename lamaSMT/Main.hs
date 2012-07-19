@@ -3,6 +3,7 @@
 module Main (main) where
 
 import qualified Data.ByteString.Lazy.Char8 as BL
+import Data.List (intercalate)
 
 import System.IO (stdin)
 import System.Environment (getArgs)
@@ -15,17 +16,20 @@ import Control.Monad.IO.Class
 import Control.Monad.Error (ErrorT(..))
 
 import Lang.LAMA.Parse
+import Lang.LAMA.Identifier
 
 import Transform
+import Model
 import Strategy
-import Strategies.BMC
+import Strategies.Factory
 
-import Language.SMTLib2 (SMT, withSMTSolver)
+import Language.SMTLib2 (SMT, MonadSMT(..), SMTOption(..), setOption, withSMTSolver)
 import Language.SMTLib2.Solver
 
-data Options = forall s . Strategy s => Options
+data Options = Options
   { optInput :: FilePath
-  , optStrategy :: s
+  , optStrategy :: Strategy
+  , optSMTOpts :: [SMTOption]
   , optDebug :: Bool
   , optShowHelp :: Bool
   }
@@ -33,7 +37,8 @@ data Options = forall s . Strategy s => Options
 defaultOptions :: Options
 defaultOptions = Options
   { optInput              = "-"
-  , optStrategy           = BMC 5
+  , optStrategy           = defaultStrategy
+  , optSMTOpts            = [ProduceModels True]
   , optDebug              = False
   , optShowHelp           = False
   }
@@ -47,6 +52,12 @@ options =
   [ Option ['i']     []
       (ReqArg (\f opts -> opts {optInput = f}) "FILE")
       "input FILE or stdin"
+    , Option ['s'] ["strategy"]
+      (ReqArg (\s opts -> opts {optStrategy = getStrategy s}) "STRATEGY")
+      ("Strategy to use on given model. Can be one of " ++ (intercalate "," getStrategyNames))
+    , Option ['o'] ["options"]
+      (ReqArg (\o opts -> opts {optStrategy = readOptions' o $ optStrategy opts}) "OPTIONS")
+      ("Additional options for the requested strategy")
     , Option ['d'] ["debug"]
       (OptArg resolveDebug "WHAT")
       "Debug something; for more specific debugging use one of: [dump-scade]"
@@ -88,7 +99,11 @@ runFile opts f = BL.readFile f >>= runMaybeT . run opts f
 run :: Options -> FilePath -> BL.ByteString -> MaybeT IO ()
 run opts@Options {optStrategy = strat} f inp = do
   p <- checkErrors $ parseLAMA inp
-  liftIO $ runCheck opts $ check strat =<< lamaSMT p
+  model <- liftIO
+    . runCheck opts
+    $ (liftSMT . mapM_ setOption $ optSMTOpts opts) >>
+    lamaSMT p >>= (uncurry $ checkWithModel strat)
+  liftIO $ checkModel model
 
 checkErrors :: Either Error a -> MaybeT IO a
 checkErrors r = case r of
@@ -115,3 +130,7 @@ runCheck opts = chooseSolver (optDebug opts) . checkError
       if hasDebug
       then withSMTSolver "tee debug.txt | z3 -smt2 -in -m"
       else withZ3
+
+checkModel :: Ident i => Maybe (Model i) -> IO ()
+checkModel Nothing = putStrLn "42"
+checkModel (Just m) = print m

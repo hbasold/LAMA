@@ -30,11 +30,12 @@ import Data.Map (Map)
 import Prelude hiding (mapM)
 import Data.Traversable
 
-import Control.Monad.State (StateT, MonadState(..), evalStateT, modify, gets)
-
+import Control.Monad.State (StateT(..), MonadState(..), modify, gets)
 import Control.Monad.Error (ErrorT(..), MonadError(..))
 import Control.Monad.Reader (ReaderT(..), asks)
 import Control.Applicative (Applicative(..), (<$>))
+import Control.Arrow (second)
+
 zero' :: SMTExpr Natural
 zero' = Var "zero" unit
 
@@ -201,8 +202,8 @@ data ProgDefs = ProgDefs
                 , invariantDef :: Definition
                 }
 
-lamaSMT :: Ident i => Program i -> ErrorT String SMT ProgDefs
-lamaSMT = flip evalStateT emptyEnv . declProgram 
+lamaSMT :: Ident i => Program i -> ErrorT String SMT (ProgDefs, VarEnv i)
+lamaSMT = fmap (second varEnv) . flip runStateT emptyEnv . declProgram
 
 declProgram :: Ident i => Program i -> DeclM i ProgDefs
 declProgram p =
