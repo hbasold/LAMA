@@ -3,20 +3,22 @@ returns (c : int; a : bool)
 var
   s : bool;
 let
-  c = SubNodes::Count(s, false);
+  c = SubNodes::SubSubNodes::Count(s, false);
   s = SubNodes::Switch(on, off);
   a = c > 0;
 tel
 
 package SubNodes
-  node Count(x : bool; reset : bool)
-  returns (c : int)
-  let
-    c = if not reset
-      then (0 -> pre c) +
-        if x then 1 else 0
-      else 0;
-  tel
+  package SubSubNodes
+    node Count(x : bool; reset : bool)
+    returns (c : int)
+    let
+      c = if not reset
+        then (0 -> pre c) +
+          if x then 1 else 0
+        else 0;
+    tel
+  end;
 
   node Switch(on, off : bool)
   returns (s : bool)
