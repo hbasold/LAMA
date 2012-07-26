@@ -23,10 +23,11 @@ module Lang.LAMA.UnTypedStructure (
   Atom, Expr, ConstExpr,
   -- * Constructors
   boolConst, mkIntConst, mkRealConst, constAtExpr, mkAtomVar,
-  mkIte, mkLogNot, mkExpr2, mkConst,
+  mkIte, mkLogNot, mkExpr2, mkProject, mkConst,
   module Lang.LAMA.Fix
 ) where
 
+import Data.Natural
 import Lang.LAMA.Structure
 import Lang.LAMA.Fix
 
@@ -78,6 +79,9 @@ mkLogNot = Fix . LogNot
 
 mkExpr2 :: BinOp -> Expr i -> Expr i -> Expr i
 mkExpr2 o e1 = Fix . Expr2 o e1
+
+mkProject :: i -> Natural -> Expr i
+mkProject x = Fix . Project x
 
 mkConst :: Constant -> ConstExpr i
 mkConst = Fix . Const

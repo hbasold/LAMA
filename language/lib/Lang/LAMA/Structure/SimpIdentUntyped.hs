@@ -22,14 +22,16 @@ module Lang.LAMA.Structure.SimpIdentUntyped (
   Atom, Expr, ConstExpr,
   -- * Constructors
   boolConst, mkIntConst, mkRealConst, constAtExpr, mkAtomVar,
-  mkIte, mkLogNot, mkExpr2, mkConst,
+  mkIte, mkLogNot, mkExpr2, mkProject, mkConst,
   module Lang.LAMA.Fix
 ) where
 
 import Lang.LAMA.Identifier
 import qualified Lang.LAMA.UnTypedStructure as S
 import Lang.LAMA.Structure
-import Lang.LAMA.UnTypedStructure (boolConst, mkIntConst, mkRealConst, constAtExpr, mkAtomVar, mkIte, mkLogNot, mkExpr2, mkConst)
+import Lang.LAMA.UnTypedStructure (
+  boolConst, mkIntConst, mkRealConst, constAtExpr,
+  mkAtomVar, mkIte, mkLogNot, mkExpr2, mkProject, mkConst)
 import Lang.LAMA.Fix
 
 type Constant = S.Constant
