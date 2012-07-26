@@ -32,6 +32,7 @@ data Options = Options
   , optStrategy :: Strategy
   , optSMTOpts :: [SMTOption]
   , optDebug :: Bool
+  , optDumpLama :: Bool
   , optShowHelp :: Bool
   }
 
@@ -41,11 +42,13 @@ defaultOptions = Options
   , optStrategy           = defaultStrategy
   , optSMTOpts            = [ProduceModels True]
   , optDebug              = False
+  , optDumpLama           = False
   , optShowHelp           = False
   }
 
 resolveDebug :: Maybe String -> Options -> Options
 resolveDebug Nothing opts = opts {optDebug = True}
+resolveDebug (Just "dump-lama") opts = opts {optDumpLama = True}
 resolveDebug _ opts = opts
 
 options :: [OptDescr (Options -> Options)]
@@ -61,7 +64,7 @@ options =
       ("Additional options for the requested strategy")
     , Option ['d'] ["debug"]
       (OptArg resolveDebug "WHAT")
-      "Debug something; for more specific debugging use one of: [dump-scade]"
+      "Debug something; for more specific debugging use one of: [dump-lama]"
     , Option ['h'] ["help"]
       (NoArg  (\opts -> opts {optShowHelp = True}))
       "Show this help"
@@ -100,6 +103,7 @@ runFile opts f = BL.readFile f >>= runMaybeT . run opts f
 run :: Options -> FilePath -> BL.ByteString -> MaybeT IO ()
 run opts@Options {optStrategy = strat} f inp = do
   p <- checkErrors $ parseLAMA inp
+  liftIO $ when (optDumpLama opts) (print p)
   model <- liftIO
     . runCheck opts
     $ (liftSMT . mapM_ setOption $ optSMTOpts opts) >>
