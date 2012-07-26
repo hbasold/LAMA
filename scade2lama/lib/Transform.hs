@@ -48,14 +48,29 @@ data Decls = Decls {
      packages :: Map L.SimpIdent Decls,
      constants :: [S.ConstDecl]
   } deriving Show
+
 emptyDecls :: Decls
 emptyDecls = Decls Map.empty Map.empty Map.empty []
 
-type PackageEnv = Reader Package
+data ScadePackages = ScadePackages
+                     { global :: Package
+                     , current :: Package
+                     } deriving Show
+
+type PackageEnv = Reader ScadePackages
 type TransM = StateT Decls (ErrorT String PackageEnv)
 
 runTransM :: TransM a -> Package -> Either String (a, Decls)
-runTransM m = runReader $ runErrorT $ runStateT m emptyDecls
+runTransM m = (runReader $ runErrorT $ runStateT m emptyDecls) . (\p -> ScadePackages p p)
+
+askGlobalPkg :: (MonadReader ScadePackages m) => m Package
+askGlobalPkg = reader global
+
+askCurrentPkg :: (MonadReader ScadePackages m) => m Package
+askCurrentPkg = reader current
+
+localPkg :: (MonadReader ScadePackages m) => (Package -> Package) -> m a -> m a
+localPkg f = local (\ps -> ps { current = f $ current ps })
 
 -- | Executes an action with a local state. The resulting state
 -- is then combined with that befor using the given function
@@ -75,46 +90,38 @@ updatePackage n p ds = ds { packages = Map.adjust (const p) n $ packages ds }
 createPackage :: L.SimpIdent -> TransM Decls
 createPackage p = gets packages >>= return . Map.findWithDefault emptyDecls p
 
-openPackage :: [String] -> TransM a -> TransM a
-openPackage [] m = m
-openPackage (p:ps) m =
-  do currPkg <- ask
-     case Map.lookup p (pkgSubPackages currPkg) of
-       Nothing -> throwError $ "Unknown package " ++ p
-       Just scadePkg ->
-         let p' = fromString p
-         in do pkg <- createPackage p'
-               localState (updatePackage p') (const pkg)
-                 . local (const scadePkg)
-                 $ openPackage ps m
+-- | Opens a package using the given reader action.
+openPackageWith :: TransM Package -> [String] -> TransM a -> TransM a
+openPackageWith _ [] m = m
+openPackageWith asker (p:ps) m =
+  do scadePkg <- lookupErr ("Unknown package " ++ p) p =<< fmap pkgSubPackages asker
+     let p' = fromString p
+     pkg <- createPackage p'
+     localState (updatePackage p') (const pkg)
+       . localPkg (const scadePkg)
+       $ openPackageWith asker ps m
 
 -- | Checks if there is a node with the given name in the current package
 packageHasNode :: L.SimpIdent -> TransM Bool
 packageHasNode x = gets nodes >>= return . Map.member x
 
+-- | Gets the definition for a node. This may trigger
+-- the translation of the node.
 getNode :: S.Path -> TransM (L.SimpIdent, L.Node)
 getNode (S.Path p) =
   let pkgName = init p
       n = last p
       n' = fromString n
-  in openPackage pkgName $
-     do nodeTranslated <- packageHasNode n'
-        when (not nodeTranslated)
-          (reader pkgUserOps >>= lookupErr ("Unknown operator " ++ n) n >>= trOpDecl)
-        liftM (n',) $ lookupNode n'
+  in tryWith askGlobalPkg pkgName n n' `catchError` (const $ tryWith askCurrentPkg pkgName n n')
   where
-    lookupNode nName = gets nodes >>= lookupErr ("Unknown node " ++ L.identPretty nName) nName
+    tryWith asker pkgName n n' =
+      openPackageWith asker pkgName $
+      do nodeTranslated <- packageHasNode n'
+         when (not nodeTranslated)
+           (fmap pkgUserOps askCurrentPkg >>= lookupErr ("Unknown operator " ++ n) n >>= trOpDecl)
+         liftM (n',) $ lookupNode n'
 
-resolveNodeName :: S.Path -> TransM L.SimpIdent
-resolveNodeName (S.Path p) =
-  let pkgName = init p
-      n = last p
-  in openPackage pkgName $
-     do opExists <- packageHasOperator n
-        if opExists then return $ fromString n
-          else throwError $ "Unknown node " ++ n
-  where
-    packageHasOperator nName = reader pkgUserOps >>= return . Map.member nName
+    lookupNode nName = gets nodes >>= lookupErr ("Unknown node " ++ L.identPretty nName) nName
 
 lookupErr :: (MonadError e m, Ord k) => e -> k -> Map k v -> m v
 lookupErr err k m = case Map.lookup k m of
