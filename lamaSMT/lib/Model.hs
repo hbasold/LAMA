@@ -41,10 +41,10 @@ prettyModel :: Ident i => Model i -> Doc
 prettyModel m = prettyVars (modelVars m) $+$ prettyNodes (modelNodes m)
 
 prettyVars :: Ident i => Map i ValueStream -> Doc
-prettyVars = vcat . map (\(x, s) -> (ptext $ identPretty x) <+> text "=" <+> prettyStream s) . Map.toList
+prettyVars = vcat . map (\(x, s) -> (ptext $ identString x) <+> text "=" <+> prettyStream s) . Map.toList
 
 prettyNodes :: Ident i => Map i (NodeModel i) -> Doc
-prettyNodes = vcat . map (\(x, n) -> (ptext $ identPretty x) <+> prettyNodeModel n) . Map.toList
+prettyNodes = vcat . map (\(x, n) -> (ptext $ identString x) <+> prettyNodeModel n) . Map.toList
 
 prettyNodeModel :: Ident i => NodeModel i -> Doc
 prettyNodeModel m = braces . nest 2 $
