@@ -75,7 +75,6 @@ updatePackage n p ds = ds { packages = Map.adjust (const p) n $ packages ds }
 createPackage :: L.SimpIdent -> TransM Decls
 createPackage p = gets packages >>= return . Map.findWithDefault emptyDecls p
 
--- FIXME: go deeper into packages!
 openPackage :: [String] -> TransM a -> TransM a
 openPackage [] m = m
 openPackage (p:ps) m =
@@ -85,8 +84,9 @@ openPackage (p:ps) m =
        Just scadePkg ->
          let p' = fromString p
          in do pkg <- createPackage p'
-               localState (updatePackage p') (const pkg) $
-                 local (const scadePkg) m
+               localState (updatePackage p') (const pkg)
+                 . local (const scadePkg)
+                 $ openPackage ps m
 
 -- | Checks if there is a node with the given name in the current package
 packageHasNode :: L.SimpIdent -> TransM Bool
@@ -100,10 +100,10 @@ getNode (S.Path p) =
   in openPackage pkgName $
      do nodeTranslated <- packageHasNode n'
         when (not nodeTranslated)
-          (reader pkgUserOps >>= lookupErr ("Unknown operator" ++ n) n >>= trOpDecl)
+          (reader pkgUserOps >>= lookupErr ("Unknown operator " ++ n) n >>= trOpDecl)
         liftM (n',) $ lookupNode n'
   where
-    lookupNode nName = gets nodes >>= lookupErr ("Unknown node" ++ L.identPretty nName) nName
+    lookupNode nName = gets nodes >>= lookupErr ("Unknown node " ++ L.identPretty nName) nName
 
 resolveNodeName :: S.Path -> TransM L.SimpIdent
 resolveNodeName (S.Path p) =
