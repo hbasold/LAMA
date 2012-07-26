@@ -5,7 +5,17 @@ constants
   n = 5;
   l = 4;
 nodes
-  node Write (a : int^5; i, x : int) returns (b : int^5); let
+  node Write1 (a : int^5; i, x : int) returns (b : int^5); let
+    output b =
+      (ite (= i 0) (prod x (project a 1) (project a 2) (project a 3) (project a 4))
+      (ite (= i 1) (prod (project a 0) x (project a 2) (project a 3) (project a 4))
+      (ite (= i 2) (prod (project a 0) (project a 1) x (project a 3) (project a 4))
+      (ite (= i 3) (prod (project a 0) (project a 1) (project a 2)  x (project a 4))
+      (ite (= i 4) (prod (project a 0) (project a 1) (project a 2) (project a 3) x)
+        a )))));
+  tel
+
+  node Write2 (a : int^5; i, x : int) returns (b : int^5); let
     output b =
       (ite (= i 0) (prod x (project a 1) (project a 2) (project a 3) (project a 4))
       (ite (= i 1) (prod (project a 0) x (project a 2) (project a 3) (project a 4))
@@ -15,7 +25,17 @@ nodes
         a )))));
   tel
   
-  node Read (a : int^5; i : int) returns (x : int); let
+  node Read1 (a : int^5; i : int) returns (x : int); let
+    output x =
+      (ite (= i 0) (project a 0)
+      (ite (= i 1) (project a 1)
+      (ite (= i 2) (project a 2)
+      (ite (= i 3) (project a 3)
+      (ite (= i 4) (project a 4)
+        6346 )))));
+  tel
+
+  node Read2 (a : int^5; i : int) returns (x : int); let
     output x =
       (ite (= i 0) (project a 0)
       (ite (= i 1) (project a 1)
@@ -28,17 +48,17 @@ local
   i, i1 : int;
   ai, ai1 : int;
   a, a1, a2 : int^5;
+  s_ : E1 * int * int^5;
 state s : E1 * int * int^5;
 definition
   a = (project s 2);
   i = (project s 1);
   i1 = (mod (+ i 1) n);
-  ai = (use Read a i);
-  ai1 = (use Read a i1);
-  a1 = (use Write a i (+ 1 ai));
-  a2 = (use Write a i (+ ai ai1));
-transition
-  s' = (match (project s 0) {
+  ai = (use Read1 a i);
+  ai1 = (use Read2 a i1);
+  a1 = (use Write1 a i (+ 1 ai));
+  a2 = (use Write2 a i (+ ai ai1));
+  s_ = (match (project s 0) {
           Fill. (prod
                   (ite (= i l) Sum Fill)
                   i1 a1),
@@ -46,4 +66,12 @@ transition
                   (ite (= i l) Fill Sum)
                   i1 a2)
         });
+transition s' = s_;
 initial s = (prod Fill 0 (prod 0 0 0 0 0));
+invariant
+  (and
+    (and (< i 5) (>= i 0))
+    (=> (= (project s 0) Fill)
+        (= (project s_ 2) a2))
+  )
+  ;
