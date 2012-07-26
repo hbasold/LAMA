@@ -246,8 +246,8 @@ declProgram p =
 
 preamble :: DeclM i ()
 preamble =
-  let [(_, natDecl)] = declareType (undefined :: Natural) unit
-  in liftSMT natDecl
+  liftSMT $
+  declareType (undefined :: Natural) unit
 
 declareEnums :: Ident i => Map (TypeAlias i) (EnumDef i) -> DeclM i ()
 declareEnums es =
@@ -266,8 +266,7 @@ declareEnum (t, EnumDef cs) =
   let t' = fromString $ identString t
       cs' = map (fromString . identString) cs
       ann = (t', cs')
-      [(_, enumDecl)] = declareType (undefined :: SMTEnum) ann
-  in liftSMT enumDecl >> return (t, ann)
+  in liftSMT (declareType (undefined :: SMTEnum) ann) >> return (t, ann)
 
 declareDecls :: Ident i => Declarations i -> DeclM i [Definition]
 declareDecls d =

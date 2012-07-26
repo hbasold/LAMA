@@ -18,7 +18,7 @@ newtype SMTEnum = SMTEnum { getEnumCons :: EnumCons }
 instance SMTType SMTEnum where
   type SMTAnnotation SMTEnum = (EnumAlias, [EnumCons])
   getSort _ (a, _) = L.Symbol a
-  declareType u ann = [(typeOf u, decl ann)]
+  declareType u ann = declareType' (typeOf u) (decl ann) (return ())
     where decl (a, cs) =
             declareDatatypes [] [(a, map (,[]) cs)]
 

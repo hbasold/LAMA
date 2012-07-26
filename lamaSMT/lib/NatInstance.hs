@@ -18,12 +18,14 @@ deriving instance Typeable Natural
 instance SMTType Natural where
   type SMTAnnotation Natural = ()
   getSort _ _ = L.Symbol "Nat"
-  declareType u _ = [(typeOf u, decl)]
-    where decl = declareDatatypes [] [
-            ("Nat",
-             [("zero", []),
-              ("succ", [("pred", L.Symbol "Nat")])
-             ])]
+  declareType u _ =
+    declareType' (typeOf u) decl (return ())
+    where
+      decl = declareDatatypes [] [
+        ("Nat",
+         [("zero", []),
+          ("succ", [("pred", L.Symbol "Nat")])
+         ])]
 
 instance SMTValue Natural where
   unmangle (L.Symbol "zero") _ = return $ Just $ fromInteger 0
