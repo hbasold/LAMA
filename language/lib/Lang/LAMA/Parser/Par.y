@@ -36,46 +36,44 @@ import qualified Data.ByteString.Lazy.Char8 as BS
  ']' { PT _ (TS _ 18) }
  '^' { PT _ (TS _ 19) }
  'and' { PT _ (TS _ 20) }
- 'array' { PT _ (TS _ 21) }
- 'assertion' { PT _ (TS _ 22) }
- 'automaton' { PT _ (TS _ 23) }
- 'bool' { PT _ (TS _ 24) }
- 'constants' { PT _ (TS _ 25) }
- 'definition' { PT _ (TS _ 26) }
- 'div' { PT _ (TS _ 27) }
- 'edge' { PT _ (TS _ 28) }
- 'enum' { PT _ (TS _ 29) }
- 'false' { PT _ (TS _ 30) }
- 'initial' { PT _ (TS _ 31) }
- 'int' { PT _ (TS _ 32) }
- 'invariant' { PT _ (TS _ 33) }
- 'ite' { PT _ (TS _ 34) }
- 'let' { PT _ (TS _ 35) }
- 'local' { PT _ (TS _ 36) }
- 'location' { PT _ (TS _ 37) }
- 'match' { PT _ (TS _ 38) }
- 'mod' { PT _ (TS _ 39) }
- 'node' { PT _ (TS _ 40) }
- 'nodes' { PT _ (TS _ 41) }
- 'not' { PT _ (TS _ 42) }
- 'or' { PT _ (TS _ 43) }
- 'output' { PT _ (TS _ 44) }
- 'prod' { PT _ (TS _ 45) }
- 'project' { PT _ (TS _ 46) }
- 'real' { PT _ (TS _ 47) }
- 'returns' { PT _ (TS _ 48) }
- 'sint' { PT _ (TS _ 49) }
- 'state' { PT _ (TS _ 50) }
- 'tel' { PT _ (TS _ 51) }
- 'transition' { PT _ (TS _ 52) }
- 'true' { PT _ (TS _ 53) }
- 'typedef' { PT _ (TS _ 54) }
- 'uint' { PT _ (TS _ 55) }
- 'update' { PT _ (TS _ 56) }
- 'use' { PT _ (TS _ 57) }
- 'xor' { PT _ (TS _ 58) }
- '{' { PT _ (TS _ 59) }
- '}' { PT _ (TS _ 60) }
+ 'assertion' { PT _ (TS _ 21) }
+ 'automaton' { PT _ (TS _ 22) }
+ 'bool' { PT _ (TS _ 23) }
+ 'constants' { PT _ (TS _ 24) }
+ 'definition' { PT _ (TS _ 25) }
+ 'div' { PT _ (TS _ 26) }
+ 'edge' { PT _ (TS _ 27) }
+ 'enum' { PT _ (TS _ 28) }
+ 'false' { PT _ (TS _ 29) }
+ 'initial' { PT _ (TS _ 30) }
+ 'int' { PT _ (TS _ 31) }
+ 'invariant' { PT _ (TS _ 32) }
+ 'ite' { PT _ (TS _ 33) }
+ 'let' { PT _ (TS _ 34) }
+ 'local' { PT _ (TS _ 35) }
+ 'location' { PT _ (TS _ 36) }
+ 'match' { PT _ (TS _ 37) }
+ 'mod' { PT _ (TS _ 38) }
+ 'node' { PT _ (TS _ 39) }
+ 'nodes' { PT _ (TS _ 40) }
+ 'not' { PT _ (TS _ 41) }
+ 'or' { PT _ (TS _ 42) }
+ 'output' { PT _ (TS _ 43) }
+ 'prod' { PT _ (TS _ 44) }
+ 'project' { PT _ (TS _ 45) }
+ 'real' { PT _ (TS _ 46) }
+ 'returns' { PT _ (TS _ 47) }
+ 'sint' { PT _ (TS _ 48) }
+ 'state' { PT _ (TS _ 49) }
+ 'tel' { PT _ (TS _ 50) }
+ 'transition' { PT _ (TS _ 51) }
+ 'true' { PT _ (TS _ 52) }
+ 'typedef' { PT _ (TS _ 53) }
+ 'uint' { PT _ (TS _ 54) }
+ 'use' { PT _ (TS _ 55) }
+ 'xor' { PT _ (TS _ 56) }
+ '{' { PT _ (TS _ 57) }
+ '}' { PT _ (TS _ 58) }
 
 L_integ  { PT _ (TI $$) }
 L_Identifier { PT _ (T_Identifier _) }
@@ -331,10 +329,8 @@ Expr : Atom { AtExpr $1 }
   | '(' BinOp Expr Expr ')' { Expr2 $2 $3 $4 }
   | '(' TernOp Expr Expr Expr ')' { Expr3 $2 $3 $4 $5 }
   | '(' 'prod' ListExpr ')' { Prod (reverse $3) }
-  | '(' 'match' Expr '{' ListPattern '}' ')' { Match $3 $5 }
-  | '(' 'array' ListExpr ')' { Array (reverse $3) }
   | '(' 'project' Identifier Natural ')' { Project $3 $4 }
-  | '(' 'update' Identifier Natural Expr ')' { Update $3 $4 $5 }
+  | '(' 'match' Expr '{' ListPattern '}' ')' { Match $3 $5 }
 
 
 ListExpr :: { [Expr] }
@@ -353,7 +349,6 @@ Pattern : PatHead '.' Expr { Pattern $1 $3 }
 
 PatHead :: { PatHead }
 PatHead : EnumConstr { EnumPat $1 } 
-  | '(' 'prod' List2Id ')' { ProdPat $3 }
 
 
 List2Id :: { List2Id }

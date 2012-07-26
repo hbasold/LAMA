@@ -9,7 +9,6 @@ import Lang.LAMA.Identifier
 prettyType :: Ident i => Type i -> Doc
 prettyType (GroundType t) = prettyBaseType t
 prettyType (EnumType x) = text $ identString x
-prettyType (ArrayType t n) = prettyBaseType t <> (brackets $ integer $ toInteger n)
 prettyType (ProdType ts) = case ts of
   [] -> text "1"
   [t] -> prettyType t
@@ -34,8 +33,6 @@ prettyConstExpr = prettyTyped prettyConstExpr'
     prettyConstExpr' (ConstEnum x) = text $ identString x
     prettyConstExpr' (ConstProd (Prod vs)) =
       parens $ hcat $ punctuate comma $ map prettyConstExpr vs
-    prettyConstExpr' (ConstArray (Array vs)) =
-      brackets $ hcat $ punctuate comma $ map prettyConstExpr vs
 
 prettyConst :: Constant i -> Doc
 prettyConst c = case untyped c of

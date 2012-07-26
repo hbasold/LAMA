@@ -20,7 +20,7 @@ module Lang.LAMA.Structure (
   -- * Expressions
   -- ** Untyped expressions
   -- $untyped-doc
-  GProd(..), GArray(..), GPattern(..), GPatHead(..),
+  GProd(..), GPattern(..),
   GAtom(..), GExpr(..), GConstExpr(..), BinOp(..)
 ) where
 
@@ -132,13 +132,8 @@ data GAtom i const f
   deriving (Eq, Show)
 
 data GProd expr = Prod [expr] deriving (Eq, Show)
-data GArray expr = Array [expr] deriving (Eq, Show)
 
-data GPattern i expr = Pattern (GPatHead i) expr deriving (Eq, Show)
-data GPatHead i
-  = EnumPat (GEnumConstr i)
-  | ProdPat [i]
-  deriving (Eq, Show)
+data GPattern i expr = Pattern (GEnumConstr i) expr deriving (Eq, Show)
 
 -- | Untyped LAMA expressions
 data GExpr i const atom f
@@ -147,10 +142,8 @@ data GExpr i const atom f
   | Expr2 BinOp f f                 -- ^ Binary expression
   | Ite f f f                       -- ^ If-then-else
   | ProdCons (GProd f) -- ^ Product constructor
+  | Project i Natural      -- ^ Product projection
   | Match f [GPattern i f] -- ^ Pattern match
-  | ArrayCons (GArray f) -- ^ Array constructor
-  | Project i Natural      -- ^ Array projection
-  | Update i Natural f -- ^ Array update
   deriving (Eq, Show)
 
 -- | Binary operators
@@ -165,16 +158,12 @@ data GConstExpr i const f
   = Const const                       -- ^ Simple constant
   | ConstEnum (GEnumConstr i)
   | ConstProd (GProd f) -- ^ Product constructed from constant expressions
-  | ConstArray (GArray f)  -- ^ Array constructed from constant expressions
   deriving (Eq, Show)
 
 
 ---- Instances -----
 
 instance EqFunctor GProd where
-  eqF = (==)
-
-instance EqFunctor GArray where
   eqF = (==)
 
 instance EqFunctor GConst where
@@ -191,9 +180,6 @@ instance (Ident i, Eq const, Eq atom) => EqFunctor (GExpr i const atom) where
 
 
 instance ShowFunctor GProd where
-  showF = show
-
-instance ShowFunctor GArray where
   showF = show
 
 instance ShowFunctor GConst where

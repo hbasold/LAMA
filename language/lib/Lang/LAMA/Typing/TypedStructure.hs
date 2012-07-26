@@ -19,7 +19,7 @@ module Lang.LAMA.Typing.TypedStructure (
   -- * Automata
   LocationId, Location, Edge, Automaton,
   -- * Expressions
-  Prod, Array, Pattern, PatHead,
+  Prod, Pattern,
   Atom, Expr, ConstExpr,
   boolConst, constAtExpr
 ) where
@@ -55,9 +55,7 @@ type EnumConstr i = GEnumConstr i
 type Variable i = GVariable i
 type LocationId i = GLocationId i
 type Prod i = GProd (Expr i)
-type Array i = GArray (Expr i)
 type Pattern i = GPattern i (Expr i)
-type PatHead i = GPatHead i
 
 boolConst :: Bool -> Constant i
 boolConst c = mkTyped (BoolConst c) boolT

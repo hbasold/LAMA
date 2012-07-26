@@ -18,7 +18,7 @@ module Lang.LAMA.Structure.SimpIdentUntyped (
   -- * Automata
   LocationId, Location, Edge, Automaton,
   -- * Expressions
-  Prod, Array, Pattern, PatHead,
+  Prod, Pattern,
   Atom, Expr, ConstExpr,
   -- * Constructors
   boolConst, mkIntConst, mkRealConst, constAtExpr, mkAtomVar,
@@ -53,6 +53,4 @@ type EnumConstr = S.EnumConstr SimpIdent
 type Variable = S.Variable SimpIdent
 type LocationId = S.LocationId SimpIdent
 type Prod = S.Prod SimpIdent
-type Array = S.Array SimpIdent
 type Pattern = S.Pattern SimpIdent
-type PatHead = S.PatHead SimpIdent

@@ -53,7 +53,6 @@ trIntegerConst v = if v < 0 then Abs.NegativeInt $ abs v else Abs.NonNegativeInt
 trType :: Ident i => Type i -> Abs.Type
 trType (GroundType bt) = Abs.GroundType $ trBaseType bt
 trType (EnumType x) = Abs.TypeId $ trIdent x
-trType (ArrayType bt n) = Abs.ArrayType (trBaseType bt) (trNatural n)
 trType (ProdType [t1, t2]) = Abs.ProdType (trType t1) (trType t2)
 trType (ProdType (t:ts)) = Abs.ProdType (trType t) (trType $ ProdType ts)
 trType (ProdType _) = undefined
@@ -181,16 +180,7 @@ trConstant = trConstant' . unfix
     trConstant' (UIntConst s v) = Abs.UIntConst (trNatural $ s) (trNatural v)
 
 trPattern :: Ident i => Pattern i -> Abs.Pattern
-trPattern (Pattern h e) = Abs.Pattern (trPatHead h) (trExpr e)
-
-trPatHead :: Ident i => PatHead i -> Abs.PatHead
-trPatHead (EnumPat x) = Abs.EnumPat (trEnumConstr x)
-trPatHead (ProdPat xs) = Abs.ProdPat (trList2Id xs)
-
-trList2Id :: Ident i => [i] -> Abs.List2Id
-trList2Id [x,y] = Abs.Id2 (trIdent x) (trIdent y)
-trList2Id (x:(y:xs)) = Abs.ConsId (trIdent x) (trList2Id $ y:xs)
-trList2Id _ = undefined
+trPattern (Pattern h e) = Abs.Pattern (Abs.EnumPat $ trEnumConstr h) (trExpr e)
 
 trExpr :: Ident i => Expr i -> Abs.Expr
 trExpr = trExpr' . unfix
@@ -201,10 +191,8 @@ trExpr = trExpr' . unfix
     trExpr' (Expr2 o e1 e2) = Abs.Expr2 (trBinOp o) (trExpr e1) (trExpr e2)
     trExpr' (Ite c e1 e2) = Abs.Expr3 Abs.Ite (trExpr c) (trExpr e1) (trExpr e2)
     trExpr' (ProdCons (Prod es)) = Abs.Prod (map trExpr es)
-    trExpr' (Match e pats) = Abs.Match (trExpr e) (map trPattern pats)
-    trExpr' (ArrayCons (Array es)) = Abs.Array (map trExpr es)
     trExpr' (Project x i) = Abs.Project (trIdent x) (trNatural i)
-    trExpr' (Update x i e) = Abs.Update (trIdent x) (trNatural i) (trExpr e)
+    trExpr' (Match e pats) = Abs.Match (trExpr e) (map trPattern pats)
 
 trAtom :: Ident i => GAtom i Constant (Atom i) -> Abs.Atom
 trAtom (AtomConst c) = Abs.AtomConst $ trConstant c
@@ -235,4 +223,3 @@ trConstExpr = Abs.ConstExpr . trConstExpr' . unfix
     trConstExpr' (Const c) = Abs.AtExpr $ Abs.AtomConst $ trConstant c
     trConstExpr' (ConstEnum x) = Abs.AtExpr $ Abs.AtomVar $ trIdent x
     trConstExpr' (ConstProd (Prod cs)) = Abs.Prod $ map (trConstExpr' . unfix) cs
-    trConstExpr' (ConstArray (Array cs)) = Abs.Array $ map (trConstExpr' . unfix) cs

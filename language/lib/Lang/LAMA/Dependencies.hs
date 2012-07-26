@@ -16,7 +16,7 @@ import qualified Data.Graph.Inductive.Graph as G
 import qualified Data.Graph.Inductive.UnlabeledGraph as U
 import Data.Graph.Inductive.Graph (Context, ufold, insEdges, pre)
 import Data.Map as Map hiding (map, null, foldl, (\\))
-import Data.List (intercalate, (\\))
+import Data.List (intercalate)
 import Data.Foldable (foldl, foldlM)
 import Data.Traversable (mapM)
 import qualified Data.ByteString.Char8 as BS
@@ -31,7 +31,7 @@ import Lang.LAMA.Identifier
 import Lang.LAMA.Types
 import Lang.LAMA.Typing.TypedStructure
 
-import Data.Graph.Inductive.GenShow
+import Data.Graph.Inductive.GenShow ()
 
 -- | Context in which a variable is used. With this context state variables
 --  can be distinguished if they are use on lhs or rhs of an assignment.
@@ -388,10 +388,7 @@ insGlobLocDeps v@(x, u, _) = do
     insDep vG v
 
 getDepsPattern :: Ident i => Pattern i -> [i]
-getDepsPattern (Pattern h e) = (getDeps $ untyped e) \\ (getVarsHead h)
-  where
-    getVarsHead (EnumPat _) = []
-    getVarsHead (ProdPat xs) = xs
+getDepsPattern (Pattern _ e) = (getDeps $ untyped e)
 
 getDeps :: Ident i => GExpr i (Constant i) (Atom i) (Expr i) -> [i]
 getDeps (AtExpr (AtomVar ident)) = [ident]
@@ -401,6 +398,4 @@ getDeps (Expr2 _ e1 e2) = (getDeps $ untyped e1) ++ (getDeps $ untyped e2)
 getDeps (Ite c e1 e2) = (getDeps $ untyped c) ++ (getDeps $ untyped e1) ++ (getDeps $ untyped e2)
 getDeps (ProdCons (Prod es)) = concat $ map (getDeps . untyped) es
 getDeps (Match e pats) = (getDeps $ untyped e) ++ (concat $ map getDepsPattern pats)
-getDeps (ArrayCons (Array es)) = concat $ map (getDeps . untyped) es
 getDeps (Project x _) = [x]
-getDeps (Update x _ e) = x : (getDeps $ untyped e)

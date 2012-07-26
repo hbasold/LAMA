@@ -117,8 +117,10 @@ transType :: Abs.Type -> Result (Type PosIdent)
 transType x = case x of
   Abs.GroundType basetype  -> fmap GroundType $ transBaseType basetype
   Abs.TypeId identifier  -> fmap EnumType $ transIdentifier identifier
-  Abs.ArrayType basetype natural  ->
-    ArrayType <$> (transBaseType basetype) <*> (transNatural natural)
+  Abs.ArrayType basetype natural ->
+    ProdType <$> (replicate
+                  <$> fmap fromEnum (transNatural natural)
+                  <*> fmap GroundType (transBaseType basetype))
   Abs.ProdType t1 t2  -> ProdType <$> transProdTypeList t1 t2
 
 
@@ -216,7 +218,6 @@ transConstExpr x = case x of
       then return $ ConstEnum (EnumCons y)
         else throwError $ "Not a constant expression: " ++ show y
     evalConst (ProdCons (Prod cs)) = ConstProd . Prod <$> mapM evalConstM cs
-    evalConst (ArrayCons (Array cs)) = ConstArray . Array <$> mapM evalConstM cs
     evalConst _ = throwError $ "Not a constant expression: " ++ Abs.printTree x
 
 
@@ -376,6 +377,7 @@ transAtom x = case x of
       Nothing -> return $ Fix $ AtomVar y
       Just c -> return $ Fix $ AtomConst c
 
+
 transExpr :: Abs.Expr -> Result Expr
 transExpr = fmap Fix . transExpr'
   where
@@ -393,16 +395,11 @@ transExpr = fmap Fix . transExpr'
 
       Abs.Prod exprs  -> ProdCons . Prod <$> mapM transExpr exprs
 
-      Abs.Match expr patterns  ->
-        Match <$> transExpr expr <*> mapM transPattern patterns
-
-      Abs.Array exprs  -> ArrayCons . Array <$> mapM transExpr exprs
-
       Abs.Project identifier natural  ->
         Project <$> transIdentifier identifier <*> transNatural natural
 
-      Abs.Update identifier natural expr  ->
-        Update <$> transIdentifier identifier <*> transNatural natural <*> transExpr expr
+      Abs.Match expr patterns  ->
+        Match <$> transExpr expr <*> mapM transPattern patterns
 
 
 transPattern :: Abs.Pattern -> Result Pattern
@@ -410,18 +407,9 @@ transPattern x = case x of
   Abs.Pattern pathead expr  -> Pattern <$> transPatHead pathead <*> transExpr expr
 
 
-transPatHead :: Abs.PatHead -> Result PatHead
+transPatHead :: Abs.PatHead -> Result EnumConstr
 transPatHead x = case x of
-  Abs.EnumPat enumconstr  -> EnumPat <$> transEnumConstr enumconstr
-  Abs.ProdPat list2id  -> ProdPat <$> transList2Id list2id
-
-transList2Id :: Abs.List2Id -> Result [PosIdent]
-transList2Id x = case x of
-  Abs.Id2 identifier1 identifier2  -> do
-    ident1 <- transIdentifier identifier1
-    ident2 <- transIdentifier identifier2
-    return [ident1, ident2]
-  Abs.ConsId identifier list2id  -> (:) <$> (transIdentifier identifier) <*> (transList2Id list2id)
+  Abs.EnumPat enumconstr  -> transEnumConstr enumconstr
 
 
 transBinOp :: Abs.BinOp -> Result BinOp

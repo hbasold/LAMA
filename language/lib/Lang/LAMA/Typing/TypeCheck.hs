@@ -52,6 +52,15 @@ mapAccumLM f r = liftM swap . (flip runStateT r) . (k f)
           ys = fmap (\t -> get >>= lift . t >>= \(a, y) -> put a >> return y) ts :: t (StateT a m c)
       in sequence ys
 
+-- | Safe indexing
+(!?) :: (Foldable t, Integral i) => t a -> i -> Maybe a
+xs !? i
+  | i >= toEnum 0 = snd $ foldl (f i) (toEnum 0, Nothing) xs
+  | otherwise = Nothing
+  where
+    f i (i', Nothing) x = if i == i' then (i', Just x) else (succ i', Nothing)
+    f _ r@(_, Just _) _ = r
+
 -- | Intermediate type for type inference
 type TypeId = Int
 showTypeId :: TypeId -> String
@@ -345,16 +354,6 @@ checkConstExpr (Fix (ConstProd (Prod vs))) = do
   vs' <- mapM checkConstExpr vs
   let ts = map getType vs'
   return $ mkTyped (ConstProd (Prod vs')) (mkProductT ts)
-checkConstExpr (Fix (ConstArray (Array vs))) = do
-  let l = length vs
-  when (l == 0) (throwError "Empty arrays are not allowed")
-  vs' <- mapM checkConstExpr vs
-  let ts = map getGround0 vs'
-  (t', _) <- foldlM (\(t1, s) t2 -> unify0 t1 (s t2)) (head ts, id) (tail ts)
-  t <- ensureGround $ Simple t'
-  case t of
-    GroundType t1 -> return $ mkTyped (ConstArray $ Array vs') (ArrayType t1 $ fromInteger $ toInteger l)
-    _ -> throwError $ (render $ prettyType t) ++ " is not a base type which is required for arrays"
 
 checkExpr :: Ident i => UT.Expr i -> Result i (Expr i)
 checkExpr = checkExpr' . UT.unfix
@@ -389,60 +388,26 @@ checkExpr = checkExpr' . UT.unfix
       let ts = map getType es'
       return $ mkTyped (ProdCons (Prod es')) (mkProductT ts)
 
+    checkExpr' (Project x i) = do
+      p <- envLookupReadable x
+      case p of
+        (ProdType ts) -> case ts !? i of
+          Nothing -> throwError $ "Projection of " ++ identPretty x ++ " out of range"
+          Just t -> return $ mkTyped (Project x i) t
+        _ -> throwError $ identPretty x ++ " has type " ++ render (prettyType p) ++ " but a product is expected"
+
     checkExpr' (Match e pats) = do
       e' <- checkExpr e
       (pats', ts) <- fmap unzip $ mapM (checkPattern $ getType e') pats
       t <- foldlM (\t1 t2 -> ensureGround . fst =<< unify (mkGround t1) (mkGround t2)) (head ts) (tail ts)
       return $ mkTyped (Match e' pats') t
 
-    checkExpr' (ArrayCons (Array es)) = do
-      let l = length es
-      when (l == 0) (throwError "Empty arrays are not allowed")
-      es' <- mapM checkExpr es
-      let ts = map getGround0 es'
-      (t', _) <- foldlM (\(t1, s) t2 -> unify0 t1 (s t2)) (head ts, id) (tail ts)
-      t <- ensureGround $ Simple t'
-      case t of
-        GroundType t1 -> return $ mkTyped (ArrayCons $ Array es') (ArrayType t1 $ fromInteger $ toInteger l)
-        _ -> throwError $ (render $ prettyType t) ++ " is not a base type which is required for arrays"
-
-    checkExpr' (Project x i) = do
-      a <- envLookupReadable x
-      case a of
-        (ArrayType t n) -> do
-          when (i >= n)
-            (throwError $ "Projection of " ++ identPretty x ++ " out of range")
-          return $ mkTyped (Project x i) (GroundType t)
-        _ -> throwError $ identPretty x ++ " is not an array type"
-
-    checkExpr' (Update x i e) = do
-      a <- envLookupReadable x
-      e' <- checkExpr e
-      case a of
-        (ArrayType t n) -> do
-          when (i >= n)
-            (throwError $ "Update of " ++ identPretty x ++ " out of range")
-          void $ unify (mkGround $ GroundType t) (getGround e')
-          return $ mkTyped (Update x i e') (ArrayType t n)
-        _ -> throwError $ identPretty x ++ " is not an array type"
-
 checkPattern :: Ident i => Type i -> UT.Pattern i -> Result i (Pattern i, Type i)
 checkPattern inType (Pattern h e) = do
-  (h', vs) <- checkPatHead inType h
-  e' <- envAddVariables Input vs $ checkExpr e
-  return (Pattern h' e', getType e')
-
-checkPatHead :: Ident i => Type i -> UT.PatHead i -> Result i (PatHead i, [Variable i])
-checkPatHead inType (EnumPat x) = do
-  t <- envLookupEnum x
+  t <- envLookupEnum h
   void $ unify (mkGround inType) (mkGround t)
-  return $ (EnumPat x, [])
-checkPatHead inType (ProdPat xs) = do
-  tids <- mapM (const genTypeId) xs
-  let t = foldl (\t' a -> Forall a TypeU t') (Simple $ InterProd $ map Named tids) tids
-  (ProdType ts) <- ensureGround . fst =<< unify (mkGround inType) t
-  let vs = map (uncurry Variable) $ zip xs ts
-  return $ (ProdPat xs, vs)
+  e' <- checkExpr e
+  return (Pattern h e', getType e')
 
 -- | Checks the signature of a used node
 checkNodeTypes :: Ident i => String -> i -> [Variable i] -> [Type i] -> Result i ()

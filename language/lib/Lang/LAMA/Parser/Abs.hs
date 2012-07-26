@@ -187,10 +187,8 @@ data Expr =
  | Expr2 BinOp Expr Expr
  | Expr3 TernOp Expr Expr Expr
  | Prod [Expr]
- | Match Expr [Pattern]
- | Array [Expr]
  | Project Identifier Natural
- | Update Identifier Natural Expr
+ | Match Expr [Pattern]
   deriving (Eq,Ord,Show)
 
 data Pattern =
@@ -199,7 +197,6 @@ data Pattern =
 
 data PatHead =
    EnumPat EnumConstr
- | ProdPat List2Id
   deriving (Eq,Ord,Show)
 
 data List2Id =

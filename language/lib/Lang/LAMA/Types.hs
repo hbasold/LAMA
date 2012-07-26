@@ -26,8 +26,7 @@ type TypeAlias i = i
 data Type i
   = GroundType BaseType   -- ^ Basic sorts
   | EnumType (TypeAlias i)      -- ^ Named type (enum)
-  | ArrayType BaseType Natural  -- ^ Array with fixed length of basic sort
-  | ProdType [Type i]
+  | ProdType [Type i] -- ^ Product type
   deriving (Eq, Show)
 
 -- | Basic LAMA sorts

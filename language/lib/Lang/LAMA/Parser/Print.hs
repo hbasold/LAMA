@@ -344,10 +344,8 @@ instance Print Expr where
    Expr2 binop expr0 expr -> prPrec i 0 (concatD [doc (showString "(") , prt 0 binop , prt 0 expr0 , prt 0 expr , doc (showString ")")])
    Expr3 ternop expr0 expr1 expr -> prPrec i 0 (concatD [doc (showString "(") , prt 0 ternop , prt 0 expr0 , prt 0 expr1 , prt 0 expr , doc (showString ")")])
    Prod exprs -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "prod") , prt 0 exprs , doc (showString ")")])
-   Match expr patterns -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "match") , prt 0 expr , doc (showString "{") , prt 0 patterns , doc (showString "}") , doc (showString ")")])
-   Array exprs -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "array") , prt 0 exprs , doc (showString ")")])
    Project identifier natural -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "project") , prt 0 identifier , prt 0 natural , doc (showString ")")])
-   Update identifier natural expr -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "update") , prt 0 identifier , prt 0 natural , prt 0 expr , doc (showString ")")])
+   Match expr patterns -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "match") , prt 0 expr , doc (showString "{") , prt 0 patterns , doc (showString "}") , doc (showString ")")])
 
   prtList es = case es of
    [] -> (concatD [])
@@ -364,7 +362,6 @@ instance Print Pattern where
 instance Print PatHead where
   prt i e = case e of
    EnumPat enumconstr -> prPrec i 0 (concatD [prt 0 enumconstr])
-   ProdPat list2id -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "prod") , prt 0 list2id , doc (showString ")")])
 
 
 instance Print List2Id where
