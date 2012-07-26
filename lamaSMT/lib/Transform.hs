@@ -40,6 +40,7 @@ import Control.Applicative (Applicative(..), (<$>))
 import Control.Arrow (second)
 
 import SMTEnum
+import RewriteAutomaton
 
 zero' :: SMTExpr Natural
 zero' = Var "zero" unit
@@ -179,11 +180,13 @@ putConstants cs =
   let cs' = fmap trConstant cs
   in modify $ \env -> env { constants = cs' }
 
-putEnumAnn :: Map i (SMTAnnotation SMTEnum) -> DeclM i ()
-putEnumAnn eAnns = modify $ \env -> env { enumAnn = eAnns }
+putEnumAnn :: Ident i => Map i (SMTAnnotation SMTEnum) -> DeclM i ()
+putEnumAnn eAnns =
+  modify $ \env -> env { enumAnn = (enumAnn env) `Map.union` eAnns }
 
-putEnumConsAnn :: Map (EnumConstr i) (SMTAnnotation SMTEnum) -> DeclM i ()
-putEnumConsAnn consAnns = modify $ \env -> env { enumConsAnn = consAnns }
+putEnumConsAnn :: Ident i => Map (EnumConstr i) (SMTAnnotation SMTEnum) -> DeclM i ()
+putEnumConsAnn consAnns =
+  modify $ \env -> env { enumConsAnn = (enumConsAnn env) `Map.union` consAnns }
 
 modifyVarEnv :: (VarEnv i -> VarEnv i) -> DeclM i ()
 modifyVarEnv f = modify $ \env -> env { varEnv = f $ varEnv env }
@@ -305,7 +308,7 @@ declareNode n =
      declDefs <- declareDecls $ nodeDecls n
      flowDefs <- declareFlow $ nodeFlow n
      outDefs <- fmap concat . mapM declareInstantDef $ nodeOutputDefs n
-     automDefs <- fmap concat . mapM declareAutomaton . Map.elems $ nodeAutomata n
+     automDefs <- fmap concat . mapM declareAutomaton . Map.toList $ nodeAutomata n
      assertInits $ nodeInitial n
      varDefs <- gets varEnv
      return (NodeEnv ins outs varDefs,
@@ -341,8 +344,15 @@ declareFlow f =
      transitionDefs <- mapM declareTransition $ flowTransitions f
      return $ defDefs ++ transitionDefs
 
-declareAutomaton :: Automaton i -> DeclM i [Definition]
-declareAutomaton = $notImplemented
+declareAutomaton :: Ident i => (Int, Automaton i) -> DeclM i [Definition]
+declareAutomaton (x, a) =
+  let n = "Autom" ++ show x -- FIXME: generate better name!
+      (e, sVars, f, i) = mkAutomatonEquations n a
+  in do declareEnums e
+        declDefs <- declareDecls sVars
+        flowDefs <- declareFlow f
+        assertInits i
+        return $ declDefs ++ flowDefs
 
 assertInits :: Ident i => StateInit i -> DeclM i ()
 assertInits = mapM_ assertInit . Map.toList
