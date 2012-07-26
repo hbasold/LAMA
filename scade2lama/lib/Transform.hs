@@ -7,19 +7,19 @@ import Development.Placeholders
 
 import qualified Data.Map as Map
 import Data.Map (Map)
-
 import Data.String (fromString)
 import Data.Either (partitionEithers)
-import Data.List ((\\))
+import Data.List ((\\), intercalate)
 import qualified  Data.Set as Set
 import Data.Set (Set)
 import qualified Data.ByteString.Char8 as BS
 import Data.Ratio
 import Data.List.Split (splitOn)
+import Data.Maybe (maybeToList, catMaybes)
 
 import Control.Monad.State
 import Control.Monad.Error (MonadError(..), ErrorT(..))
-import Control.Arrow ((***), (&&&))
+import Control.Arrow ((***), (&&&), first)
 import Control.Applicative (Applicative(..), (<$>))
 import Control.Monad.Reader
 import Control.Monad.Writer
@@ -75,6 +75,7 @@ updatePackage n p ds = ds { packages = Map.adjust (const p) n $ packages ds }
 createPackage :: L.SimpIdent -> TransM Decls
 createPackage p = gets packages >>= return . Map.findWithDefault emptyDecls p
 
+-- FIXME: go deeper into packages!
 openPackage :: [String] -> TransM a -> TransM a
 openPackage [] m = m
 openPackage (p:ps) m =
@@ -138,29 +139,24 @@ transform topNode ds =
   in case runTransM (getNode $ mkPath $ topNode) ds' of
     Left e -> Left e
     Right ((topNodeName, n), decls) ->
-      let (flowLocals, flowStates, flowInit, topFlow) = mkFreeFlow (topNodeName, n)
-      in Right $ L.Program
-         (mkEnumDefs $ types decls) (mkConstDefs $ constants decls)
-         (L.Declarations (Map.singleton topNodeName n) flowLocals flowStates)
-         topFlow flowInit
-         (L.constAtExpr $ L.boolConst True) (L.constAtExpr $ L.boolConst True)
+      do (flowLocals, flowStates, flowInit, topFlow) <- mkFreeFlow (topNodeName, n)
+         return $ L.Program
+           (mkEnumDefs $ types decls) (mkConstDefs $ constants decls)
+           (L.Declarations (Map.singleton topNodeName n) flowLocals flowStates)
+           topFlow flowInit
+           (L.constAtExpr $ L.boolConst True) (L.constAtExpr $ L.boolConst True)
   where
-    mkFreeFlow :: (L.SimpIdent, L.Node) -> ([L.Variable], [L.Variable], L.StateInit, L.Flow)
+    mkFreeFlow :: (L.SimpIdent, L.Node) -> Either String ([L.Variable], [L.Variable], L.StateInit, L.Flow)
     mkFreeFlow (x, n) =
-      let scopedInp = map (updateVarName $ BS.append (BS.snoc (L.identBS x) '_')) $ L.nodeInputs n
-          scopedOutp = map (updateVarName $ BS.append (BS.snoc (L.identBS x) '_')) $ L.nodeOutputs n
-          scopedOutpIdent = map L.varIdent scopedOutp
-          outpVar = L.Variable
-                    (L.SimpIdent $ L.identBS x `BS.append` BS.pack "_result")
-                    (L.mkProductT $ map L.varType $ L.nodeOutputs n)
-          locs = scopedInp ++ scopedOutp ++ [outpVar]
-          projectExprs = map (L.Fix . L.InstantExpr . mkProdProject (L.varIdent outpVar) scopedOutpIdent) scopedOutpIdent
-          projects = map (uncurry L.InstantDef) $ zip scopedOutpIdent projectExprs
-          sts = []
-          stInit = Map.empty
-          use = L.mkNodeUsage x $ map (L.mkAtomVar . L.varIdent) scopedInp
-          flow = L.Flow ([L.InstantDef (L.varIdent outpVar) use] ++ projects) []
-      in (locs, sts, stInit, flow)
+      let inp = map L.mkAtomVar . map L.varIdent $ L.nodeInputs n
+          outpType = L.mkProductT . map L.varType $ L.nodeOutputs n
+          outpIds = map L.varIdent $ L.nodeOutputs n
+      in do (a, decl) <- mkLocalAssigns outpIds (Right (x, inp, outpType))
+            let locs = (L.nodeInputs n) ++ (L.nodeOutputs n) ++ (maybeToList decl)
+            let sts = []
+            let stInit = Map.empty
+            let flow = L.Flow a []
+            return (locs, sts, stInit, flow)
     
     mkEnumDefs :: Map L.SimpIdent (Either Type L.EnumDef) -> Map TypeAlias L.EnumDef
     mkEnumDefs = Map.fromAscList . foldr (\(x, t) tds -> either (const tds) (\td -> (x,td):tds) t) [] . Map.toAscList
@@ -173,14 +169,6 @@ transform topNode ds =
               Temporal.rewrite .
               OpApp.rewrite .
               Unroll.rewrite
-
-mkProdProject :: L.SimpIdent -> [L.SimpIdent] -> L.SimpIdent -> L.Expr
-mkProdProject _ [] _ = undefined
-mkProdProject from [_] _ = L.Fix $ L.AtExpr $ L.AtomVar from
-mkProdProject from xs x
-  = L.Fix $ L.Match
-    (L.Fix $ L.AtExpr $ L.AtomVar from)
-    [L.Pattern (L.ProdPat xs) (L.Fix $ L.AtExpr $ L.AtomVar x)]
 
 trOpDecl :: S.Declaration -> TransM ()
 trOpDecl (S.UserOpDecl {
@@ -205,24 +193,26 @@ trOpDecl (S.UserOpDecl {
           outp' = map (updateVarName $ flip BS.append $ BS.pack "_out") outp
           -- and assign the corresponding value to them (x_out = x)
           outputDefs = foldr
-                       (\(x, x') ds -> (L.InstantDef (L.varIdent x') $ L.mkInstantExpr $ L.mkAtomVar (L.varIdent x)) : ds )
+                       (\(x, x') ds -> (L.InstantExpr (L.varIdent x') $ L.mkAtomVar (L.varIdent x)) : ds )
                        [] $ zip outp outp'
           automata = Map.empty
       in do
-        (((definitions, transitions), stateInits), usedNodes) <-
+        ((((definitions, intermediateVars), transitions), stateInits), usedNodes) <-
           runWriterT $
-            liftM ((partitionEithers *** concat) . unzip) $ mapM trEquation equations
+            liftM (((first unzip . partitionEithers) *** concat) . unzip) $ mapM trEquation equations
+        let definitions' = concat definitions
+        let intermediateVars' = catMaybes intermediateVars
         -- FIXME: respect multiple points of usages!??
         subNodes <- Map.fromList <$> mapM getNode (Set.toList usedNodes)
         let inits = Map.fromList stateInits
         stateVars <- mapM (\x -> lookupErr ("Unknown variable " ++ L.identPretty x) x vars) $ Map.keys inits
-        let localVars = Map.elems vars \\ stateVars
+        let localVars = intermediateVars' ++ (Map.elems vars \\ stateVars)
         return $ L.Node inp outp'
           (L.Declarations subNodes localVars stateVars)
-          (L.Flow definitions transitions)
+          (L.Flow definitions' transitions)
           outputDefs automata inits
 
-    usedNode (L.InstantDef _ (L.Fix (L.NodeUsage x _))) = Just x
+    usedNode (L.NodeUsage _ x _) = Just x
     usedNode _ = Nothing
 
 trOpDecl _ = undefined
@@ -233,24 +223,67 @@ type TrackUsedNodes = WriterT (Set S.Path) TransM
 tellNode :: MonadWriter (Set S.Path) m => S.Path -> m ()
 tellNode = tell . Set.singleton
 
--- | Gives back either 
-trEquation :: S.Equation -> TrackUsedNodes (Either L.InstantDefinition L.StateTransition, [(L.SimpIdent, L.ConstExpr)])
+-- | Gives back either a set of definitions which is
+-- a single assignment in case the given equation is a
+-- simple expression. If the given equation is the using
+-- of a node with multiple return values this set of
+-- definitions consists of the call to the node and
+-- a projection for each variable. In that case also
+-- an intermediate variable to be declared is returned.
+trEquation :: S.Equation
+              -> TrackUsedNodes (Either ([L.InstantDefinition], Maybe L.Variable) L.StateTransition,
+                                 [(L.SimpIdent, L.ConstExpr)])
 trEquation (S.SimpleEquation lhsIds expr) = do
   let ids = map trLhsId lhsIds
-  (inst, stateInit) <- trExpr expr
+  (rhs, stateInit) <- trExpr expr
   case stateInit of
-    Nothing -> case ids of
-      [x] -> return (Left $ L.InstantDef x inst, [])
-      _ -> $notImplemented
-    Just sInit -> case ids of
-      [x] -> case inst of
-        (L.Fix (L.InstantExpr expr')) -> return (Right $ L.StateTransition x expr', [(x, sInit)])
-        _ -> throwError $ "Cannot use not state equation"
-      _ -> throwError $ "Cannot pattern match in state equation"
+    Nothing -> mkLocalAssigns ids rhs >>= \a -> return (Left a, [])
+    Just sInit ->
+      case rhs of
+        Left expr' -> case ids of
+          [x] -> return (Right $ L.StateTransition x expr', [(x, sInit)])
+          _ -> throwError $ "Cannot pattern match in state equation"
+        Right _ -> throwError $ "Cannot use node in state equation"
 trEquation (S.AssertEquation aType name expr) = $notImplemented
 trEquation (S.EmitEquation body) = $notImplemented
 trEquation (S.StateEquation sm ret returnsAll) = $notImplemented
 trEquation (S.ClockedEquation name block ret returnsAll) = $notImplemented
+
+-- | Creates the assignment for a local definitions
+-- This includes all the projections for the lhs pattern,
+-- if necessary. May return an intermediate variable to
+-- be declared in case a pattern matching occurs.
+mkLocalAssigns :: (MonadError String m) =>
+                  [L.SimpIdent] -> Either L.Expr (L.SimpIdent, [L.Expr], L.Type L.SimpIdent)
+                  -> m ([L.InstantDefinition], Maybe L.Variable)
+mkLocalAssigns ids rhs =
+  do (x, needsMatching) <- mkReturnId ids
+     if needsMatching
+       then case rhs of
+         Left _ -> throwError $ "Pattern matching only for node expressions allowed"
+         Right (n, exprs', retType) ->
+           return
+           ((L.NodeUsage x n exprs') : (mkProductProjections x ids),
+            Just $ L.Variable x retType)
+       else case rhs of
+         Left expr' -> return ([L.InstantExpr x expr'], Nothing)
+         Right (n, exprs', _) -> return ([L.NodeUsage x n exprs'], Nothing)
+
+-- | Generates an identifier for the lhs of an
+-- assignment. If the given list has only one element,
+-- this is used and no further matching is required.
+-- Otherwise matching is required (snd == True).
+mkReturnId :: (MonadError String m) => [L.SimpIdent] -> m (L.SimpIdent, Bool)
+mkReturnId [] = throwError $ "Empty lhs in assignment not allowed"
+mkReturnId [x] = return (x, False)
+mkReturnId xs = return (fromString . intercalate "_" $ map L.identString xs, True)
+
+mkProductProjections :: L.SimpIdent -> [L.SimpIdent] -> [L.InstantDefinition]
+mkProductProjections from = snd . foldl (mkProj from) (0, [])
+  where
+    mkProj x (i, defs) y =
+      let project = L.mkProject x i
+      in (succ i, L.InstantExpr y project : defs)
 
 trVarDecl :: S.VarDecl -> [L.Variable]
 trVarDecl (S.VarDecl xs ty defaultVal lastVal) =
@@ -288,20 +321,21 @@ trTypeExpr (S.TypeEnum ctors) = $notImplemented -- [String]
 --    A temporal expression must be of the form "e1 -> pre e2" where
 --    e1 and e2 are non-temporal expressions. The same must also
 --    hold for the application of operators.
---    Returns the instant which is a node application if needed.
+--    Returns either an expression (for local definitions and
+--    transitions) or the used node including its parameters.
 --    The second part is the initialisation of a temporal
 --    operator if one is given.
-trExpr :: S.Expr -> TrackUsedNodes (L.Instant, Maybe L.ConstExpr)
+trExpr :: S.Expr -> TrackUsedNodes (Either L.Expr (L.SimpIdent, [L.Expr], L.Type L.SimpIdent), Maybe L.ConstExpr)
 trExpr expr = case expr of 
     S.FBYExpr _ _ _ -> undefined
     S.LastExpr x -> $notImplemented
     S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2)
-      -> (L.mkInstantExpr *** Just) <$> ((,) <$> trExpr' e2 <*> lift (trConstExpr e1))
+      -> (Left *** Just) <$> ((,) <$> trExpr' e2 <*> lift (trConstExpr e1))
     S.ApplyExpr op es -> do
       es' <- mapM trExpr' es
       app <- trOpApply op es'
-      return (app, Nothing)
-    normalExpr -> (L.mkInstantExpr &&& (const Nothing)) <$> trExpr' normalExpr
+      return (Right app, Nothing)
+    normalExpr -> (Left &&& const Nothing) <$> trExpr' normalExpr
   where
     trExpr' :: S.Expr -> TrackUsedNodes L.Expr
     trExpr' (S.IdExpr (S.Path [x])) = pure $ L.mkAtomVar (fromString x)
@@ -327,9 +361,10 @@ trExpr expr = case expr of
     trExpr' (S.TimesExpr e1 e2) = $notImplemented
     trExpr' _ = undefined -- s. trExpr
 
-trOpApply :: S.Operator -> [L.Expr] -> TrackUsedNodes L.Instant
+trOpApply :: S.Operator -> [L.Expr] -> TrackUsedNodes (L.SimpIdent, [L.Expr], L.Type L.SimpIdent)
 trOpApply (S.PrefixOp (S.PrefixPath p)) es =
-          lift (resolveNodeName p) >>= \x -> return (L.mkNodeUsage x es) <* tellNode p
+          lift (getNode p) >>= \(x, n) -> return (x, es, nodeRetType n) <* tellNode p
+  where nodeRetType = L.mkProductT . map L.varType . L.nodeOutputs
 trOpApply _ _ = $notImplemented
 
 trConstExpr :: S.Expr -> TransM L.ConstExpr
