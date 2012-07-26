@@ -134,17 +134,14 @@ Expr1. Expr ::= "(" UnOp Expr ")" ;
 Expr2. Expr ::= "(" BinOp Expr Expr ")" ;
 Expr3. Expr ::= "(" TernOp Expr Expr Expr ")" ;
 Prod. Expr ::= "(" "prod" [Expr] ")" ;
-Match. Expr ::= "(" "match" Expr "{" [Pattern] "}" ")" ;
-Array. Expr ::= "(" "array" [Expr] ")" ;
 Project. Expr ::= "(" "project" Identifier Natural ")" ;
-Update. Expr ::= "(" "update" Identifier Natural Expr ")" ;
+Match. Expr ::= "(" "match" Expr "{" [Pattern] "}" ")" ;
 separator Expr "" ;
 -- TODO: [Expr] in prod and array should not be empty
 
 separator nonempty Pattern "," ;
 Pattern. Pattern ::= PatHead "." Expr ;
 EnumPat. PatHead ::= EnumConstr ;
-ProdPat. PatHead ::= "(" "prod" List2Id ")" ;
 Id2. List2Id ::= Identifier Identifier ;
 ConsId. List2Id ::= Identifier List2Id ;
 
