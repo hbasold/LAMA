@@ -78,8 +78,9 @@ defStream :: Ident i => Type i -> (StreamPos -> TypedExpr i) -> DeclM i (TypedSt
 defStream (GroundType BoolT) f = liftSMT . fmap BoolStream $ defFun (unBool . f)
 defStream (GroundType IntT) f = liftSMT . fmap IntStream $ defFun (unInt . f)
 defStream (GroundType RealT) f = liftSMT . fmap RealStream $ defFun (unReal . f)
+defStream (GroundType _) f = $notImplemented
 defStream (EnumType t) f = lookupEnumAnn t >>= \a -> liftSMT . fmap EnumStream $ defFunAnn unit a (unEnum . f)
-defStream _ _ = $notImplemented
+defStream (ProdType ts) f = $notImplemented
 
 appStream :: TypedStream i -> StreamPos -> TypedExpr i
 appStream (BoolStream s) n = BoolExpr $ s `app` n
@@ -295,7 +296,6 @@ declareVar (Variable x t) = (x,) <$> typedVar t
     typedVar (GroundType RealT) = liftSMT $ fmap RealStream fun
     typedVar (GroundType _) = $notImplemented
     typedVar (EnumType t) = lookupEnumAnn t >>= liftSMT . fmap EnumStream . funAnnRet
-    typedVar (ArrayType _ _) = $notImplemented
     typedVar (ProdType ts) = $notImplemented
 
 declareNode :: Ident i => Node i -> DeclM i (NodeEnv i, [Definition])
@@ -377,7 +377,6 @@ trConstExpr :: Ident i => ConstExpr i -> DeclM i (TypedExpr i)
 trConstExpr (untyped -> Const c) = return $ trConstant c
 trConstExpr (untyped -> ConstEnum x) = lookupEnumConsAnn x >>= return . trEnumConsAnn x
 trConstExpr (untyped -> ConstProd p) = $notImplemented
-trConstExpr (untyped -> ConstArray a) = $notImplemented
 
 trConstant :: Ident i => Constant i -> TypedExpr i
 trConstant (untyped -> BoolConst c) = BoolExpr $ constant c
@@ -440,7 +439,7 @@ trEnumMatch x pats =
   where
     chainPatterns c ifs p = trEnumPattern c p >>= \(cond, e) -> return $ liftIte cond e ifs
     trEnumPattern c (Pattern h e) = (,) <$> trEnumHead c h <*> trExpr e
-    trEnumHead c (EnumPat y) = trEnumCons y >>= \y' -> return $ liftRel (.==.) c y'
+    trEnumHead c h = trEnumCons h >>= \y -> return $ liftRel (.==.) c y
     trEnumHead _ _ = error "trEnumMatch: not an enum pattern"
 
 trEnumConsAnn :: Ident i => EnumConstr i -> SMTAnnotation SMTEnum -> TypedExpr i

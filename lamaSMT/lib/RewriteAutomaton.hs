@@ -110,7 +110,7 @@ extractExprs = foldl addLocExprs (Map.empty, Map.empty)
 -- | Build match expression (pattern matches on last state s_1)
 mkMatch :: Ord i => Map (LocationId i) i -> Type i -> i -> [(LocationId i, Expr i)] -> Expr i
 mkMatch locNames stateT s_1 locExprs = mkTyped (Match (mkVarExpr stateT s_1) (mkPattern locExprs)) stateT
-  where mkPattern = foldl (\pats (h, e) -> (Pattern (EnumPat $ EnumCons (locNames ! h)) e) : pats) []
+  where mkPattern = foldl (\pats (h, e) -> (Pattern (EnumCons (locNames ! h)) e) : pats) []
 
 mkInstantDefs :: Map i (Expr i) -> [InstantDefinition i]
 mkInstantDefs = map (uncurry InstantExpr) . Map.toList
