@@ -3,7 +3,8 @@ module Strategies.BMC where
 
 import Data.Natural
 import Data.List (stripPrefix)
-import Data.Sequence as Seq
+import qualified Data.Map as Map
+import Data.Map (Map)
 
 import Language.SMTLib2
 
@@ -25,10 +26,10 @@ instance StrategyClass BMC where
   check s getModel defs =
     let base = 0
     in do baseDef <- liftSMT . defConst $ constant base
-          check' s getModel defs (Seq.singleton baseDef) base baseDef
+          check' s getModel defs (Map.singleton base baseDef) base baseDef
 
-check' :: BMC -> (Seq StreamPos -> SMT (Model i))
-          -> ProgDefs -> Seq StreamPos -> Natural -> StreamPos -> SMTErr (Maybe (Model i))
+check' :: BMC -> (Map Natural StreamPos -> SMT (Model i))
+          -> ProgDefs -> Map Natural StreamPos -> Natural -> StreamPos -> SMTErr (Maybe (Model i))
 check' s getModel defs is i iDef =
   do liftSMT $ assertDefs iDef (flowDef defs)
      liftSMT $ assertPrecond iDef (precondition defs)
@@ -52,16 +53,16 @@ checkInvariant i p =
   do assert . not' $ app p i
      checkSat
 
-checkGetModel :: (Seq StreamPos -> SMT (Model i)) -> Seq StreamPos -> Bool -> SMT (Maybe (Model i))
+checkGetModel :: (Map Natural StreamPos -> SMT (Model i)) -> Map Natural StreamPos -> Bool -> SMT (Maybe (Model i))
 checkGetModel getModel indices r =
   if r then fmap Just $ getModel indices else return Nothing
 
-next :: (Seq StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (Model i)))
-        -> BMC -> Seq StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (Model i))
+next :: (Map Natural StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (Model i)))
+        -> BMC -> Map Natural StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (Model i))
 next f s is i iDef =
   do let i' = succ i
      iDef' <- liftSMT . defConst $ succ' iDef
-     let is' = is |> iDef'
+     let is' = Map.insert i iDef' is
      case bmcDepth s of
        Nothing -> f is' i' iDef'
        Just l ->

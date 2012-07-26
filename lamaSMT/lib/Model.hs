@@ -4,7 +4,7 @@ import qualified Data.Map as Map
 import Data.Map (Map)
 import Prelude hiding (mapM)
 import Data.Traversable
-import Data.Sequence
+import Data.Natural
 import Text.PrettyPrint
 
 import Control.Monad.Reader (MonadReader(..), ReaderT(..))
@@ -16,7 +16,7 @@ import Lang.LAMA.Identifier
 
 import Transform
 
-type ValueStreamT t = Seq t
+type ValueStreamT t = Map Natural t
 data ValueStream
   = BoolVStream (ValueStreamT Bool)
   | IntVStream (ValueStreamT Integer)
@@ -51,12 +51,19 @@ prettyNodeModel m = braces . nest 2 $
   prettyModel (nodeModelVars m)
 
 prettyStream :: ValueStream -> Doc
-prettyStream = text . show
+prettyStream (BoolVStream s) = prettyStreamVals s
+prettyStream (IntVStream s) = prettyStreamVals s
+prettyStream (RealVStream s) = prettyStreamVals s
 
-getModel :: VarEnv i -> Seq StreamPos -> SMT (Model i)
+prettyStreamVals :: Show t => ValueStreamT t -> Doc
+prettyStreamVals = cat . punctuate (char ',')
+               . map (\(n, v) -> (integer $ toInteger n) <+> text "->" <+> text (show v))
+               . Map.toList
+
+getModel :: VarEnv i -> Map Natural StreamPos -> SMT (Model i)
 getModel env = runReaderT (getModel' env)
 
-type ModelM = ReaderT (Seq StreamPos) SMT
+type ModelM = ReaderT (Map Natural StreamPos) SMT
 
 getModel' :: VarEnv i -> ModelM (Model i)
 getModel' env =
@@ -64,7 +71,7 @@ getModel' env =
 
 getNodeModel :: NodeEnv i -> ModelM (NodeModel i)
 getNodeModel (NodeEnv i o e) =
-  NodeModel <$> mapM getVarModel o <*> mapM getVarModel i <*> getModel' e
+  NodeModel <$> mapM getVarModel i <*> mapM getVarModel o <*> getModel' e
 
 getVarsModel :: Map i (TypedStream i) -> ModelM (Map i ValueStream)
 getVarsModel = mapM getVarModel
