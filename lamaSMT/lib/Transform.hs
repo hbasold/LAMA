@@ -24,11 +24,12 @@ import Language.SMTLib2 as SMT
 import Language.SMTLib2.Internals (SMTType(..), SMTExpr(Var, Fun))
 import Data.Unit
 import Data.String (IsString(..))
+import Data.Array as Arr
 
 import Data.Natural
 import NatInstance ()
 import qualified Data.Map as Map
-import Data.Map (Map, (!))
+import Data.Map (Map)
 import Prelude hiding (mapM)
 import Data.Traversable
 import Data.Foldable (foldlM)
@@ -37,7 +38,7 @@ import Control.Monad.State (StateT(..), MonadState(..), modify, gets)
 import Control.Monad.Error (ErrorT(..), MonadError(..))
 import Control.Monad.Reader (ReaderT(..), asks)
 import Control.Applicative (Applicative(..), (<$>))
-import Control.Arrow (second)
+import Control.Arrow (second, (&&&))
 
 import SMTEnum
 import RewriteAutomaton
@@ -53,7 +54,16 @@ data TypedExpr i
   | IntExpr { unInt :: SMTExpr Integer }
   | RealExpr { unReal :: SMTExpr Rational }
   | EnumExpr { unEnum :: SMTExpr SMTEnum }
+  | ProdExpr { unProd :: Array Int (TypedExpr i) }
   deriving (Eq, Show)
+
+unBool' :: TypedExpr i -> SMTExpr Bool
+unBool' (BoolExpr e) = e
+unBool' e = error $ "Cannot unBool: " ++ show e
+
+unProd' :: TypedExpr i -> Array Int (TypedExpr i)
+unProd' (ProdExpr e) = e
+unProd' e = error $ "Cannot unProd: " ++ show e
 
 type StreamPos = SMTExpr Natural
 type Stream t = SMTExpr (SMTFun StreamPos t)
@@ -62,31 +72,55 @@ data TypedStream i
   | IntStream (Stream Integer)
   | RealStream (Stream Rational)
   | EnumStream (Stream SMTEnum)
+  | ProdStream (Array Int (TypedStream i))
   deriving Show
 
-type Definition = Stream Bool
+mkProdStream :: [TypedStream i] -> TypedStream i
+mkProdStream = ProdStream . uncurry listArray . ((0,) . pred . length &&& id)
+
+data Definition =
+  SingleDef (Stream Bool)
+  | ProdDef (Array Int Definition)
+  deriving Show
 
 ensureDefinition :: TypedStream i -> Definition
-ensureDefinition (BoolStream s) = s
-ensureDefinition _ = error "ensureDefinition: not a boolean stream"
+ensureDefinition (BoolStream s) = SingleDef s
+ensureDefinition (ProdStream ps) = ProdDef $ fmap ensureDefinition ps
+ensureDefinition s = error $ "ensureDefinition: not a boolean stream: " ++ show s
 
-ensureBoolExpr :: TypedExpr i -> SMTExpr Bool
-ensureBoolExpr (BoolExpr e) = e
-ensureBoolExpr _ = error "ensureBoolExpr: not a boolean expr"
+assertDefinition :: (SMTExpr Bool -> SMTExpr Bool) -> StreamPos -> Definition -> SMT ()
+assertDefinition f i (SingleDef s) = assert (f $ s `app` i)
+assertDefinition f i (ProdDef ps) = mapM_ (assertDefinition f i) $ Arr.elems ps
 
+-- | Defines a stream analogous to defFun.
 defStream :: Ident i => Type i -> (StreamPos -> TypedExpr i) -> DeclM i (TypedStream i)
-defStream (GroundType BoolT) f = liftSMT . fmap BoolStream $ defFun (unBool . f)
+defStream (GroundType BoolT) f = liftSMT . fmap BoolStream $ defFun (unBool' . f)
 defStream (GroundType IntT) f = liftSMT . fmap IntStream $ defFun (unInt . f)
 defStream (GroundType RealT) f = liftSMT . fmap RealStream $ defFun (unReal . f)
 defStream (GroundType _) f = $notImplemented
 defStream (EnumType t) f = lookupEnumAnn t >>= \a -> liftSMT . fmap EnumStream $ defFunAnn unit a (unEnum . f)
-defStream (ProdType ts) f = $notImplemented
+-- We have to pull the product out of a stream.
+-- If we are given a function f : StreamPos -> (Ix -> TE) = TypedExpr as above,
+-- we would like to have as result something like:
+-- g : Ix -> (StreamPos -> TE)
+-- g(i)(t) = defStream(λt'.f(t')(i))(t)
+-- Here i is the index into the product and t,t' are time variables.
+defStream (ProdType ts) f =
+  do let u = length ts - 1
+     x <- mapM (\(ty, i) -> defStream ty ((! i) . unProd' . f)) $ zip ts [0..u]
+     return . ProdStream $ listArray (0,u) x
 
 appStream :: TypedStream i -> StreamPos -> TypedExpr i
 appStream (BoolStream s) n = BoolExpr $ s `app` n
 appStream (IntStream s) n = IntExpr $ s `app` n
 appStream (RealStream s) n = RealExpr $ s `app` n
 appStream (EnumStream s) n = EnumExpr $ s `app` n
+appStream (ProdStream s) n = ProdExpr $ fmap (`appStream` n) s
+
+liftAssert :: TypedExpr i -> SMT ()
+liftAssert (BoolExpr e) = assert e
+liftAssert (ProdExpr es) = mapM_ liftAssert $ Arr.elems es
+liftAssert e = error $ "liftAssert: cannot assert non-boolean expression: " ++ show e
 
 liftRel :: (forall a. SMTType a => SMTExpr a -> SMTExpr a -> SMTExpr Bool)
            -> TypedExpr i -> TypedExpr i -> TypedExpr i
@@ -94,7 +128,16 @@ liftRel r (BoolExpr e1) (BoolExpr e2) = BoolExpr $ r e1 e2
 liftRel r (IntExpr e1) (IntExpr e2) = BoolExpr $ r e1 e2
 liftRel r (RealExpr e1) (RealExpr e2) = BoolExpr $ r e1 e2
 liftRel r (EnumExpr e1) (EnumExpr e2) = BoolExpr $ r e1 e2
+liftRel r (ProdExpr e1) (ProdExpr e2) = ProdExpr $ accum (liftRel r) e1 (Arr.assocs e2)
 liftRel _ _ _ = error "liftRel: argument types don't match"
+
+-- | Only for boolean product streams. Ensures that all fields of
+-- a product hold simultaniuosly. Useful for elementwise
+-- extended relatations.
+prodAll :: TypedExpr i -> TypedExpr i
+prodAll (BoolExpr e) = BoolExpr e
+prodAll (ProdExpr e) = liftBoolL and' $ Arr.elems e
+prodAll e = error $ "prodAll: not a product or boolean expr: " ++ show e
 
 liftOrd :: (forall a. (SMTType a, SMTOrd a) => SMTExpr a -> SMTExpr a -> SMTExpr Bool)
            -> TypedExpr i -> TypedExpr i -> TypedExpr i
@@ -110,10 +153,11 @@ lift1Bool _ _ = error "lift1Bool: argument is not boolean"
 liftBool2 :: (SMTExpr Bool -> SMTExpr Bool -> SMTExpr Bool)
              -> TypedExpr i -> TypedExpr i -> TypedExpr i
 liftBool2 f (BoolExpr e1) (BoolExpr e2) = BoolExpr $ f e1 e2
-liftBool2 _ _ _ = error "liftBool2: arguments are not boolean"
+liftBool2 _ e1 e2 = error $ "liftBool2: arguments are not boolean: " ++ show e1 ++ "; " ++ show e2
 
 liftBoolL :: ([SMTExpr Bool] -> SMTExpr Bool) -> [TypedExpr i] -> TypedExpr i
-liftBoolL f es = BoolExpr . f $ map unBool es
+liftBoolL f es@((BoolExpr _):_) = BoolExpr . f $ map unBool es
+liftBoolL _ es = error $ "Cannot lift bool expr for" ++ show es
 
 lift2 :: (forall a. SMTType a => SMTExpr a -> SMTExpr a -> SMTExpr a)
          -> TypedExpr i -> TypedExpr i -> TypedExpr i
@@ -121,6 +165,7 @@ lift2 f (BoolExpr e1) (BoolExpr e2) = BoolExpr $ f e1 e2
 lift2 f (IntExpr e1) (IntExpr e2) = IntExpr $ f e1 e2
 lift2 f (RealExpr e1) (RealExpr e2) = RealExpr $ f e1 e2
 lift2 f (EnumExpr e1) (EnumExpr e2) = EnumExpr $ f e1 e2
+lift2 f (ProdExpr e1) (ProdExpr e2) = ProdExpr $ accum (lift2 f) e1 (Arr.assocs e2)
 lift2 _ _ _ = error "lift2: argument types don't match"
 
 liftIte :: TypedExpr i -> TypedExpr i -> TypedExpr i -> TypedExpr i
@@ -254,7 +299,7 @@ declareEnums es =
   do anns <- (fmap Map.fromList . mapM declareEnum $ Map.toList es)
      let consAnns =
            foldl
-           (\consAnns (x, EnumDef conss) -> insEnumConstrs (anns ! x) consAnns conss)
+           (\consAnns (x, EnumDef conss) -> insEnumConstrs (anns Map.! x) consAnns conss)
            Map.empty $ Map.toList es
      putEnumAnn anns
      putEnumConsAnn consAnns
@@ -295,7 +340,9 @@ declareVar (Variable x t) = (x,) <$> typedVar t
     typedVar (GroundType RealT) = liftSMT $ fmap RealStream fun
     typedVar (GroundType _) = $notImplemented
     typedVar (EnumType t) = lookupEnumAnn t >>= liftSMT . fmap EnumStream . funAnnRet
-    typedVar (ProdType ts) = $notImplemented
+    typedVar (ProdType ts) =
+      do vs <- mapM typedVar ts
+         return . ProdStream $ listArray (0, (length vs) - 1) vs
 
 declareNode :: Ident i => Node i -> DeclM i (NodeEnv i, [Definition])
 declareNode n =
@@ -319,8 +366,8 @@ declareInstantDef (NodeUsage x n es) =
   do nEnv <- lookupNode n
      let esTr = map trExpr es
      inpDefs <- mapM (uncurry $ declareDef id) $ zip (nodeEnvIn nEnv) esTr
-     outpDefs <- declareAssign x (nodeEnvOut nEnv)
-     return $ inpDefs ++ outpDefs
+     outpDef <- declareAssign x (nodeEnvOut nEnv)
+     return $ inpDefs ++ [outpDef]
 
 declareTransition :: Ident i => StateTransition i -> DeclM i Definition
 declareTransition (StateTransition x e) = lookupVar x >>= \x' -> declareDef succ' x' (trExpr e)
@@ -328,14 +375,23 @@ declareTransition (StateTransition x e) = lookupVar x >>= \x' -> declareDef succ
 declareDef :: Ident i => (StreamPos -> StreamPos) -> TypedStream i -> TransM i (TypedExpr i) -> DeclM i Definition
 declareDef f x em =
   do env <- get
-     d <- defStream boolT $ \t ->
+     let defType = streamDefType x
+     d <- defStream defType $ \t ->
        let e = runTransM em t env
        in liftRel (.==.) (x `appStream` (f t)) e
      return $ ensureDefinition d
+  where
+    streamDefType (ProdStream ts) = ProdType . fmap streamDefType $ Arr.elems ts
+    streamDefType _ = boolT
 
-declareAssign :: Ident i => i -> [TypedStream i] -> DeclM i [Definition]
-declareAssign x [y] = (:[]) <$> (lookupVar x >>= \x' -> declareDef id x' (doAppStream y))
-declareAssign _ _ = $notImplemented
+declareAssign :: Ident i => i -> [TypedStream i] -> DeclM i Definition
+declareAssign _ [] = throwError $ "Cannot assign empty stream"
+declareAssign x [y] = lookupVar x >>= \x' -> declareDef id x' (doAppStream y)
+declareAssign x ys =
+  let y = case ys of
+        [y'] -> y
+        _ -> mkProdStream ys
+  in lookupVar x >>= \x' -> declareDef id x' (doAppStream y)
 
 declareFlow :: Ident i => Flow i -> DeclM i [Definition]
 declareFlow f =
@@ -360,8 +416,8 @@ assertInit :: Ident i => (i, ConstExpr i) -> DeclM i ()
 assertInit (x, e) =
   do x' <- lookupVar x
      e' <- trConstExpr e
-     let def = ensureBoolExpr $ liftRel (.==.) (x' `appStream` zero') e'
-     liftSMT $ assert def
+     let def = liftRel (.==.) (x' `appStream` zero') e'
+     liftSMT $ liftAssert def
 
 declarePrecond :: Ident i => Expr i -> DeclM i Definition
 declarePrecond e =
@@ -375,7 +431,8 @@ declareInvariant = declarePrecond
 trConstExpr :: Ident i => ConstExpr i -> DeclM i (TypedExpr i)
 trConstExpr (untyped -> Const c) = return $ trConstant c
 trConstExpr (untyped -> ConstEnum x) = lookupEnumConsAnn x >>= return . trEnumConsAnn x
-trConstExpr (untyped -> ConstProd p) = $notImplemented
+trConstExpr (untyped -> ConstProd (Prod cs)) =
+  ProdExpr . listArray (0, length cs - 1) <$> mapM trConstExpr cs
 
 trConstant :: Ident i => Constant i -> TypedExpr i
 trConstant (untyped -> BoolConst c) = BoolExpr $ constant c
@@ -409,7 +466,7 @@ askStreamPos :: TransM i StreamPos
 askStreamPos = asks fst
 
 -- we do no further type checks since this
--- has been done beforhand.
+-- has been done beforehand.
 trExpr :: Ident i => Expr i -> TransM i (TypedExpr i)
 trExpr expr =
   let t = getType expr
@@ -423,9 +480,12 @@ trExpr expr =
     LogNot e -> lift1Bool not' <$> trExpr e
     Expr2 op e1 e2 -> applyOp op <$> trExpr e1 <*> trExpr e2
     Ite c e1 e2 -> liftIte <$> trExpr c <*> trExpr e1 <*> trExpr e2
-    ProdCons (Prod es) -> $notImplemented
+    ProdCons (Prod es) -> (ProdExpr . listArray (0, (length es) - 1)) <$> mapM trExpr es
+    Project x i ->
+      do (ProdStream s) <- lookupVar' x
+         n <- askStreamPos
+         return $ (s ! fromEnum i) `appStream` n
     Match e pats -> trExpr e >>= flip trPattern pats
-    _ -> $notImplemented
 
 trPattern :: Ident i => TypedExpr i -> [Pattern i] -> TransM i (TypedExpr i)
 trPattern e@(EnumExpr _) = trEnumMatch e
@@ -452,7 +512,7 @@ applyOp Or e1 e2 = liftBoolL or' [e1, e2]
 applyOp And e1 e2 = liftBoolL and' [e1, e2]
 applyOp Xor e1 e2 = liftBool2 xor e1 e2
 applyOp Implies e1 e2 = liftBool2 (.=>.) e1 e2
-applyOp Equals e1 e2 = liftRel (.==.) e1 e2
+applyOp Equals e1 e2 = prodAll $ liftRel (.==.) e1 e2
 applyOp Less e1 e2 = liftOrd (.<.) e1 e2
 applyOp LEq e1 e2 = liftOrd (.<=.) e1 e2
 applyOp Greater e1 e2 = liftOrd (.>.) e1 e2

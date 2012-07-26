@@ -43,15 +43,13 @@ assertDefs :: SMTExpr Natural -> [Definition] -> SMT ()
 assertDefs i = mapM_ (assertDef i)
 
 assertDef :: SMTExpr Natural -> Definition -> SMT ()
-assertDef i f = assert $ app f i
+assertDef = assertDefinition id
 
 assertPrecond :: SMTExpr Natural -> Definition -> SMT ()
-assertPrecond i f = assert $ app f i
+assertPrecond = assertDefinition id
 
 checkInvariant :: SMTExpr Natural -> Definition -> SMT Bool
-checkInvariant i p =
-  do assert . not' $ app p i
-     checkSat
+checkInvariant i p = assertDefinition not' i p >> checkSat
 
 checkGetModel :: (Map Natural StreamPos -> SMT (Model i)) -> Map Natural StreamPos -> Bool -> SMT (Maybe (Model i))
 checkGetModel getModel indices r =

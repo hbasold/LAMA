@@ -6,6 +6,7 @@ import Prelude hiding (mapM)
 import Data.Traversable
 import Data.Natural
 import Text.PrettyPrint
+import Data.Array as Arr
 
 import Control.Monad.Reader (MonadReader(..), ReaderT(..))
 import Control.Applicative (Applicative(..), (<$>))
@@ -23,6 +24,7 @@ data ValueStream
   | IntVStream (ValueStreamT Integer)
   | RealVStream (ValueStreamT Rational)
   | EnumVStream (ValueStreamT SMTEnum)
+  | ProdVStream (Array Int ValueStream)
   deriving Show
 
 
@@ -57,6 +59,7 @@ prettyStream (BoolVStream s) = prettyStreamVals s
 prettyStream (IntVStream s) = prettyStreamVals s
 prettyStream (RealVStream s) = prettyStreamVals s
 prettyStream (EnumVStream s) = prettyStreamVals s
+prettyStream (ProdVStream s) = parens . hcat . punctuate comma . fmap prettyStream $ Arr.elems s
 
 prettyStreamVals :: Show t => ValueStreamT t -> Doc
 prettyStreamVals = cat . punctuate (char ',')
@@ -84,6 +87,7 @@ getVarModel (BoolStream s) = BoolVStream <$> getStreamValue s
 getVarModel (IntStream s) = IntVStream <$> getStreamValue s
 getVarModel (RealStream s) = RealVStream <$> getStreamValue s
 getVarModel (EnumStream s) = EnumVStream <$> getStreamValue s
+getVarModel (ProdStream s) = ProdVStream <$> mapM getVarModel s
 
 getStreamValue :: SMTValue t => Stream t -> ModelM (ValueStreamT t)
 getStreamValue s = ask >>= liftSMT . mapM (\i -> getValue $ s `app` i)
