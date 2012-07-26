@@ -18,7 +18,7 @@ nodes
       s_1 : States;
     definition
       s = (match s_1 {
-            A. (ite (= x 11) B A),
+            A. (ite (= x 10) B A),
             B. (ite (= x 0) A B)
           });
       x_ = (match s {
