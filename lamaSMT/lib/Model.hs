@@ -15,12 +15,14 @@ import Language.SMTLib2 as SMT
 import Lang.LAMA.Identifier
 
 import Transform
+import SMTEnum
 
 type ValueStreamT t = Map Natural t
 data ValueStream
   = BoolVStream (ValueStreamT Bool)
   | IntVStream (ValueStreamT Integer)
   | RealVStream (ValueStreamT Rational)
+  | EnumVStream (ValueStreamT SMTEnum)
   deriving Show
 
 
@@ -54,6 +56,7 @@ prettyStream :: ValueStream -> Doc
 prettyStream (BoolVStream s) = prettyStreamVals s
 prettyStream (IntVStream s) = prettyStreamVals s
 prettyStream (RealVStream s) = prettyStreamVals s
+prettyStream (EnumVStream s) = prettyStreamVals s
 
 prettyStreamVals :: Show t => ValueStreamT t -> Doc
 prettyStreamVals = cat . punctuate (char ',')
@@ -80,6 +83,7 @@ getVarModel :: TypedStream i -> ModelM ValueStream
 getVarModel (BoolStream s) = BoolVStream <$> getStreamValue s
 getVarModel (IntStream s) = IntVStream <$> getStreamValue s
 getVarModel (RealStream s) = RealVStream <$> getStreamValue s
+getVarModel (EnumStream s) = EnumVStream <$> getStreamValue s
 
 getStreamValue :: SMTValue t => Stream t -> ModelM (ValueStreamT t)
 getStreamValue s = ask >>= liftSMT . mapM (\i -> getValue $ s `app` i)

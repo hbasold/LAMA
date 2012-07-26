@@ -1,0 +1,44 @@
+-- Zählt periodisch von 0 bis 10 hoch und wieder runter
+-- Beispiel stammt von http://www-verimag.imag.fr/Language-Design,112.html?artpage=7-8 .
+-- Die Ursprüngliche Version stammt aus dem Paper über Mode-Automata
+-- (http://www-verimag.imag.fr/~maraninx/spip.php?article102). Man beachte, dass hier
+-- x mit -1 initialisiert wird. Dadurch ist xo am Anfang 0 und nicht 1 wie im Paper.
+
+typedef
+  enum States = {A, B};
+
+nodes
+  node UpDown () returns (xo : int);
+  let
+    local
+      x_ : int;
+      s : States;
+    state
+      x : int;
+      s_1 : States;
+    definition
+      s = (match s_1 {
+            A. (ite (= x 11) B A),
+            B. (ite (= x 0) A B)
+          });
+      x_ = (match s {
+            A. (+ x 1),
+            B. (- x 1) });
+    transition
+      x' = x_;
+      s_1' = s;
+    output
+      xo = x_;
+    initial x = (- 1), s_1 = A;
+  tel
+local x : int;
+state x_1 : int;
+definition x = (use UpDown);
+transition x_1' = x;
+initial x_1 = (- 1);
+
+invariant
+  (and
+    (and (>= x 0) (<= x 10)) -- ranges only from 0 to 10
+    (or (= (- x_1 x) 1) (= (- x_1 x) (- 1))) -- always moves just one step
+  );

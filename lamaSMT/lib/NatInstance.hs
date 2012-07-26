@@ -4,18 +4,14 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE StandaloneDeriving #-}
+
 module NatInstance where
 
 import Data.Natural
 import Language.SMTLib2.Internals
 import qualified Data.AttoLisp as L
 
-
 import Data.Typeable
-
-
-
--- Natural
 
 deriving instance Typeable Natural
 

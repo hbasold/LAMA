@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -22,19 +23,23 @@ import Lang.LAMA.Types
 import Language.SMTLib2 as SMT
 import Language.SMTLib2.Internals (SMTType(..), SMTExpr(Var, Fun))
 import Data.Unit
+import Data.String (IsString(..))
 
 import Data.Natural
 import NatInstance ()
 import qualified Data.Map as Map
-import Data.Map (Map)
+import Data.Map (Map, (!))
 import Prelude hiding (mapM)
 import Data.Traversable
+import Data.Foldable (foldlM)
 
 import Control.Monad.State (StateT(..), MonadState(..), modify, gets)
 import Control.Monad.Error (ErrorT(..), MonadError(..))
 import Control.Monad.Reader (ReaderT(..), asks)
 import Control.Applicative (Applicative(..), (<$>))
 import Control.Arrow (second)
+
+import SMTEnum
 
 zero' :: SMTExpr Natural
 zero' = Var "zero" unit
@@ -46,6 +51,7 @@ data TypedExpr i
   = BoolExpr { unBool :: SMTExpr Bool }
   | IntExpr { unInt :: SMTExpr Integer }
   | RealExpr { unReal :: SMTExpr Rational }
+  | EnumExpr { unEnum :: SMTExpr SMTEnum }
   deriving (Eq, Show)
 
 type StreamPos = SMTExpr Natural
@@ -54,6 +60,7 @@ data TypedStream i
   = BoolStream (Stream Bool)
   | IntStream (Stream Integer)
   | RealStream (Stream Rational)
+  | EnumStream (Stream SMTEnum)
   deriving Show
 
 type Definition = Stream Bool
@@ -66,22 +73,25 @@ ensureBoolExpr :: TypedExpr i -> SMTExpr Bool
 ensureBoolExpr (BoolExpr e) = e
 ensureBoolExpr _ = error "ensureBoolExpr: not a boolean expr"
 
-defStream :: Type i -> (StreamPos -> TypedExpr i) -> SMT (TypedStream i)
-defStream (GroundType BoolT) f = fmap BoolStream $ defFun (unBool . f)
-defStream (GroundType IntT) f = fmap IntStream $ defFun (unInt . f)
-defStream (GroundType RealT) f = fmap RealStream $ defFun (unReal . f)
+defStream :: Ident i => Type i -> (StreamPos -> TypedExpr i) -> DeclM i (TypedStream i)
+defStream (GroundType BoolT) f = liftSMT . fmap BoolStream $ defFun (unBool . f)
+defStream (GroundType IntT) f = liftSMT . fmap IntStream $ defFun (unInt . f)
+defStream (GroundType RealT) f = liftSMT . fmap RealStream $ defFun (unReal . f)
+defStream (EnumType t) f = lookupEnumAnn t >>= \a -> liftSMT . fmap EnumStream $ defFunAnn unit a (unEnum . f)
 defStream _ _ = $notImplemented
 
 appStream :: TypedStream i -> StreamPos -> TypedExpr i
 appStream (BoolStream s) n = BoolExpr $ s `app` n
 appStream (IntStream s) n = IntExpr $ s `app` n
 appStream (RealStream s) n = RealExpr $ s `app` n
+appStream (EnumStream s) n = EnumExpr $ s `app` n
 
 liftRel :: (forall a. SMTType a => SMTExpr a -> SMTExpr a -> SMTExpr Bool)
            -> TypedExpr i -> TypedExpr i -> TypedExpr i
 liftRel r (BoolExpr e1) (BoolExpr e2) = BoolExpr $ r e1 e2
 liftRel r (IntExpr e1) (IntExpr e2) = BoolExpr $ r e1 e2
 liftRel r (RealExpr e1) (RealExpr e2) = BoolExpr $ r e1 e2
+liftRel r (EnumExpr e1) (EnumExpr e2) = BoolExpr $ r e1 e2
 liftRel _ _ _ = error "liftRel: argument types don't match"
 
 liftOrd :: (forall a. (SMTType a, SMTOrd a) => SMTExpr a -> SMTExpr a -> SMTExpr Bool)
@@ -108,6 +118,7 @@ lift2 :: (forall a. SMTType a => SMTExpr a -> SMTExpr a -> SMTExpr a)
 lift2 f (BoolExpr e1) (BoolExpr e2) = BoolExpr $ f e1 e2
 lift2 f (IntExpr e1) (IntExpr e2) = IntExpr $ f e1 e2
 lift2 f (RealExpr e1) (RealExpr e2) = RealExpr $ f e1 e2
+lift2 f (EnumExpr e1) (EnumExpr e2) = EnumExpr $ f e1 e2
 lift2 _ _ _ = error "lift2: argument types don't match"
 
 liftIte :: TypedExpr i -> TypedExpr i -> TypedExpr i -> TypedExpr i
@@ -118,13 +129,13 @@ liftArith :: (forall a. SMTArith a => SMTExpr a -> SMTExpr a -> SMTExpr a)
               -> TypedExpr i -> TypedExpr i -> TypedExpr i
 liftArith f (IntExpr e1) (IntExpr e2) = IntExpr $ f e1 e2
 liftArith f (RealExpr e1) (RealExpr e2) = RealExpr $ f e1 e2
-liftArith _ _ _ = error "liftArith: argument types don't match or are not arithemitic types"
+liftArith _ _ _ = error "liftArith: argument types don't match or are not aritemetic types"
 
 liftArithL :: (forall a. SMTArith a => [SMTExpr a] -> SMTExpr a)
               -> [TypedExpr i] -> TypedExpr i
 liftArithL f es@((IntExpr _):_) = IntExpr . f $ map unInt es
 liftArithL f es@((RealExpr _):_) = RealExpr . f $ map unReal es
-liftArithL _ _ = error "liftArithL: argument types don't match or are not arithemitic types"
+liftArithL _ _ = error "liftArithL: argument types don't match or are not arithmetic types"
 
 liftInt2 :: (SMTExpr Integer -> SMTExpr Integer -> SMTExpr Integer)
               -> TypedExpr i -> TypedExpr i -> TypedExpr i
@@ -150,6 +161,8 @@ data VarEnv i = VarEnv
 
 data Env i = Env
            { constants :: Map i (TypedExpr i)
+           , enumAnn :: Map i (SMTAnnotation SMTEnum)
+           , enumConsAnn :: Map (EnumConstr i) (SMTAnnotation SMTEnum)
            , varEnv :: VarEnv i
            }
 
@@ -157,7 +170,7 @@ emptyVarEnv :: VarEnv i
 emptyVarEnv = VarEnv Map.empty Map.empty
 
 emptyEnv :: Env i
-emptyEnv = Env Map.empty emptyVarEnv
+emptyEnv = Env Map.empty Map.empty Map.empty emptyVarEnv
 
 type DeclM i = StateT (Env i) (ErrorT String SMT)
 
@@ -165,6 +178,12 @@ putConstants :: Ident i => Map i (Constant i) -> DeclM i ()
 putConstants cs =
   let cs' = fmap trConstant cs
   in modify $ \env -> env { constants = cs' }
+
+putEnumAnn :: Map i (SMTAnnotation SMTEnum) -> DeclM i ()
+putEnumAnn eAnns = modify $ \env -> env { enumAnn = eAnns }
+
+putEnumConsAnn :: Map (EnumConstr i) (SMTAnnotation SMTEnum) -> DeclM i ()
+putEnumConsAnn consAnns = modify $ \env -> env { enumConsAnn = consAnns }
 
 modifyVarEnv :: (VarEnv i -> VarEnv i) -> DeclM i ()
 modifyVarEnv f = modify $ \env -> env { varEnv = f $ varEnv env }
@@ -175,19 +194,22 @@ modifyNodes f = modifyVarEnv $ (\env -> env { nodes = f $ nodes env })
 modifyVars :: (Map i (TypedStream i) -> Map i (TypedStream i)) -> DeclM i ()
 modifyVars f = modifyVarEnv $ (\env -> env { vars = f $ vars env })
 
+lookupErr :: (MonadError e m, Ord k) => e -> k -> Map k v -> m v
+lookupErr err k m = case Map.lookup k m of
+  Nothing -> throwError err
+  Just v -> return v
+
 lookupVar :: Ident i => i -> DeclM i (TypedStream i)
-lookupVar x =
-  do vs <- fmap (vars . varEnv) $ get
-     case Map.lookup x vs of
-       Nothing -> throwError $ "Unknown variable " ++ identPretty x
-       Just x' -> return x'
+lookupVar x = gets (vars . varEnv) >>= lookupErr ("Unknown variable " ++ identPretty x) x
 
 lookupNode :: Ident i => i -> DeclM i (NodeEnv i)
-lookupNode n =
-  do ns <- gets $ nodes . varEnv
-     case Map.lookup n ns of
-       Nothing -> throwError $ "Unknown node" ++ identPretty n
-       Just nEnv -> return nEnv
+lookupNode n = gets (nodes . varEnv) >>= lookupErr ("Unknown node " ++ identPretty n) n
+
+lookupEnumAnn :: Ident i => i -> DeclM i (SMTAnnotation SMTEnum)
+lookupEnumAnn t = gets enumAnn >>= lookupErr ("Unknown enum " ++ identPretty t) t
+
+lookupEnumConsAnn :: Ident i => EnumConstr i -> DeclM i (SMTAnnotation SMTEnum)
+lookupEnumConsAnn x = gets enumConsAnn >>= lookupErr ("Unknown enum constructor " ++ identPretty x) x
 
 localVarEnv :: (VarEnv i -> VarEnv i) -> DeclM i a -> DeclM i a
 localVarEnv f m =
@@ -223,8 +245,25 @@ preamble =
   let [(_, natDecl)] = declareType (undefined :: Natural) unit
   in liftSMT natDecl
 
-declareEnums :: Map (TypeAlias i) (EnumDef i) -> DeclM i ()
-declareEnums _ = return ()
+declareEnums :: Ident i => Map (TypeAlias i) (EnumDef i) -> DeclM i ()
+declareEnums es =
+  do anns <- (fmap Map.fromList . mapM declareEnum $ Map.toList es)
+     let consAnns =
+           foldl
+           (\consAnns (x, EnumDef conss) -> insEnumConstrs (anns ! x) consAnns conss)
+           Map.empty $ Map.toList es
+     putEnumAnn anns
+     putEnumConsAnn consAnns
+  where
+    insEnumConstrs ann = foldl (\consAnns cons -> Map.insert cons ann consAnns)
+
+declareEnum :: Ident i => (TypeAlias i, EnumDef i) -> DeclM i (i, SMTAnnotation SMTEnum)
+declareEnum (t, EnumDef cs) =
+  let t' = fromString $ identString t
+      cs' = map (fromString . identString) cs
+      ann = (t', cs')
+      [(_, enumDecl)] = declareType (undefined :: SMTEnum) ann
+  in liftSMT enumDecl >> return (t, ann)
 
 declareDecls :: Ident i => Declarations i -> DeclM i [Definition]
 declareDecls d =
@@ -245,15 +284,16 @@ declareVarList :: Ident i => [Variable i] -> DeclM i [(i, TypedStream i)]
 declareVarList = mapM declareVar
 
 declareVar :: Ident i => Variable i -> DeclM i (i, TypedStream i)
-declareVar (Variable x t) =
-  do x' <- liftSMT $ typedVar t
-     return (x, x')
+declareVar (Variable x t) = (x,) <$> typedVar t
   where
-    typedVar :: Type i -> SMT (TypedStream i)
-    typedVar (GroundType BoolT) = fmap BoolStream fun
-    typedVar (GroundType IntT) = fmap IntStream fun
-    typedVar (GroundType RealT) = fmap RealStream fun
-    typedVar _ = $notImplemented
+    typedVar :: Ident i => Type i -> DeclM i (TypedStream i)
+    typedVar (GroundType BoolT) = liftSMT $ fmap BoolStream fun
+    typedVar (GroundType IntT) = liftSMT $ fmap IntStream fun
+    typedVar (GroundType RealT) = liftSMT $ fmap RealStream fun
+    typedVar (GroundType _) = $notImplemented
+    typedVar (EnumType t) = lookupEnumAnn t >>= liftSMT . fmap EnumStream . funAnnRet
+    typedVar (ArrayType _ _) = $notImplemented
+    typedVar (ProdType ts) = $notImplemented
 
 declareNode :: Ident i => Node i -> DeclM i (NodeEnv i, [Definition])
 declareNode n =
@@ -283,10 +323,10 @@ declareInstantDef (NodeUsage x n es) =
 declareTransition :: Ident i => StateTransition i -> DeclM i Definition
 declareTransition (StateTransition x e) = lookupVar x >>= \x' -> declareDef succ' x' (trExpr e)
 
-declareDef :: (StreamPos -> StreamPos) -> TypedStream i -> TransM i (TypedExpr i) -> DeclM i Definition
+declareDef :: Ident i => (StreamPos -> StreamPos) -> TypedStream i -> TransM i (TypedExpr i) -> DeclM i Definition
 declareDef f x em =
   do env <- get
-     d <- liftSMT . defStream boolT $ \t ->
+     d <- defStream boolT $ \t ->
        let e = runTransM em t env
        in liftRel (.==.) (x `appStream` (f t)) e
      return $ ensureDefinition d
@@ -317,7 +357,7 @@ assertInit (x, e) =
 declarePrecond :: Ident i => Expr i -> DeclM i Definition
 declarePrecond e =
   do env <- get
-     d <- liftSMT . defStream boolT $ \t -> runTransM (trExpr e) t env
+     d <- defStream boolT $ \t -> runTransM (trExpr e) t env
      return $ ensureDefinition d
 
 declareInvariant :: Ident i => Expr i -> DeclM i Definition
@@ -325,7 +365,7 @@ declareInvariant = declarePrecond
 
 trConstExpr :: Ident i => ConstExpr i -> DeclM i (TypedExpr i)
 trConstExpr (untyped -> Const c) = return $ trConstant c
-trConstExpr (untyped -> ConstEnum e) = $notImplemented
+trConstExpr (untyped -> ConstEnum x) = lookupEnumConsAnn x >>= return . trEnumConsAnn x
 trConstExpr (untyped -> ConstProd p) = $notImplemented
 trConstExpr (untyped -> ConstArray a) = $notImplemented
 
@@ -354,6 +394,9 @@ lookupVar' x =
        Nothing -> throwError $ "Unknown variable " ++ identPretty x
        Just x' -> return x'
 
+lookupEnumConsAnn' :: Ident i => (EnumConstr i) -> TransM i (SMTAnnotation SMTEnum)
+lookupEnumConsAnn' t = asks (enumConsAnn . snd) >>= lookupErr ("Unknown enum constructor " ++ identPretty t) t
+
 askStreamPos :: TransM i StreamPos
 askStreamPos = asks fst
 
@@ -368,13 +411,33 @@ trExpr expr =
       do s <- lookupVar' x
          n <- askStreamPos
          return $ s `appStream` n
-    AtExpr (AtomEnum x) -> $notImplemented
+    AtExpr (AtomEnum x) -> trEnumCons x
     LogNot e -> lift1Bool not' <$> trExpr e
     Expr2 op e1 e2 -> applyOp op <$> trExpr e1 <*> trExpr e2
     Ite c e1 e2 -> liftIte <$> trExpr c <*> trExpr e1 <*> trExpr e2
     ProdCons (Prod es) -> $notImplemented
-    Match e pats -> $notImplemented
+    Match e pats -> trExpr e >>= flip trPattern pats
     _ -> $notImplemented
+
+trPattern :: Ident i => TypedExpr i -> [Pattern i] -> TransM i (TypedExpr i)
+trPattern e@(EnumExpr _) = trEnumMatch e
+trPattern _ = $notImplemented
+
+trEnumMatch :: Ident i => TypedExpr i -> [Pattern i] -> TransM i (TypedExpr i)
+trEnumMatch x pats =
+  do firstPat <- fmap snd . trEnumPattern x $ head pats
+     foldlM (chainPatterns x) firstPat (tail pats)
+  where
+    chainPatterns c ifs p = trEnumPattern c p >>= \(cond, e) -> return $ liftIte cond e ifs
+    trEnumPattern c (Pattern h e) = (,) <$> trEnumHead c h <*> trExpr e
+    trEnumHead c (EnumPat y) = trEnumCons y >>= \y' -> return $ liftRel (.==.) c y'
+    trEnumHead _ _ = error "trEnumMatch: not an enum pattern"
+
+trEnumConsAnn :: Ident i => EnumConstr i -> SMTAnnotation SMTEnum -> TypedExpr i
+trEnumConsAnn x = EnumExpr . constantAnn (SMTEnum . fromString $ identString x)
+
+trEnumCons :: Ident i => EnumConstr i -> TransM i (TypedExpr i)
+trEnumCons x = lookupEnumConsAnn' x >>= return . trEnumConsAnn x
 
 applyOp :: BinOp -> TypedExpr i -> TypedExpr i -> TypedExpr i
 applyOp Or e1 e2 = liftBoolL or' [e1, e2]
