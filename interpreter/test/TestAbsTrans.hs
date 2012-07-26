@@ -81,15 +81,15 @@ expectedTypes =
     progDecls = Declarations {
       declsNode = Map.fromList [(ident "main", Node {
         nodeInputs = [],
-        nodeOutputs = [Variable x (ProdType [EnumType e, intT, realT, ArrayType IntT 5])],
+        nodeOutputs = [Variable x (ProdType [EnumType e, intT, realT, int5])],
         nodeDecls = Declarations Map.empty [] [],
         nodeFlow = Flow {flowDefinitions = [], flowTransitions = []},
         nodeOutputDefs = [], nodeAutomata = Map.fromList [], nodeInitial = fromList []
       })],
       declsState = [],
-      declsLocal = [Variable x (ProdType [EnumType e, intT, realT, ArrayType IntT 5])]
+      declsLocal = [Variable x (ProdType [EnumType e, intT, realT, int5])]
     },
-    progFlow = Flow [InstantDef x (mkTyped (NodeUsage main []) (ProdType [EnumType e, intT, realT, ArrayType IntT 5]))] [],
+    progFlow = Flow [NodeUsage x main []] [],
     progAssertion = trueE, progInitial = fromList [], progInvariant = trueE
   }
   where
@@ -98,6 +98,7 @@ expectedTypes =
     e1 = EnumCons $ ident "e1"
     e2 = EnumCons $ ident "e2"
     x = ident "x"
+    int5 = ProdType $ replicate 5 intT
 
 testTypes :: Test
 testTypes = checkEqual expectedTypes typesSrc
@@ -128,8 +129,8 @@ expectedConstants =
         nodeDecls = Declarations Map.empty [] [],
         nodeFlow = Flow [] [],
         nodeOutputDefs = [
-          InstantDef x (preserveType InstantExpr $ constAtExpr $ mkTyped (SIntConst 32 (-5)) (GroundType (SInt 32))),
-          InstantDef y (preserveType InstantExpr $ constAtExpr $ mkTyped (UIntConst 16 1322) (GroundType (UInt 16)))
+          InstantExpr x $ constAtExpr $ mkTyped (SIntConst 32 (-5)) (GroundType (SInt 32)),
+          InstantExpr y $ constAtExpr $ mkTyped (UIntConst 16 1322) (GroundType (UInt 16))
         ],
         nodeAutomata = Map.fromList [], nodeInitial = fromList []
       })],
@@ -184,7 +185,7 @@ expectedSwitch =
         },
         nodeFlow = Flow {
           flowDefinitions = [
-            InstantDef s_ $ preserveType InstantExpr $ (
+            InstantExpr s_ $ (
               ite (varExpr s boolT)
                   (notE (varExpr off boolT))
                   (varExpr on boolT)
@@ -192,7 +193,7 @@ expectedSwitch =
           ],
           flowTransitions = [StateTransition s (varExpr s_ boolT)]
         },
-        nodeOutputDefs = [InstantDef so $ preserveType InstantExpr $ (varExpr s_ boolT)],
+        nodeOutputDefs = [InstantExpr so $ (varExpr s_ boolT)],
         nodeAutomata = Map.fromList [],
         nodeInitial = fromList [(s,(mkTyped (Const false) boolT))]
       })],
@@ -200,7 +201,7 @@ expectedSwitch =
       declsLocal = [Variable on boolT, Variable off boolT, Variable so boolT]
     },
     progFlow = Flow {
-      flowDefinitions = [InstantDef so (mkTyped (NodeUsage switchN [varExpr on boolT, varExpr off boolT]) boolT)],
+      flowDefinitions = [NodeUsage so switchN [varExpr on boolT, varExpr off boolT]],
       flowTransitions = []
     },
     progAssertion = trueE, progInitial = fromList [], progInvariant = trueE
@@ -269,15 +270,15 @@ expectedUpDownCounter =
           flowDefinitions = [],
           flowTransitions = [StateTransition x (varExpr x_ intT)]
         },
-        nodeOutputDefs = [InstantDef xo $ preserveType InstantExpr $ (varExpr x_ intT)],
+        nodeOutputDefs = [InstantExpr xo $ (varExpr x_ intT)],
         nodeAutomata = Map.fromList [ (0, Automaton {
           automLocations = [
             Location sA (Flow {
-              flowDefinitions = [InstantDef x_ $ preserveType InstantExpr $ (mkTyped (Expr2 Plus (varExpr x intT) (intE 1)) (GroundType IntT))],
+              flowDefinitions = [InstantExpr x_ $ (mkTyped (Expr2 Plus (varExpr x intT) (intE 1)) (GroundType IntT))],
               flowTransitions = []
             }),
             Location sB (Flow {
-              flowDefinitions = [InstantDef x_ $ preserveType InstantExpr $ (mkTyped (Expr2 Minus (varExpr x intT) (intE 1)) (GroundType IntT))],
+              flowDefinitions = [InstantExpr x_ $ (mkTyped (Expr2 Minus (varExpr x intT) (intE 1)) (GroundType IntT))],
               flowTransitions = []
             })
           ],
@@ -295,7 +296,7 @@ expectedUpDownCounter =
       declsLocal = [Variable xo intT]      
     },
     progFlow = Flow {
-      flowDefinitions = [InstantDef xo (mkTyped (NodeUsage main []) intT)],
+      flowDefinitions = [NodeUsage xo main []],
       flowTransitions = []
     },
     progInitial = fromList [],

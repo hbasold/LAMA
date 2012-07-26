@@ -179,17 +179,16 @@ takeEdge a = do
   where
     suc es l = foldr (\(Edge h t c) s -> if dropPos h == l then (dropPos t, c) : s else s) [] es
 
-evalInstant :: Instant -> EvalM (ConstExpr, NodeStates)
-evalInstant i = case untyped i of
-  InstantExpr e -> (,) <$> evalExpr e <*> (liftM stateNodes askState)
-  NodeUsage n params -> do
-    let nBS = dropPos n
-    params' <- mapM evalExpr params
-    (nDecl, nDeps) <- lookupNode n
-    ns <- liftM stateNodes askState
-    let nState = Map.findWithDefault emptyState nBS ns
-    (r, nState') <- localState (const nState) $ evalNode nDecl nDeps params'
-    return (r, Map.alter (const $ Just nState') nBS ns)
+evalInstant :: InstantDefinition -> EvalM (ConstExpr, NodeStates)
+evalInstant (InstantExpr _ e) = (,) <$> evalExpr e <*> (liftM stateNodes askState)
+evalInstant (NodeUsage _ n params) =
+  do let nBS = dropPos n
+     params' <- mapM evalExpr params
+     (nDecl, nDeps) <- lookupNode n
+     ns <- liftM stateNodes askState
+     let nState = Map.findWithDefault emptyState nBS ns
+     (r, nState') <- localState (const nState) $ evalNode nDecl nDeps params'
+     return (r, Map.alter (const $ Just nState') nBS ns)
 
 evalExpr :: Expr -> EvalM ConstExpr
 evalExpr expr = case untyped expr of
@@ -207,43 +206,28 @@ evalExpr expr = case untyped expr of
   Match e pats -> do
     e' <- evalExpr e
     match e' pats
-  ArrayCons (Array es) -> do
-    es' <- mapM evalExpr es
-    return $ mkTyped (ConstArray $ Array es') (getType expr)
   Project x i -> do
     a <- lookup (dropPos x)
     case untyped a of
-      ConstArray (Array vs) -> return $ vs `genericIndex` i
-      _ -> throwError $ "Not an array: " ++ (render $ prettyConstExpr a)
-  Update x i e -> do
-    e' <- evalExpr e
-    a <- lookup (dropPos x)
-    case untyped a of
-      ConstArray (Array vs) ->
-        return $ mkTyped (ConstArray $ Array $ update i e' vs) (getType expr)
-      _ -> throwError $ "Not an array: " ++ (render $ prettyConstExpr a)
-  where
-    update i y = uncurry (++) . (id *** (y:) . tail) . genericSplitAt i
+      ConstProd (Prod vs) -> return $ vs `genericIndex` i
+      _ -> throwError $ "Not a product: " ++ (render $ prettyConstExpr a)
 
 match :: ConstExpr -> [Pattern] -> EvalM ConstExpr
 match c pats = do
   r <- foldlM (match' c) Nothing pats
   case r of
-    Nothing -> askState >>= \s -> throwError $ "Insufficient pattern: trying to match " ++ (render $ prettyConstExpr c) ++ " with " ++ show pats ++ " in env " ++ (render $ prettyState s)
+    Nothing -> askState >>= \s ->
+      throwError $
+      "Insufficient pattern: trying to match "
+      ++ (render $ prettyConstExpr c) ++ " with " ++ show pats ++ " in env " ++ (render $ prettyState s)
     Just c' -> return c'
   where
     match' :: ConstExpr -> Maybe ConstExpr -> Pattern -> EvalM (Maybe ConstExpr)
     match' _ r@(Just _) _ = return r
-    match' v Nothing (Pattern (EnumPat x) e) = do
+    match' v Nothing (Pattern x e) = do
       if (ConstEnum x) == (untyped v)
       then liftM Just $ evalExpr e
       else return Nothing
-    match' v Nothing (Pattern (ProdPat xs) e) = case (untyped v) of
-      (ConstProd (Prod vs)) ->
-        let patVars = Map.fromList $ zip (map dropPos xs) vs
-            addPatVars = localState (flip updateState patVars)
-        in liftM Just $ addPatVars (evalExpr e)
-      _ -> return Nothing
 
 evalAtom :: Type PosIdent -> GAtom PosIdent Constant Atom -> EvalM ConstExpr
 evalAtom _ (AtomConst c) = return $ preserveType Const c
