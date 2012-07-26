@@ -23,5 +23,6 @@ invariant
   (and
     (and
       (=> (and on (not off)) s)
+--      (=> on s) -- use this instead of the above to provoce error
       (=> (and off (not on)) (not s)))
     (=> (and (not off) (not on)) (= s s_1)));
