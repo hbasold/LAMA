@@ -1,10 +1,11 @@
 node User(on : bool; off : bool)
-returns (c : int)
+returns (c : int; a : bool)
 var
   s : bool;
 let
   c = SubNodes::Count(s, false);
   s = SubNodes::Switch(on, off);
+  a = c > 0;
 tel
 
 package SubNodes
