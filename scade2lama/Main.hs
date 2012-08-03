@@ -17,7 +17,7 @@ import Text.PrettyPrint (render)
 
 import VarGen
 import qualified FlattenListExpr as FlattenList
-import qualified RewriteTemporal as Temporal
+
 import qualified RewriteOperatorApp as OpApp
 import qualified UnrollTemporal as Unroll
 import Transform

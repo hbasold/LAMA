@@ -1,4 +1,4 @@
-module ExtractPackages (Package(..), PackageMap, extract) where
+module ExtractPackages (Package(..), PackageMap, extractPackages) where
 
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -29,8 +29,8 @@ putDecl (ConstBlock cs) = modify (\p -> p { pkgConsts = (pkgConsts p) ++ cs })
 putDecl d = error $ "Should have already been done" ++ show d
 
 -- | Extracts all packages
-extract :: [Declaration] -> Package
-extract ds = execState (extractDecls ds) emptyPackage
+extractPackages :: [Declaration] -> Package
+extractPackages ds = execState (extractDecls ds) emptyPackage
 
 type Result = ST.State Package
 

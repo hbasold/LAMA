@@ -29,6 +29,7 @@
 
 module UnrollTemporal where
 
+import Control.Monad ((>=>))
 import Control.Arrow
 
 import Prelude hiding (mapM)
@@ -77,6 +78,10 @@ rewriteEquation ts (SimpleEquation [Named x] e) =
      return (decls, equs)
 rewriteEquation _ eq = return ([], [eq])
 
+-- | Transports the name of the variable for which the current
+-- equation is rewritten (just to have a prefix for the generated
+-- variables). It also holds the pulled out equations
+-- and the generated variables.
 type SubEqM = StateT (String, ([Equation], [String])) VarGen
 
 freshVar :: SubEqM String
@@ -97,24 +102,27 @@ mkSubEquations x expr =
     -- Avoid unrolling on top level
     mkSubEquationsTop :: Expr -> SubEqM Expr
     mkSubEquationsTop (S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2)) =
-      do e2' <- everywhereM (mkM mkSubEquations') e2
+      do e2' <- mkSubEquations' e2
          return $ S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2')
     mkSubEquationsTop (S.UnaryExpr S.UnPre e) =
-      do e' <- everywhereM (mkM mkSubEquations') e
+      do e' <- mkSubEquations' e
          return $ S.UnaryExpr S.UnPre e'
-    mkSubEquationsTop e = everywhereM (mkM mkSubEquations') e
+    mkSubEquationsTop e = mkSubEquations' e
 
+    -- first pull out initialised pre's because a pre alone is a sub-pattern and
+    -- with everywhere this leads to pulled out pre's but left after's.
     mkSubEquations' :: Expr -> SubEqM Expr
-    mkSubEquations' (S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2)) = do
-      e2' <- mkSubEquations' e2
+    mkSubEquations' = (everywhereM $ mkM mkEqInitPre) >=> (everywhereM $ mkM mkEqUninitPre)
+
+    mkEqInitPre (S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2)) = do
+      e2' <- everywhereM (mkM mkEqUninitPre) e2
       x' <- freshVar
       putEq $ SimpleEquation [Named x'] (S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2'))
       return $ IdExpr $ Path [x']
+    mkEqInitPre e = return e
 
-    mkSubEquations' (S.UnaryExpr S.UnPre e) = do
-      e' <- mkSubEquations' e
+    mkEqUninitPre (S.UnaryExpr S.UnPre e) = do
       x' <- freshVar
-      putEq $ SimpleEquation [Named x'] (S.UnaryExpr S.UnPre e')
+      putEq $ SimpleEquation [Named x'] (S.UnaryExpr S.UnPre e)
       return $ IdExpr $ Path [x']
-
-    mkSubEquations' e = return e
+    mkEqUninitPre e = return e
