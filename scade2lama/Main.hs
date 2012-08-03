@@ -122,5 +122,5 @@ rewrite :: [Declaration] -> VarGen [Declaration]
 rewrite = -- Temporal.rewrite
           -- <=<
           OpApp.rewrite
-          <=< return . Unroll.rewrite
+          <=< Unroll.rewrite
           <=< return . FlattenList.rewrite
