@@ -6,13 +6,20 @@ import System.Console.GetOpt
 import System.Exit (exitSuccess)
 
 import Control.Monad.Trans.Maybe
-import Control.Monad (when, MonadPlus(..))
+import Control.Monad (when, MonadPlus(..), (<=<))
 import Control.Monad.IO.Class (liftIO)
 
 import Language.Scade.Lexer (alexScanTokens)
 import Language.Scade.Parser (scade)
 import Language.Scade.Syntax
+import Language.Scade.Pretty (prettyScade)
+import Text.PrettyPrint (render)
 
+import VarGen
+import qualified FlattenListExpr as FlattenList
+import qualified RewriteTemporal as Temporal
+import qualified RewriteOperatorApp as OpApp
+import qualified UnrollTemporal as Unroll
 import Transform
 import Lang.LAMA.Pretty
 import qualified Lang.LAMA.Structure.SimpIdentUntyped as L
@@ -24,6 +31,7 @@ data Options = Options
   , optDebug :: Bool
   , optDumpScade :: Bool
   , optDumpLama :: Bool
+  , optDumpRewrite :: Bool
   , optShowHelp :: Bool
   }
 
@@ -35,6 +43,7 @@ defaultOptions = Options
   , optDebug              = False
   , optDumpScade          = False
   , optDumpLama           = False
+  , optDumpRewrite        = False
   , optShowHelp           = False
   }
 
@@ -42,6 +51,7 @@ resolveDebug :: Maybe String -> Options -> Options
 resolveDebug Nothing opts = opts {optDebug = True}
 resolveDebug (Just "dump-scade") opts = opts {optDumpScade = True}
 resolveDebug (Just "dump-lama") opts = opts {optDumpLama = True}
+resolveDebug (Just "dump-rewrite") opts = opts {optDumpRewrite = True}
 resolveDebug _ opts = opts
 
 options :: [OptDescr (Options -> Options)]
@@ -53,7 +63,7 @@ options =
       "output FILE or stdout"
     , Option ['d'] ["debug"]
       (OptArg resolveDebug "WHAT")
-      "Debug something; for more specific debugging use one of: [dump-scade]"
+      "Debug something; for more specific debugging use one of: [dump-scade, dump-lama, dump-rewrite]"
     , Option ['h'] ["help"]
       (NoArg  (\opts -> opts {optShowHelp = True}))
       "Show this help"
@@ -95,7 +105,9 @@ run :: Options -> FilePath -> String -> MaybeT IO String
 run opts f inp = do
   s <- checkScadeError $ scade $ alexScanTokens inp
   liftIO $ when (optDumpScade opts) (putStrLn $ show s)
-  l <- checkTransformError $ transform (optTopNode opts) s
+  let r = evalVarGen (rewrite s) 0
+  liftIO $ when (optDumpRewrite opts) (putStrLn $ render $ prettyScade r)
+  l <- checkTransformError $ transform (optTopNode opts) r
   liftIO $ when (optDumpLama opts) (putStrLn $ show l)
   return $ prettyLama l
 
@@ -105,3 +117,9 @@ checkScadeError = return
 checkTransformError :: Either String L.Program -> MaybeT IO L.Program
 checkTransformError (Left e) = (liftIO $ hPutStrLn stderr $ "Transform error: \n" ++ e) >> mzero
 checkTransformError (Right p) = return p
+
+rewrite :: [Declaration] -> VarGen [Declaration]
+rewrite = Temporal.rewrite
+          <=< OpApp.rewrite
+          <=< return . Unroll.rewrite
+          <=< return . FlattenList.rewrite

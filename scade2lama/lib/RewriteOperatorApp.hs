@@ -19,5 +19,7 @@ module RewriteOperatorApp where
 
 import Language.Scade.Syntax as S
 
-rewrite :: [Declaration] -> [Declaration]
+import VarGen
+
+rewrite :: [Declaration] -> VarGen [Declaration]
 rewrite = id

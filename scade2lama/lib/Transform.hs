@@ -17,6 +17,8 @@ import Data.Ratio
 import Data.List.Split (splitOn)
 import Data.Maybe (maybeToList, catMaybes)
 
+import Text.PrettyPrint (render)
+
 import Control.Monad.State
 import Control.Monad.Error (MonadError(..), ErrorT(..))
 import Control.Arrow ((***), (&&&), first)
@@ -25,14 +27,11 @@ import Control.Monad.Reader
 import Control.Monad.Writer
 
 import qualified Language.Scade.Syntax as S
+import qualified Language.Scade.Pretty as S
 import qualified Lang.LAMA.Structure.SimpIdentUntyped as L
 import qualified Lang.LAMA.Identifier as L
 import qualified Lang.LAMA.Types as L
 
-import qualified FlattenListExpr as FlattenList
-import qualified RewriteTemporal as Temporal
-import qualified RewriteOperatorApp as OpApp
-import qualified UnrollTemporal as Unroll
 import ExtractPackages as Extract
 
 updateVarName :: (BS.ByteString -> BS.ByteString) -> L.Variable -> L.Variable
@@ -134,15 +133,12 @@ declareNode x n = modify (\d -> d { nodes = Map.insert x n $ nodes d })
 declarePackage :: (MonadState Decls m) => L.SimpIdent -> Decls -> m ()
 declarePackage x p = modify (\d -> d { packages = Map.insert x p $ packages d })
 
-addReqNode :: (MonadState Decls m) => L.SimpIdent -> S.Path -> m ()
-addReqNode = undefined
-
 mkPath :: String -> S.Path
 mkPath = S.Path . splitOn "::"
 
 transform :: String -> [S.Declaration] -> Either String L.Program
 transform topNode ds =
-  let ds' = Extract.extract $ rewrite ds
+  let ds' = Extract.extract ds
   in case runTransM (getNode $ mkPath $ topNode) ds' of
     Left e -> Left e
     Right ((topNodeName, n), decls) ->
@@ -170,12 +166,6 @@ transform topNode ds =
     
     mkConstDefs :: [S.ConstDecl] -> Map L.SimpIdent L.Constant
     mkConstDefs = Map.fromList . map trConstDecl
-
-    rewrite :: [S.Declaration] -> [S.Declaration]
-    rewrite = FlattenList.rewrite .
-              Temporal.rewrite .
-              OpApp.rewrite .
-              Unroll.rewrite
 
 trOpDecl :: S.Declaration -> TransM ()
 trOpDecl (S.UserOpDecl {
@@ -334,7 +324,7 @@ trTypeExpr (S.TypeEnum ctors) = $notImplemented -- [String]
 --    operator if one is given.
 trExpr :: S.Expr -> TrackUsedNodes (Either L.Expr (L.SimpIdent, [L.Expr], L.Type L.SimpIdent), Maybe L.ConstExpr)
 trExpr expr = case expr of 
-    S.FBYExpr _ _ _ -> undefined
+    S.FBYExpr _ _ _ -> error "fby should have been resolved"
     S.LastExpr x -> $notImplemented
     S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2)
       -> (Left *** Just) <$> ((,) <$> trExpr' e2 <*> lift (trConstExpr e1))
@@ -354,7 +344,10 @@ trExpr expr = case expr of
     trExpr' (S.ConstPolyIntExpr i s) = $notImplemented
     trExpr' (S.BinaryExpr op e1 e2) = L.mkExpr2 <$> pure (trBinOp op) <*> trExpr' e1 <*> trExpr' e2
     trExpr' (S.UnaryExpr S.UnNot e) = L.mkLogNot <$> trExpr' e
-    trExpr' (S.UnaryExpr op e) = $notImplemented
+    trExpr' e@(S.UnaryExpr S.UnPre _) = error $ "pre should be erased in preprocessing " ++ (render $ S.prettyExpr 0 e)
+    trExpr' (S.UnaryExpr S.UnNeg e) = $notImplemented
+    trExpr' (S.UnaryExpr S.UnCastInt e) = $notImplemented
+    trExpr' (S.UnaryExpr S.UnCastReal e) = $notImplemented
     trExpr' (S.ListExpr es) = $notImplemented
     trExpr' (S.ArrayExpr es) = $notImplemented
     trExpr' (S.IfExpr c e1 e2) = L.mkIte <$> trExpr' c <*> trExpr' e1 <*> trExpr' e2
@@ -366,7 +359,7 @@ trExpr expr = case expr of
     trExpr' (S.AppendExpr e1 e2) = $notImplemented
     trExpr' (S.TransposeExpr e i1 i2) = $notImplemented
     trExpr' (S.TimesExpr e1 e2) = $notImplemented
-    trExpr' _ = undefined -- s. trExpr
+    trExpr' e = error $ "trExpr: should have been resolved in preprocessing: " ++ show e
 
 trOpApply :: S.Operator -> [L.Expr] -> TrackUsedNodes (L.SimpIdent, [L.Expr], L.Type L.SimpIdent)
 trOpApply (S.PrefixOp (S.PrefixPath p)) es =
@@ -394,7 +387,7 @@ trBinOp S.BinLesser = L.Less
 trBinOp S.BinGreater = L.Greater
 trBinOp S.BinLessEq = L.LEq
 trBinOp S.BinGreaterEq = L.GEq
-trBinOp S.BinAfter = undefined
+trBinOp S.BinAfter = error "After should no longer occur as single operator"
 trBinOp S.BinAnd = L.And
 trBinOp S.BinOr = L.Or
 trBinOp S.BinXor = L.Xor
