@@ -8,20 +8,20 @@ import Development.Placeholders
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.String (fromString)
-import Data.Either (partitionEithers)
-import Data.List ((\\), intercalate)
+
+import Data.List (intercalate, unzip4)
 import qualified  Data.Set as Set
 import Data.Set (Set)
 import qualified Data.ByteString.Char8 as BS
 import Data.Ratio
 import Data.List.Split (splitOn)
-import Data.Maybe (maybeToList, catMaybes)
+import Data.Maybe (maybeToList)
 
 import Text.PrettyPrint (render)
 
 import Control.Monad.State
 import Control.Monad.Error (MonadError(..), ErrorT(..))
-import Control.Arrow ((***), (&&&), first)
+import Control.Arrow ((***), (&&&), first, second)
 import Control.Applicative (Applicative(..), (<$>))
 import Control.Monad.Reader
 import Control.Monad.Writer
@@ -32,6 +32,7 @@ import qualified Lang.LAMA.Structure.SimpIdentUntyped as L
 import qualified Lang.LAMA.Identifier as L
 import qualified Lang.LAMA.Types as L
 
+import VarGen
 import ExtractPackages as Extract
 
 updateVarName :: (BS.ByteString -> BS.ByteString) -> L.Variable -> L.Variable
@@ -56,11 +57,15 @@ data ScadePackages = ScadePackages
                      , current :: Package
                      } deriving Show
 
-type PackageEnv = Reader ScadePackages
+type PackageEnv = ReaderT ScadePackages VarGen
 type TransM = StateT Decls (ErrorT String PackageEnv)
 
 runTransM :: TransM a -> Package -> Either String (a, Decls)
-runTransM m = (runReader $ runErrorT $ runStateT m emptyDecls) . (\p -> ScadePackages p p)
+runTransM m p = (flip evalVarGen 50)
+                . (flip runReaderT (ScadePackages p p))
+                . runErrorT
+                . (flip runStateT emptyDecls)
+                $ m
 
 askGlobalPkg :: (MonadReader ScadePackages m) => m Package
 askGlobalPkg = reader global
@@ -90,15 +95,15 @@ createPackage :: L.SimpIdent -> TransM Decls
 createPackage p = gets packages >>= return . Map.findWithDefault emptyDecls p
 
 -- | Opens a package using the given reader action.
-openPackageWith :: TransM Package -> [String] -> TransM a -> TransM a
-openPackageWith _ [] m = m
-openPackageWith asker (p:ps) m =
-  do scadePkg <- lookupErr ("Unknown package " ++ p) p =<< fmap pkgSubPackages asker
+openPackage :: [String] -> TransM a -> TransM a
+openPackage [] m = m
+openPackage (p:ps) m =
+  do scadePkg <- lookupErr ("Unknown package " ++ p) p =<< fmap pkgSubPackages askCurrentPkg
      let p' = fromString p
      pkg <- createPackage p'
      localState (updatePackage p') (const pkg)
        . localPkg (const scadePkg)
-       $ openPackageWith asker ps m
+       $ openPackage ps m
 
 -- | Checks if there is a node with the given name in the current package
 packageHasNode :: L.SimpIdent -> TransM Bool
@@ -111,13 +116,16 @@ getNode (S.Path p) =
   let pkgName = init p
       n = last p
       n' = fromString n
-  in tryWith askGlobalPkg pkgName n n' `catchError` (const $ tryWith askCurrentPkg pkgName n n')
+  in tryFrom askGlobalPkg pkgName n n' `catchError` (const $ tryFrom askCurrentPkg pkgName n n')
   where
-    tryWith asker pkgName n n' =
-      openPackageWith asker pkgName $
+    tryFrom asker pkgName n n' =
+      asker >>= \startPkg ->
+      (localPkg $ const startPkg)
+      . openPackage pkgName $
       do nodeTranslated <- packageHasNode n'
+         pkg <- fmap pkgUserOps askCurrentPkg
          when (not nodeTranslated)
-           (fmap pkgUserOps askCurrentPkg >>= lookupErr ("Unknown operator " ++ n) n >>= trOpDecl)
+           (lookupErr ("Unknown operator " ++ n) n pkg >>= trOpDecl)
          liftM (n',) $ lookupNode n'
 
     lookupNode nName = gets nodes >>= lookupErr ("Unknown node " ++ L.identPretty nName) nName
@@ -194,23 +202,24 @@ trOpDecl (S.UserOpDecl {
                        [] $ zip outp outp'
           automata = Map.empty
       in do
-        ((((definitions, intermediateVars), transitions), stateInits), usedNodes) <-
-          runWriterT $
-            liftM (((first unzip . partitionEithers) *** concat) . unzip) $ mapM trEquation equations
-        let definitions' = concat definitions
-        let intermediateVars' = catMaybes intermediateVars
-        -- FIXME: respect multiple points of usages!??
+        ((flow', localVars', stateVars', stateInits'), usedNodes) <-
+          runWriterT $ liftM unzip4 $ mapM trEquation equations
+        let flow = concatFlows flow'
+            localVars = concat localVars'
+            stateVars = concat stateVars'
+            stateInits = Map.unions stateInits'
+        -- FIXME: respect multiple points of usages!
         subNodes <- Map.fromList <$> mapM getNode (Set.toList usedNodes)
-        let inits = Map.fromList stateInits
-        stateVars <- mapM (\x -> lookupErr ("Unknown variable " ++ L.identPretty x) x vars) $ Map.keys inits
-        let localVars = intermediateVars' ++ (Map.elems vars \\ stateVars)
         return $ L.Node inp outp'
           (L.Declarations subNodes localVars stateVars)
-          (L.Flow definitions' transitions)
-          outputDefs automata inits
+          flow
+          outputDefs automata stateInits
 
     usedNode (L.NodeUsage _ x _) = Just x
     usedNode _ = Nothing
+
+    concatFlows :: [L.Flow] -> L.Flow
+    concatFlows = foldl (\(L.Flow d1 s1) (L.Flow d2 s2) -> L.Flow (d1 ++ d2) (s1 ++ s2)) (L.Flow [] [])
 
 trOpDecl _ = undefined
 
@@ -226,21 +235,35 @@ tellNode = tell . Set.singleton
 -- of a node with multiple return values this set of
 -- definitions consists of the call to the node and
 -- a projection for each variable. In that case also
--- an intermediate variable to be declared is returned.
+-- a set of intermediate variables to be declared is returned.
 trEquation :: S.Equation
-              -> TrackUsedNodes (Either ([L.InstantDefinition], Maybe L.Variable) L.StateTransition,
-                                 [(L.SimpIdent, L.ConstExpr)])
+              -> TrackUsedNodes (L.Flow, [L.Variable], [L.Variable], L.StateInit)
 trEquation (S.SimpleEquation lhsIds expr) = do
   let ids = map trLhsId lhsIds
-  (rhs, stateInit) <- trExpr expr
-  case stateInit of
-    Nothing -> mkLocalAssigns ids rhs >>= \a -> return (Left a, [])
-    Just sInit ->
-      case rhs of
-        Left expr' -> case ids of
-          [x] -> return (Right $ L.StateTransition x expr', [(x, sInit)])
-          _ -> throwError $ "Cannot pattern match in state equation"
-        Right _ -> throwError $ "Cannot use node in state equation"
+  rhs <- trExpr expr
+  case rhs of
+    LocalExpr (expr', stateInit) -> case stateInit of
+      -- Simple expression, no initialisation -> only do pattern matching
+      Nothing -> mkLocalAssigns ids (Left expr') >>= \(a, v) -> return (L.Flow a [], maybeToList v, [], Map.empty)
+      -- If we get a non-state expression with an initialisation, we
+      -- introduce a stream that is true only in the first step and
+      -- use that to derive the initialisation.
+      Just i ->
+        do init <- fmap fromString $ newVar "init"
+           let expr'' = L.mkIte (L.mkAtomVar init) i expr'
+               initTrans = L.StateTransition init (L.constAtExpr $ L.boolConst False)
+               initInit = L.mkConst $ L.boolConst True
+           (a, v) <- mkLocalAssigns ids (Left expr'')
+           return (L.Flow a [initTrans], maybeToList v, [L.Variable init L.boolT], Map.singleton init initInit)
+    StateExpr (expr', stateInit) -> case ids of
+      [x] ->
+        let i = fmap (x,) $ maybeToList stateInit
+        in return (L.Flow [] [L.StateTransition x expr'], [], [], Map.fromList i)
+      _ -> throwError $ "Cannot pattern match in state equation"
+    NodeExpr rhs ->
+      mkLocalAssigns ids (Right rhs) >>= \(a, v) ->
+      return (L.Flow a [], maybeToList v, [], Map.empty)
+
 trEquation (S.AssertEquation aType name expr) = $notImplemented
 trEquation (S.EmitEquation body) = $notImplemented
 trEquation (S.StateEquation sm ret returnsAll) = $notImplemented
@@ -313,26 +336,50 @@ trTypeExpr (S.TypeRecord fields) = $notImplemented -- [(String,TypeExpr)]
 trTypeExpr (S.TypeEnum ctors) = $notImplemented -- [String]
 
 
--- | We require a very special structure (enforced by rewriting done
---    beforehand):
---    A temporal expression must be of the form "e1 -> pre e2" where
---    e1 and e2 are non-temporal expressions. The same must also
---    hold for the application of operators.
---    Returns either an expression (for local definitions and
---    transitions) or the used node including its parameters.
---    The second part is the initialisation of a temporal
---    operator if one is given.
-trExpr :: S.Expr -> TrackUsedNodes (Either L.Expr (L.SimpIdent, [L.Expr], L.Type L.SimpIdent), Maybe L.ConstExpr)
+data EquationRhs =
+  LocalExpr (L.Expr, Maybe L.Expr)
+  -- ^ An expression for a local definition together with a possible initialisation
+  | StateExpr (L.Expr, Maybe L.ConstExpr)
+    -- ^ An expression for a state transition together with a possible initialisation
+  | NodeExpr (L.SimpIdent, [L.Expr], L.Type L.SimpIdent)
+    -- ^ Using of a node
+
+-- | There are three supported types of temporal expressions whereby the
+-- first is an optimization. We give the intended translation each of them.
+-- 1. (initialised pre)
+--   x = i -> pre e
+--   ~> x' = e, x(0) = i
+-- 2. (unmatched initialisation)
+--   x = i -> e, e /= pre e_
+--   ~> x = (ite init i e),
+--      init' = false, init(0) = true
+-- 3. (unmatched pre)
+--   x = e, Pre(e) = {e_1, .., e_k} /= ∅
+--   ~> x = e[x_1/e_1, .., x_k/e_k],
+--      x_1' = e_1, x_1(0) = ⊥
+--      ...
+--      x_k' = e_k, x_k(0) = ⊥
+-- ⊥ stands for an unknown value and is realised by just leaving it open.
+-- If all accessed streams are well initialised, this should be fine.
+--
+-- Other temporal expressions like fby have to be unrolled beforehand.
+trExpr :: S.Expr -> TrackUsedNodes EquationRhs
 trExpr expr = case expr of 
     S.FBYExpr _ _ _ -> error "fby should have been resolved"
     S.LastExpr x -> $notImplemented
     S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2)
-      -> (Left *** Just) <$> ((,) <$> trExpr' e2 <*> lift (trConstExpr e1))
+      -> StateExpr . second Just
+         <$> ((,) <$> trExpr' e2 <*> lift (trConstExpr e1))
+    S.BinaryExpr S.BinAfter e1 e2 ->
+      LocalExpr . second Just
+      <$> ((,) <$> trExpr' e2 <*> trExpr' e1)
+    S.UnaryExpr S.UnPre e ->
+      StateExpr . (id &&& const Nothing) <$> trExpr' e
     S.ApplyExpr op es -> do
       es' <- mapM trExpr' es
       app <- trOpApply op es'
-      return (Right app, Nothing)
-    normalExpr -> (Left &&& const Nothing) <$> trExpr' normalExpr
+      return $ NodeExpr app
+    normalExpr -> LocalExpr . (id &&& const Nothing) <$> trExpr' normalExpr
   where
     trExpr' :: S.Expr -> TrackUsedNodes L.Expr
     trExpr' (S.IdExpr (S.Path [x])) = pure $ L.mkAtomVar (fromString x)

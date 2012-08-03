@@ -22,4 +22,4 @@ import Language.Scade.Syntax as S
 import VarGen
 
 rewrite :: [Declaration] -> VarGen [Declaration]
-rewrite = id
+rewrite = return

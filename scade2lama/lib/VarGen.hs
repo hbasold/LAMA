@@ -4,8 +4,12 @@ module VarGen (VarGenT, VarGen, evalVarGenT, evalVarGen, MonadVarGen(..)) where
 
 import Control.Monad.State
 import Data.Functor.Identity
+import Numeric
 
 import Control.Monad.Reader (ReaderT)
+import Control.Monad.Writer (WriterT)
+import Control.Monad.Error (ErrorT, Error)
+import Data.Monoid
 
 newtype VarGenT m a = VarGenT { runVarGenT :: StateT Int m a }
 type VarGen = VarGenT Identity
@@ -32,11 +36,17 @@ class Monad m => MonadVarGen m where
 instance Monad m => MonadVarGen (VarGenT m) where
   newVar x =
     do i <- getNextCnt
-       return $ x ++ "_" ++ show i
+       return . (x ++) . ("_" ++) . showHex i $ ""
     where getNextCnt = VarGenT $ state $ \i -> (i, i+1)
 
 instance MonadVarGen m => MonadVarGen (ReaderT r m) where
   newVar = lift . newVar
   
-instance MonadVarGen m => MonadVarGen (StateT r m) where
+instance MonadVarGen m => MonadVarGen (StateT s m) where
+  newVar = lift . newVar
+
+instance (Monoid w, MonadVarGen m) => MonadVarGen (WriterT w m) where
+  newVar = lift . newVar
+
+instance (Error e, MonadVarGen m) => MonadVarGen (ErrorT e m) where
   newVar = lift . newVar

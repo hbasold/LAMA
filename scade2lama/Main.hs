@@ -119,7 +119,8 @@ checkTransformError (Left e) = (liftIO $ hPutStrLn stderr $ "Transform error: \n
 checkTransformError (Right p) = return p
 
 rewrite :: [Declaration] -> VarGen [Declaration]
-rewrite = Temporal.rewrite
-          <=< OpApp.rewrite
+rewrite = -- Temporal.rewrite
+          -- <=<
+          OpApp.rewrite
           <=< return . Unroll.rewrite
           <=< return . FlattenList.rewrite
