@@ -7,6 +7,7 @@ import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.String (fromString)
 
+import Control.Monad (liftM)
 import Control.Monad.State (MonadState(..), StateT(..), gets, modify)
 import Control.Monad.Error (MonadError(..), ErrorT(..))
 import Control.Monad.Reader (MonadReader(..), ReaderT(..))
@@ -83,14 +84,14 @@ localState comb f m =
 updatePackage :: L.SimpIdent -> Decls -> Decls -> Decls
 updatePackage n p ds = ds { packages = Map.adjust (const p) n $ packages ds }
 
-createPackage :: L.SimpIdent -> TransM Decls
+createPackage :: MonadState Decls m => L.SimpIdent -> m Decls
 createPackage p = gets packages >>= return . Map.findWithDefault emptyDecls p
 
 -- | Opens a package using the given reader action.
-openPackage :: [String] -> TransM a -> TransM a
+openPackage :: (MonadState Decls m, MonadReader ScadePackages m, MonadError String m) => [String] -> m a -> m a
 openPackage [] m = m
 openPackage (p:ps) m =
-  do scadePkg <- lookupErr ("Unknown package " ++ p) p =<< fmap pkgSubPackages askCurrentPkg
+  do scadePkg <- lookupErr ("Unknown package " ++ p) p =<< liftM pkgSubPackages askCurrentPkg
      let p' = fromString p
      pkg <- createPackage p'
      localState (updatePackage p') (const pkg)
@@ -98,7 +99,7 @@ openPackage (p:ps) m =
        $ openPackage ps m
 
 -- | Checks if there is a node with the given name in the current package
-packageHasNode :: L.SimpIdent -> TransM Bool
+packageHasNode :: MonadState Decls m => L.SimpIdent -> m Bool
 packageHasNode x = gets nodes >>= return . Map.member x
 
 addDefaults :: Map L.SimpIdent L.Expr -> TransM ()
