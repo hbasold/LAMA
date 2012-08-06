@@ -17,6 +17,7 @@ import Language.Scade.Syntax
 import Language.Scade.Pretty (prettyScade)
 import Text.PrettyPrint (render)
 
+import Options
 import VarGen
 import qualified FlattenListExpr as FlattenList
 
@@ -25,30 +26,6 @@ import qualified UnrollTemporal as Unroll
 import qualified UnrollFby as Fby
 import Transform
 import Lang.LAMA.Pretty
-
-
-data Options = Options
-  { optInput :: FilePath
-  , optOutput :: FilePath
-  , optTopNode :: String
-  , optDebug :: Bool
-  , optDumpScade :: Bool
-  , optDumpLama :: Bool
-  , optDumpRewrite :: Bool
-  , optShowHelp :: Bool
-  }
-
-defaultOptions :: Options
-defaultOptions = Options
-  { optInput              = "-"
-  , optOutput             = "-"
-  , optTopNode            = ""
-  , optDebug              = False
-  , optDumpScade          = False
-  , optDumpLama           = False
-  , optDumpRewrite        = False
-  , optShowHelp           = False
-  }
 
 resolveDebug :: Maybe String -> Options -> Options
 resolveDebug Nothing opts = opts {optDebug = True}
