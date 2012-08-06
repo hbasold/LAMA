@@ -7,13 +7,14 @@ import Control.Monad.State
 import Data.Functor.Identity
 import Numeric
 
+import Control.Applicative
 import Control.Monad.Reader (ReaderT)
 import Control.Monad.Writer (WriterT)
 import Control.Monad.Error (ErrorT, Error)
 import Data.Monoid
 
 newtype VarGenT m a = VarGenT { runVarGenT :: StateT Int m a }
-                    deriving (Functor, Monad, MonadTrans)
+                    deriving (Functor, Monad, MonadTrans, Applicative)
 type VarGen = VarGenT Identity
 
 evalVarGenT :: Monad m => VarGenT m a -> Int -> m a
