@@ -26,10 +26,13 @@ data TrEqCont =
 instance Functor TrEquation where
   fmap f = \(TrEquation x l s i a) -> TrEquation (f x) l s i a
 
-mergeTrEqs :: [TrEquation a] -> TrEquation [a]
-mergeTrEqs = foldl mergeEqs (TrEquation [] [] [] Map.empty [])
+foldlTrEq :: (b -> a -> b) -> b -> [TrEquation a] -> TrEquation b
+foldlTrEq f i = foldl f' (TrEquation i [] [] Map.empty [])
   where
-    mergeEqs (TrEquation eqs l1 s1 i1 n1) (TrEquation eq l2 s2 i2 n2) =
-      TrEquation (eqs ++ [eq])
+    f' (TrEquation b l1 s1 i1 n1) (TrEquation a l2 s2 i2 n2) =
+      TrEquation (f b a)
       (l1 ++ l2) (s1 ++ s2)
       (i1 `Map.union` i2) (n1 ++ n2)
+
+mergeTrEqs :: [TrEquation a] -> TrEquation [a]
+mergeTrEqs = foldlTrEq (\eqs eq -> eqs ++ [eq]) []
