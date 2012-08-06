@@ -16,9 +16,11 @@ import Data.List.Split (splitOn)
 import Data.Maybe (maybeToList)
 import Data.Traversable (mapM)
 
-import Control.Monad (when, liftM)
+import Control.Monad.Trans.Class
+import Control.Monad (when, liftM, MonadPlus(..))
 import Control.Monad.State (gets)
 import Control.Monad.Error (MonadError(..))
+import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Arrow (first)
 import Control.Applicative ((<$>))
 import Control.Monad.Writer (WriterT(..))
@@ -42,16 +44,23 @@ getNode (S.Path p) =
   let pkgName = init p
       n = last p
       n' = fromString n
-  in tryFrom askGlobalPkg pkgName n n' `catchError` (const $ tryFrom askCurrentPkg pkgName n n')
+  in do r <- runMaybeT $ (tryFrom askGlobalPkg pkgName n n') `mplus` (tryFrom askCurrentPkg pkgName n n')
+        case r of
+          Nothing -> throwError $ "Unknown operator " ++ n
+          Just nDecl -> return nDecl
   where
+    tryFrom :: TransM Package -> [String] -> String -> L.SimpIdent -> MaybeT TransM (L.SimpIdent, L.Node)
     tryFrom asker pkgName n n' =
-      asker >>= \startPkg ->
+      lift asker >>= \startPkg ->
       (localPkg $ const startPkg)
       . openPackage pkgName $
       do nodeTranslated <- packageHasNode n'
          pkg <- fmap pkgUserOps askCurrentPkg
-         when (not nodeTranslated)
-           (lookupErr ("Unknown operator " ++ n) n pkg >>= trOpDecl)
+         when (not nodeTranslated) (
+           case Map.lookup n pkg of
+             Nothing -> mzero
+             Just o -> lift $ trOpDecl o
+           )
          liftM (n',) $ lookupNode n'
 
     lookupNode nName = gets nodes >>= lookupErr ("Unknown node " ++ L.identPretty nName) nName
