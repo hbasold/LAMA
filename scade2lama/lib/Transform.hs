@@ -94,7 +94,7 @@ trOpDecl (S.UserOpDecl {
           outputDefs = foldr
                        (\(x, x') ds -> (L.InstantExpr (L.varIdent x') $ L.mkAtomVar (L.varIdent x)) : ds )
                        [] $ zip outp outp'
-      ((flow, newLocalVars, newStateVars, stateInits, automata, subAutomataNodes), usedNodes) <-
+      ((flow, newLocalVars, newStateVars, stateInits, automata, subAutomataNodes, precondition), usedNodes) <-
         liftM (first extract) . runWriterT $ mapM trEquation equations
       let (localVars', stateVars) = separateVars stateInits (concat localVars)
       -- FIXME: respect multiple points of usages!
@@ -103,26 +103,29 @@ trOpDecl (S.UserOpDecl {
         (L.Declarations (subNodes `Map.union` subAutomataNodes)
          (localVars' ++ newLocalVars) (stateVars ++ newStateVars))
         flow
-        outputDefs automata stateInits
+        outputDefs automata stateInits precondition
 
     extract :: [TrEquation TrEqCont] ->
-               (L.Flow, [L.Variable], [L.Variable], L.StateInit, Map Int L.Automaton, Map L.SimpIdent L.Node)
-    extract = foldl merge (L.Flow [] [], [], [], Map.empty, Map.empty, Map.empty)
+               (L.Flow, [L.Variable], [L.Variable], L.StateInit, Map Int L.Automaton, Map L.SimpIdent L.Node, L.Expr)
+    extract = foldl merge (L.Flow [] [], [], [], Map.empty, Map.empty, Map.empty, L.constAtExpr $ L.boolConst True)
       where
-        merge (f1, l1, s1, i1, a1, n1) (TrEquation (SimpleEq f2) l2 s2 i2 n2) =
-          (concatFlows f1 f2, l1 ++ l2, s1 ++ s2,
-           i1 `Map.union` i2, a1,
-           n1 `Map.union` (Map.fromList n2))
-        merge (f1, l1, s1, i1, a1, n1) (TrEquation (AutomatonEq a2) l2 s2 i2 n2)
-          | Map.null a1 = (f1, l1 ++ l2, s1 ++ s2, i1 `Map.union` i2,
-                           Map.singleton 0 a2,
-                           n1 `Map.union` (Map.fromList n2))
-          | otherwise = (f1, l1 ++ l2, s1 ++ s2, i1 `Map.union` i2,
-                         Map.insert ((fst $ Map.findMin a1) + 1) a2 a1,
-                         n1 `Map.union` (Map.fromList n2))
+        merge (f1, l1, s1, i1, a1, n1, p) (TrEquation eq l2 s2 i2 n2) =
+          mergeEq (f1, l1 ++ l2, s1 ++ s2,
+                   i1 `Map.union` i2, a1,
+                   n1 `Map.union` (Map.fromList n2), p) eq
 
-    concatFlows :: L.Flow -> L.Flow -> L.Flow
-    concatFlows (L.Flow d1 s1) (L.Flow d2 s2) = L.Flow (d1 ++ d2) (s1 ++ s2)
+        mergeEq (f1, l1, s1, i1, a1, n1, p) (SimpleEq f2) =
+          (concatFlows f1 f2, l1, s1, i1, a1, n1, p)
+        -- we don't care about the name of an automaton or if variables have
+        -- been declared inside a state, we declare them outside nevertheless.
+        mergeEq (f1, l1, s1, i1, a1, n1, p) (AutomatonEq _ a2 _) =
+          let a = if Map.null a1
+                  then Map.singleton 0 a2
+                  else Map.insert ((fst $ Map.findMin a1) + 1) a2 a1
+          in (f1, l1, s1, i1, a, n1, p)
+        mergeEq (f1, l1, s1, i1, a1, n1, p) (PrecondEq e) =
+          let p' = L.mkExpr2 L.And p e
+          in (f1, l1, s1, i1, a1, n1, p')
 
     separateVars :: L.StateInit -> [L.Variable] -> ([L.Variable], [L.Variable])
     separateVars i =
@@ -177,8 +180,10 @@ transform topNode ds =
 trEquation :: S.Equation -> TrackUsedNodes (TrEquation TrEqCont)
 trEquation (S.SimpleEquation lhsIds expr) =
   fmap SimpleEq <$> trSimpleEquation lhsIds expr
-trEquation (S.AssertEquation aType name expr) = $notImplemented
+trEquation (S.AssertEquation S.Assume _name expr) =
+  liftM PrecondEq (lift $ trExpr' expr) >>= \pc -> return $ TrEquation pc [] [] Map.empty []
+trEquation (S.AssertEquation S.Guarantee _name expr) = $notImplemented
 trEquation (S.EmitEquation body) = $notImplemented
-trEquation (S.StateEquation sm ret returnsAll) =
-  fmap AutomatonEq <$> trStateEquation sm ret returnsAll
+trEquation (S.StateEquation (S.StateMachine name sts) ret returnsAll) =
+  fmap (flip (AutomatonEq name) []) <$> trStateEquation sts ret returnsAll
 trEquation (S.ClockedEquation name block ret returnsAll) = $notImplemented

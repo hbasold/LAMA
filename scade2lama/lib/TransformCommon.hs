@@ -3,10 +3,10 @@
 {-# LANGUAGE TupleSections #-}
 
 module TransformCommon (
-  updateVarName, declareNode, checkNode,
+  concatFlows, updateVarName, declareNode, checkNode,
   trVarDecl, trConstDecl, mkLocalAssigns,
   trTypeExpr,
-  EquationRhs(..), trExpr, trConstExpr
+  EquationRhs(..), trExpr, trExpr', trConstExpr
   ) where
 
 import Development.Placeholders
@@ -38,6 +38,9 @@ import qualified Lang.LAMA.Types as L
 
 import ExtractPackages as Extract
 import TransformMonads
+
+concatFlows :: L.Flow -> L.Flow -> L.Flow
+concatFlows (L.Flow d1 s1) (L.Flow d2 s2) = L.Flow (d1 ++ d2) (s1 ++ s2)
 
 declareNode :: (MonadState Decls m) => L.SimpIdent -> L.Node -> m ()
 declareNode x n = modify (\d -> d { nodes = Map.insert x n $ nodes d })
@@ -189,7 +192,7 @@ trOpApply (S.PrefixOp (S.PrefixPath p)) es =
           lift (checkNode p) >>= \(x, t) -> return (x, es, t) <* tellNode p
 trOpApply _ _ = $notImplemented
 
-trConstExpr :: S.Expr -> TransM L.ConstExpr
+trConstExpr :: (MonadError String m, Applicative m) =>  S.Expr -> m L.ConstExpr
 trConstExpr (S.ConstIntExpr c) = L.mkConst <$> pure (L.mkIntConst c)
 trConstExpr (S.ConstBoolExpr c) = L.mkConst <$> pure (L.boolConst c)
 trConstExpr (S.ConstFloatExpr c) = L.mkConst <$> pure (L.mkRealConst $ approxRational c 0.01)
