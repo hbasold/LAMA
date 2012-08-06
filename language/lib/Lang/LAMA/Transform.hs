@@ -237,7 +237,7 @@ transMaybeTypedVars x = case x of
 
 transNode :: Abs.Node -> Result (PosIdent, Node)
 transNode x = case x of
-  Abs.Node identifier maybetypedvars typedvarss declarations flow outputs controlstructure initial ->
+  Abs.Node identifier maybetypedvars typedvarss declarations flow outputs controlstructure initial assertion ->
     (,) <$> (transIdentifier identifier) <*>
       (Node <$>
         (transMaybeTypedVars maybetypedvars) <*>
@@ -246,7 +246,8 @@ transNode x = case x of
         (transFlow flow) <*>
         (transOutputs outputs) <*>
         (transControlStructure controlstructure) <*>
-        (transInitial initial))
+        (transInitial initial) <*>
+        transAssertion assertion)
 
 transDeclarations :: Abs.Declarations -> Result Declarations
 transDeclarations x = case x of

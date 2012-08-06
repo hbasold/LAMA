@@ -119,7 +119,8 @@ trNode (x, n) =
       outpDefs = trOutputs $ nodeOutputDefs n
       autom = trControlStructure $ nodeAutomata n
       init = trInitial $ nodeInitial n
-  in Abs.Node (trIdent x) inp outp decls flow outpDefs autom init
+      assertion = trAssertion $ nodeAssertion n
+  in Abs.Node (trIdent x) inp outp decls flow outpDefs autom init assertion
 
 trFlow :: Ident i => Flow i -> Abs.Flow
 trFlow f = Abs.Flow (trLocalDefinitions $ flowDefinitions f) (trTransitions $ flowTransitions f)

@@ -356,9 +356,10 @@ declareNode n =
      outDefs <- fmap concat . mapM declareInstantDef $ nodeOutputDefs n
      automDefs <- fmap concat . mapM declareAutomaton . Map.toList $ nodeAutomata n
      assertInits $ nodeInitial n
+     precondDef <- declarePrecond $ nodeAssertion n
      varDefs <- gets varEnv
      return (NodeEnv ins outs varDefs,
-             declDefs ++ flowDefs ++ outDefs ++ automDefs)
+             declDefs ++ flowDefs ++ outDefs ++ automDefs ++ [precondDef])
 
 declareInstantDef :: Ident i => InstantDefinition i -> DeclM i [Definition]
 declareInstantDef (InstantExpr x e) = (:[]) <$> (lookupVar x >>= \x' -> declareDef id x' (trExpr e))

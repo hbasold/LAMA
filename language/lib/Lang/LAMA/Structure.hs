@@ -77,7 +77,8 @@ data GNode i expr cexpr = Node {
     nodeFlow        :: GFlow i expr,
     nodeOutputDefs  :: [GInstantDefinition i expr],
     nodeAutomata    :: Map Int (GAutomaton i expr),
-    nodeInitial     :: GStateInit i cexpr
+    nodeInitial     :: GStateInit i cexpr,
+    nodeAssertion   :: expr
   } deriving (Eq, Show)
   
 data GVariable i = Variable i (Type i) deriving (Eq, Show)

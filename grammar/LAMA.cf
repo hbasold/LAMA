@@ -82,6 +82,7 @@ Node. Node  ::= "node" Identifier "(" MaybeTypedVars ")" "returns" "(" [TypedVar
                     Outputs
                     ControlStructure
                     Initial
+                    Assertion
                 "tel" ;
 
 separator nonempty Node "" ;

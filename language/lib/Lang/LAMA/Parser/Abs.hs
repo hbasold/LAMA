@@ -101,7 +101,7 @@ data MaybeTypedVars =
   deriving (Eq,Ord,Show)
 
 data Node =
-   Node Identifier MaybeTypedVars [TypedVars] Declarations Flow Outputs ControlStructure Initial
+   Node Identifier MaybeTypedVars [TypedVars] Declarations Flow Outputs ControlStructure Initial Assertion
   deriving (Eq,Ord,Show)
 
 data Declarations =

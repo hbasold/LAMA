@@ -213,7 +213,7 @@ MaybeTypedVars : {- empty -} { NoTypedVars }
 
 
 Node :: { Node }
-Node : 'node' Identifier '(' MaybeTypedVars ')' 'returns' '(' ListTypedVars ')' ';' 'let' Declarations Flow Outputs ControlStructure Initial 'tel' { Node $2 $4 $8 $12 $13 $14 $15 $16 } 
+Node : 'node' Identifier '(' MaybeTypedVars ')' 'returns' '(' ListTypedVars ')' ';' 'let' Declarations Flow Outputs ControlStructure Initial Assertion 'tel' { Node $2 $4 $8 $12 $13 $14 $15 $16 $17 } 
 
 
 ListNode :: { [Node] }
