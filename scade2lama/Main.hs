@@ -22,9 +22,10 @@ import qualified FlattenListExpr as FlattenList
 
 import qualified RewriteOperatorApp as OpApp
 import qualified UnrollTemporal as Unroll
+import qualified UnrollFby as Fby
 import Transform
 import Lang.LAMA.Pretty
-import qualified Lang.LAMA.Structure.SimpIdentUntyped as L
+
 
 data Options = Options
   { optInput :: FilePath
@@ -125,4 +126,5 @@ rewrite = -- Temporal.rewrite
           -- <=<
           lift . OpApp.rewrite
           <=< lift . Unroll.rewrite
+          <=< Fby.rewrite
           <=< return . FlattenList.rewrite
