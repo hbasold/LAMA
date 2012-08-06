@@ -21,5 +21,5 @@ import Language.Scade.Syntax as S
 
 import VarGen
 
-rewrite :: [Declaration] -> VarGen [Declaration]
+rewrite :: MonadVarGen m => [Declaration] -> m [Declaration]
 rewrite = return

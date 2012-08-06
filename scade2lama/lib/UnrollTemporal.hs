@@ -34,20 +34,22 @@ import Control.Arrow
 
 import Prelude hiding (mapM)
 import Data.Traversable
-import Control.Monad.State (StateT(..), MonadState(..), modify)
+import Data.Map as Map hiding (map)
+
 import Data.Generics.Schemes
 import Data.Generics.Aliases
 
-import Data.Map as Map hiding (map)
+import Control.Monad (liftM)
+import Control.Monad.State (StateT(..), MonadState(..), modify)
 
 import Language.Scade.Syntax as S
 
 import VarGen
 
-rewrite :: [Declaration] -> VarGen [Declaration]
+rewrite :: MonadVarGen m => [Declaration] -> m [Declaration]
 rewrite = everywhereM $ mkM rewriteDecl
 
-rewriteDecl :: Declaration -> VarGen Declaration
+rewriteDecl :: MonadVarGen m => Declaration -> m Declaration
 rewriteDecl op@(UserOpDecl {}) =
   let typesInp = Map.fromList
                  . concat
@@ -61,16 +63,16 @@ rewriteDecl op@(UserOpDecl {}) =
         return $ op { userOpContent = cont' }
 rewriteDecl d = return d
 
-rewriteDataDef :: Map String TypeExpr -> DataDef -> VarGen DataDef
+rewriteDataDef :: MonadVarGen m => Map String TypeExpr -> DataDef -> m DataDef
 rewriteDataDef typesEnv (DataDef sigs locals equs) =
   let typesLocals = Map.fromList $ concat $ map (\(VarDecl xs t _ _) -> [(x,t) | (VarId x _ _) <- xs]) locals
       types = typesEnv `Map.union` typesLocals
-  in do (vs, equs') <- fmap ((concat *** concat) . unzip) $ mapM (rewriteEquation types) equs
+  in do (vs, equs') <- liftM ((concat *** concat) . unzip) $ mapM (rewriteEquation types) equs
         let locals' = locals ++ vs
         return $ DataDef sigs locals' equs'
 
 -- We may produce multiple equations out of one
-rewriteEquation :: Map String TypeExpr -> Equation -> VarGen ([VarDecl], [Equation])
+rewriteEquation :: MonadVarGen m => Map String TypeExpr -> Equation -> m ([VarDecl], [Equation])
 -- We only rewrite equations that do not use nodes
 rewriteEquation ts (SimpleEquation [Named x] e) =
   do (xs, equs) <- mkSubEquations x e
@@ -82,25 +84,25 @@ rewriteEquation _ eq = return ([], [eq])
 -- equation is rewritten (just to have a prefix for the generated
 -- variables). It also holds the pulled out equations
 -- and the generated variables.
-type SubEqM = StateT (String, ([Equation], [String])) VarGen
+type SubEqM = StateT (String, ([Equation], [String]))
 
-freshVar :: SubEqM String
+freshVar :: MonadVarGen m => SubEqM m String
 freshVar = do
   (x, (_, _)) <- get
   x' <- newVar x
   modify (second $ second (x':))
   return x'
 
-putEq :: Equation -> SubEqM ()
+putEq :: MonadVarGen m => Equation -> SubEqM m ()
 putEq e = modify (second $ first (e:))
 
-mkSubEquations :: String -> Expr -> VarGen ([String], [Equation])
+mkSubEquations :: MonadVarGen m => String -> Expr -> m ([String], [Equation])
 mkSubEquations x expr =
   do (expr', (_, (subs, newVars))) <- runStateT (mkSubEquationsTop expr) (x, ([], []))
      return (newVars, (SimpleEquation [Named x] expr') : subs)
   where
     -- Avoid unrolling on top level
-    mkSubEquationsTop :: Expr -> SubEqM Expr
+    mkSubEquationsTop :: MonadVarGen m => Expr -> SubEqM m Expr
     mkSubEquationsTop (S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2)) =
       do e2' <- mkSubEquations' e2
          return $ S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2')
@@ -111,7 +113,7 @@ mkSubEquations x expr =
 
     -- first pull out initialised pre's because a pre alone is a sub-pattern and
     -- with everywhere this leads to pulled out pre's but left after's.
-    mkSubEquations' :: Expr -> SubEqM Expr
+    mkSubEquations' :: MonadVarGen m => Expr -> SubEqM m Expr
     mkSubEquations' = (everywhereM $ mkM mkEqInitPre) >=> (everywhereM $ mkM mkEqUninitPre)
 
     mkEqInitPre (S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2)) = do

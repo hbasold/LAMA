@@ -5,7 +5,8 @@ import System.Environment (getArgs)
 import System.Console.GetOpt
 import System.Exit (exitSuccess)
 
-import Control.Monad.Trans.Class
+
+import Control.Monad.Reader (ReaderT(..))
 import Control.Monad.Error (ErrorT(..))
 import Control.Monad.Trans.Maybe
 import Control.Monad (when, MonadPlus(..), (<=<))
@@ -85,7 +86,7 @@ run :: Options -> FilePath -> String -> MaybeT IO String
 run opts f inp = do
   s <- checkScadeError $ scade $ alexScanTokens inp
   liftIO $ when (optDumpScade opts) (putStrLn $ show s)
-  r <- checkErr "Rewrite error:" $ evalVarGen (runErrorT $ rewrite s) 0
+  r <- checkErr "Rewrite error:" $ (flip evalVarGen 0) $ (flip runReaderT opts) $ (runErrorT $ rewrite s)
   liftIO $ when (optDumpRewrite opts) (putStrLn $ render $ prettyScade r)
   l <- checkErr "Tranform error:" $ transform (optTopNode opts) r
   liftIO $ when (optDumpLama opts) (putStrLn $ show l)
@@ -98,10 +99,10 @@ checkErr :: String -> Either String a -> MaybeT IO a
 checkErr prefix (Left err) = (liftIO . hPutStrLn stderr $ prefix ++ " " ++ err) >> mzero
 checkErr _ (Right x) = return x
 
-rewrite :: [Declaration] -> ErrorT String VarGen [Declaration]
+rewrite :: [Declaration] -> ErrorT String (ReaderT Options VarGen) [Declaration]
 rewrite = -- Temporal.rewrite
           -- <=<
-          lift . OpApp.rewrite
-          <=< lift . Unroll.rewrite
+          OpApp.rewrite
+          <=< Unroll.rewrite
           <=< Fby.rewrite
           <=< return . FlattenList.rewrite
