@@ -4,7 +4,7 @@ module Lang.LAMA.Dependencies (
   VarUsage(..), Mode(..), ExprCtx(..),
   IdentCtx, ctxGetIdent,
   NodeDeps(..), ProgDeps(..),
-  mkDeps, getFreeVariables
+  mkDeps, getFreeVariables, getDeps
 ) where
 
 import Prelude hiding (mapM, foldl)
