@@ -14,25 +14,30 @@ data TrEquation a = TrEquation
                     , trEqInits :: L.StateInit -- ^ Initialisation of state variables
                     , trEqSubAutom :: [(L.SimpIdent, L.Node)]
                       -- ^ Nodes containing subautomata for state equations
+                    , trEqPrecond :: [L.Expr]
                     } deriving Show
+
+baseEq :: a -> TrEquation a
+baseEq x = TrEquation x [] [] Map.empty [] []
+
 data TrEqCont =
   SimpleEq L.Flow
-  | AutomatonEq (Maybe String) L.Automaton [L.Variable]
+  | AutomatonEq L.Automaton [L.Variable]
     -- ^ An automaton has a potential name, the automaton itself
     -- and locally declared variables (in the states).
-  | PrecondEq L.Expr
+  | NonExecutable -- ^ Content which does not produce any values (like preconditions)
   deriving Show
 
 instance Functor TrEquation where
-  fmap f = \(TrEquation x l s i a) -> TrEquation (f x) l s i a
+  fmap f = \(TrEquation x l s i a p) -> TrEquation (f x) l s i a p
 
 foldlTrEq :: (b -> a -> b) -> b -> [TrEquation a] -> TrEquation b
-foldlTrEq f i = foldl f' (TrEquation i [] [] Map.empty [])
+foldlTrEq f i = foldl f' (TrEquation i [] [] Map.empty [] [])
   where
-    f' (TrEquation b l1 s1 i1 n1) (TrEquation a l2 s2 i2 n2) =
+    f' (TrEquation b l1 s1 i1 n1 p1) (TrEquation a l2 s2 i2 n2 p2) =
       TrEquation (f b a)
       (l1 ++ l2) (s1 ++ s2)
-      (i1 `Map.union` i2) (n1 ++ n2)
+      (i1 `Map.union` i2) (n1 ++ n2) (p1 ++ p2)
 
 mergeTrEqs :: [TrEquation a] -> TrEquation [a]
 mergeTrEqs = foldlTrEq (\eqs eq -> eqs ++ [eq]) []

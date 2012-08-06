@@ -77,17 +77,17 @@ trOpDecl (S.UserOpDecl {
              , S.userOpNumerics = numerics
              , S.userOpContent = content }) =
   do inputs <- liftM concat . (liftM $ map (\(x,_,_) -> x)) $ mapM trVarDecl params -- inputs have no default/last
-     (outputs, outpDefault, outpLastInit) <- liftM unzip3 $ mapM trVarDecl returns
-     addDefaults . Map.fromList $ concat outpDefault
-     addLastInits . Map.fromList $ concat outpLastInit
-     node <- mkNode inputs (concat outputs) content
+     (outputs, outpDefault, outpLastInit) <- trVarDecls returns
+     addDefaults $ Map.fromList outpDefault
+     addLastInits $ Map.fromList outpLastInit
+     node <- mkNode inputs outputs content
      declareNode (fromString name) node
   where
     mkNode :: [L.Variable] -> [L.Variable] -> S.DataDef -> TransM L.Node
     mkNode inp outp (S.DataDef { S.dataSignals = sigs, S.dataLocals = locals, S.dataEquations = equations }) = do
-      (localVars, localsDefault, localsInit) <- liftM unzip3 $ mapM trVarDecl locals
-      addDefaults . Map.fromList $ concat localsDefault
-      addLastInits . Map.fromList $ concat localsInit
+      (localVars, localsDefault, localsInit) <- trVarDecls locals
+      addDefaults $ Map.fromList localsDefault
+      addLastInits $ Map.fromList localsInit
       let -- create new output variables (x -> x_out) ...
           outp' = map (updateVarName $ flip BS.append $ BS.pack "_out") outp
           -- and assign the corresponding value to them (x_out = x)
@@ -95,8 +95,9 @@ trOpDecl (S.UserOpDecl {
                        (\(x, x') ds -> (L.InstantExpr (L.varIdent x') $ L.mkAtomVar (L.varIdent x)) : ds )
                        [] $ zip outp outp'
       (eqs, usedNodes) <- liftM (first extract) . runWriterT $ mapM trEquation equations
-      let (flow, automata, precondition) = trEqRhs eqs
-          (localVars', stateVars) = separateVars (trEqInits eqs) (concat localVars)
+      let (flow, automata) = trEqRhs eqs
+          (localVars', stateVars) = separateVars (trEqInits eqs) localVars
+          precondition = foldl (L.mkExpr2 L.And) (L.constAtExpr $ L.boolConst True) (trEqPrecond eqs)
       -- FIXME: respect multiple points of usages!
       subNodes <- Map.fromList <$> mapM getNode (Set.toList usedNodes)
       return $ L.Node inp outp'
@@ -105,21 +106,19 @@ trOpDecl (S.UserOpDecl {
         flow
         outputDefs automata (trEqInits eqs) precondition
 
-    extract :: [TrEquation TrEqCont] -> TrEquation (L.Flow, Map Int L.Automaton, L.Expr)
-    extract = foldlTrEq mergeEq (L.Flow [] [], Map.empty, L.constAtExpr $ L.boolConst True)
+    extract :: [TrEquation TrEqCont] -> TrEquation (L.Flow, Map Int L.Automaton)
+    extract = foldlTrEq mergeEq (L.Flow [] [], Map.empty)
       where
-        mergeEq (f1, a1, p) (SimpleEq f2) =
-          (concatFlows f1 f2, a1, p)
-        -- we don't care about the name of an automaton or if variables have
-        -- been declared inside a state, we declare them outside nevertheless.
-        mergeEq (f1, a1, p) (AutomatonEq _ a2 _) =
+        mergeEq (f1, a1) (SimpleEq f2) =
+          (concatFlows f1 f2, a1)
+        -- we don't care if variables have been declared inside a state,
+        -- we declare them outside nevertheless.
+        mergeEq (f1, a1) (AutomatonEq a2 _) =
           let a = if Map.null a1
                   then Map.singleton 0 a2
                   else Map.insert ((fst $ Map.findMin a1) + 1) a2 a1
-          in (f1, a, p)
-        mergeEq (f1, a1, p) (PrecondEq e) =
-          let p' = L.mkExpr2 L.And p e
-          in (f1, a1, p')
+          in (f1, a)
+        mergeEq r NonExecutable = r
 
     separateVars :: L.StateInit -> [L.Variable] -> ([L.Variable], [L.Variable])
     separateVars i =
@@ -175,9 +174,9 @@ trEquation :: S.Equation -> TrackUsedNodes (TrEquation TrEqCont)
 trEquation (S.SimpleEquation lhsIds expr) =
   fmap SimpleEq <$> trSimpleEquation lhsIds expr
 trEquation (S.AssertEquation S.Assume _name expr) =
-  liftM PrecondEq (lift $ trExpr' expr) >>= \pc -> return $ TrEquation pc [] [] Map.empty []
+  lift $ trExpr' expr >>= \pc -> return $ TrEquation NonExecutable [] [] Map.empty [] [pc]
 trEquation (S.AssertEquation S.Guarantee _name expr) = $notImplemented
 trEquation (S.EmitEquation body) = $notImplemented
-trEquation (S.StateEquation (S.StateMachine name sts) ret returnsAll) =
-  fmap (flip (AutomatonEq name) []) <$> trStateEquation sts ret returnsAll
+trEquation (S.StateEquation (S.StateMachine _name sts) ret returnsAll) =
+  fmap (flip AutomatonEq []) <$> trStateEquation sts ret returnsAll
 trEquation (S.ClockedEquation name block ret returnsAll) = $notImplemented

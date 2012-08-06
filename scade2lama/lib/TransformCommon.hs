@@ -4,21 +4,21 @@
 
 module TransformCommon (
   concatFlows, updateVarName, declareNode, checkNode,
-  trVarDecl, trConstDecl, mkLocalAssigns,
+  trVarDecl, trVarDecls, separateVars, trConstDecl, mkLocalAssigns,
   trTypeExpr,
   EquationRhs(..), trExpr, trExpr', trConstExpr
   ) where
 
 import Development.Placeholders
 
-import Prelude hiding (mapM)
+import Prelude hiding (mapM, sequence)
 
 import qualified Data.Map as Map
 import Data.String (fromString)
 import Data.List (intercalate)
 import Data.Ratio
 import Data.Maybe (maybeToList)
-import Data.Traversable (mapM)
+import Data.Traversable (mapM, sequence)
 
 import qualified Data.ByteString.Char8 as BS
 import Text.PrettyPrint (render)
@@ -84,13 +84,23 @@ trVarDecl :: S.VarDecl -> TransM ([L.Variable], [(L.SimpIdent,  L.Expr)], [(L.Si
 trVarDecl (S.VarDecl xs ty defaultExpr lastExpr) =
   let xs' = map trVarId xs
       ty' = trTypeExpr ty
-  in do defaultExpr' <- mapM trExpr' $ maybeToList defaultExpr
-        lastExpr' <- mapM tryConst $ maybeToList lastExpr
+  in do defaultExpr' <- liftM (maybe [] repeat) . sequence $ fmap trExpr' defaultExpr
+        lastExpr' <- liftM (maybe [] repeat) . sequence $ fmap tryConst lastExpr
         return $ (map (flip L.Variable ty') xs',
-                  zip xs' $ cycle defaultExpr',
-                  zip xs' $ cycle lastExpr')
-  where
-    tryConst e = (liftM Left $ trConstExpr e) `catchError` (const . liftM Right $ trExpr' e)
+                  zip xs' defaultExpr',
+                  zip xs' lastExpr')
+
+trVarDecls :: [S.VarDecl] -> TransM ([L.Variable], [(L.SimpIdent,  L.Expr)], [(L.SimpIdent, Either L.ConstExpr L.Expr)])
+trVarDecls decls =
+  do (vs, defs, is) <- liftM unzip3 $ mapM trVarDecl decls
+     return (concat vs, concat defs, concat is)
+
+separateVars :: L.StateInit -> [L.Variable] -> ([L.Variable], [L.Variable])
+separateVars i =
+  foldr (\v (ls, sts) ->
+          if (L.varIdent v `Map.member` i)
+          then (ls, v : sts) else (v : ls, sts))
+  ([], [])
 
 trTypeDecl :: S.TypeDecl -> (TypeAlias, Either Type L.EnumDef)
 trTypeDecl = $notImplemented
@@ -115,7 +125,7 @@ trTypeExpr (S.TypeEnum ctors) = $notImplemented -- [String]
 data EquationRhs =
   LocalExpr (L.Expr, Maybe L.Expr)
   -- ^ An expression for a local definition together with a possible initialisation
-  | StateExpr (L.Expr, Maybe L.ConstExpr)
+  | StateExpr (L.Expr, Maybe (Either L.ConstExpr L.Expr))
     -- ^ An expression for a state transition together with a possible initialisation
   | NodeExpr (L.SimpIdent, [L.Expr], L.Type L.SimpIdent)
     -- ^ Using of a node
@@ -143,12 +153,12 @@ data EquationRhs =
 --     somewhere deep in the expression (but: where do we get the
 --     init variable from???)
 trExpr :: S.Expr -> TrackUsedNodes EquationRhs
-trExpr expr = case expr of 
+trExpr expr = context expr $ case expr of 
     S.FBYExpr _ _ _ -> error "fby should have been resolved"
     S.LastExpr x -> $notImplemented
     S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2)
       -> StateExpr . second Just
-         <$> ((,) <$> (lift $ trExpr' e2) <*> (lift $ trConstExpr e1))
+         <$> ((,) <$> trExpr' e2 <*> tryConst e1)
     S.BinaryExpr S.BinAfter e1 e2 ->
       LocalExpr . second Just
       <$> ((,) <$> (lift $ trExpr' e2) <*> (lift $ trExpr' e1))
@@ -159,8 +169,11 @@ trExpr expr = case expr of
       app <- trOpApply op es'
       return $ NodeExpr app
     normalExpr -> LocalExpr . (id &&& const Nothing) <$> (lift $ trExpr' normalExpr)
+  where
+    context e m = m `catchError`
+                  (\err -> throwError $ "Translation error in expression " ++ show e ++ ": " ++ err)
 
-trExpr' :: S.Expr -> TransM L.Expr
+trExpr' :: (MonadError String m, Applicative m) => S.Expr -> m L.Expr
 trExpr' (S.IdExpr (S.Path [x])) = pure $ L.mkAtomVar (fromString x)
 trExpr' (S.IdExpr path) = $notImplemented
 trExpr' (S.NameExpr name) = $notImplemented
@@ -198,6 +211,9 @@ trConstExpr (S.ConstBoolExpr c) = L.mkConst <$> pure (L.boolConst c)
 trConstExpr (S.ConstFloatExpr c) = L.mkConst <$> pure (L.mkRealConst $ approxRational c 0.01)
 trConstExpr (S.ConstPolyIntExpr i s) = $notImplemented
 trConstExpr e = throwError $ show e ++ " is not a constant."
+
+tryConst :: (MonadError String m, Applicative m) => S.Expr -> m (Either L.ConstExpr L.Expr)
+tryConst e = (liftM Left $ trConstExpr e) `catchError` (const . liftM Right $ trExpr' e)
  
 trBinOp :: S.BinOp -> L.BinOp
 trBinOp S.BinPlus = L.Plus
