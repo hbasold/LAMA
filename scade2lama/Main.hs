@@ -21,7 +21,7 @@ import Text.PrettyPrint (render)
 import Options
 import VarGen
 import qualified FlattenListExpr as FlattenList
-
+import qualified RewriteClockedEquation as Clocked
 import qualified RewriteOperatorApp as OpApp
 import qualified UnrollTemporal as Unroll
 import qualified UnrollFby as Fby
@@ -105,4 +105,5 @@ rewrite = -- Temporal.rewrite
           OpApp.rewrite
           <=< Unroll.rewrite
           <=< Fby.rewrite
+          <=< Clocked.rewrite
           <=< return . FlattenList.rewrite
