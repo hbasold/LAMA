@@ -188,6 +188,13 @@ mkSubAutomatonNode n eq =
 
 -- | Returns the generated top level automaton and the nodes generated
 -- for the nested state machines.
+-- FIXME: we have to write all variables which have been written in one state in all other states.
+--        There are generally two kinds: local variables and state variables. The first ones are
+--        declared in a Scade state but have to be pulled out so now they have to get assigned some
+--        arbitrary value in every other state. The second kind are variables which are
+--        used in a "last 'x" construct. They are specified by a default behaviour (possibly
+--        given by the user).
+-- FIXME: support pre/last
 trStateEquation :: [S.State] -> [String] -> Bool -> TrackUsedNodes (TrEquation L.Automaton)
 trStateEquation sts ret returnsAll =
   do (stGr, condFlow, condInits) <- buildStateGraph sts

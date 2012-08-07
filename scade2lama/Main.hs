@@ -1,13 +1,16 @@
 module Main (main) where
 
+import qualified Data.Set as Set
+import Data.List.Split (splitOn)
+import Data.Foldable (foldlM)
+
 import System.IO (stdin, stdout, stderr, hGetContents, hPutStr, hPutStrLn)
 import System.Environment (getArgs)
 import System.Console.GetOpt
 import System.Exit (exitSuccess)
 
-
 import Control.Monad.Reader (ReaderT(..))
-import Control.Monad.Error (ErrorT(..))
+import Control.Monad.Error (MonadError(..), ErrorT(..))
 import Control.Monad.Trans.Maybe
 import Control.Monad (when, MonadPlus(..), (<=<))
 import Control.Monad.IO.Class (liftIO)
@@ -21,6 +24,7 @@ import Text.PrettyPrint (render)
 import Options
 import VarGen
 import qualified FlattenListExpr as FlattenList
+import qualified Inlining as Inline
 import qualified RewriteClockedEquation as Clocked
 import qualified RewriteOperatorApp as OpApp
 import qualified UnrollTemporal as Unroll
@@ -35,27 +39,48 @@ resolveDebug (Just "dump-lama") opts = opts {optDumpLama = True}
 resolveDebug (Just "dump-rewrite") opts = opts {optDumpRewrite = True}
 resolveDebug _ opts = opts
 
-options :: [OptDescr (Options -> Options)]
+resolveInline :: Maybe String -> Options -> Either String Options
+resolveInline Nothing = return
+resolveInline (Just extra) = resolve' extra
+  where
+    resolve' o opts =
+      let os = splitOn "," o
+          nameValueAssoc = map (splitOn "=") os
+      in do inlineOpts' <- foldlM assignValue (optInline opts) nameValueAssoc
+            return $ opts {optInline = inlineOpts'}
+    assignValue inlOpts ["depth", d] = return $ inlOpts { inlineDepth = read d }
+    assignValue inlOpts ["state-scope"] =
+      return $ inlOpts { inlineScopes = Set.insert InlineStateScope (inlineScopes inlOpts) }
+    assignValue _ [n, v] = throwError $ "Unknown inlining option: " ++ n ++ "=" ++ v
+    assignValue _ [n] = throwError $ "Unknown inlining option: " ++ n
+    assignValue _ o = throwError $ "Invalid inlining option: " ++ show o
+
+options :: [OptDescr (Options -> Either String Options)]
 options =
   [ Option ['i']     []
-      (ReqArg (\f opts -> opts {optInput = f}) "FILE")
+      (ReqArg (\f opts -> return $ opts {optInput = f}) "FILE")
       "input FILE or stdin"
-    , Option ['f'] ["file"] (ReqArg (\f opts -> opts {optOutput = f}) "FILE")
+    , Option ['f'] ["file"] (ReqArg (\f opts -> return $ opts {optOutput = f}) "FILE")
       "output FILE or stdout"
+    , Option [] ["inline"] (OptArg (\o -> resolveInline o . activateInlining) "OPTIONS")
+      ("Activates inlining with optional extra options (comma separated). " ++
+       "Those can be: depth=<int>, state-scope.")
     , Option ['d'] ["debug"]
-      (OptArg resolveDebug "WHAT")
+      (OptArg (\o -> return . resolveDebug o) "WHAT")
       "Debug something; for more specific debugging use one of: [dump-scade, dump-lama, dump-rewrite]"
     , Option ['h'] ["help"]
-      (NoArg  (\opts -> opts {optShowHelp = True}))
+      (NoArg  (\opts -> return $ opts {optShowHelp = True}))
       "Show this help"
   ]
 
 interpreterOpts :: [String] -> IO Options
 interpreterOpts argv =
-  case getOpt (ReturnInOrder (\f opts -> opts {optTopNode = f})) options argv of
+  case getOpt (ReturnInOrder (\f opts -> return $ opts {optTopNode = f})) options argv of
     (o,[],[]) ->
-      let opts = foldl (flip id) defaultOptions o
-      in return opts
+      let r = foldlM (flip id) defaultOptions o
+      in case r of
+        Left err -> ioError $ userError err
+        Right opts -> return opts
     (_, (_:_), []) -> ioError $ userError "Unused free option -- should not happen"
     (_,_,errs) -> ioError (userError (concat errs ++ usage))
 
@@ -105,5 +130,6 @@ rewrite = -- Temporal.rewrite
           OpApp.rewrite
           <=< Unroll.rewrite
           <=< Fby.rewrite
+          <=< Inline.rewrite -- for now: after clock equation rewrite because that produces states
           <=< Clocked.rewrite
           <=< return . FlattenList.rewrite
