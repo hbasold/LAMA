@@ -90,19 +90,21 @@ trOpDecl (S.UserOpDecl {
       addLastInits $ Map.fromList localsInit
       let -- create new output variables (x -> x_out) ...
           outp' = map (updateVarName $ flip BS.append $ BS.pack "_out") outp
+          -- use old output variables as local variables ...
+          localVars' = localVars ++ outp
           -- and assign the corresponding value to them (x_out = x)
           outputDefs = foldr
                        (\(x, x') ds -> (L.InstantExpr (L.varIdent x') $ L.mkAtomVar (L.varIdent x)) : ds )
                        [] $ zip outp outp'
       (eqs, usedNodes) <- liftM (first extract) . runWriterT $ mapM trEquation equations
       let (flow, automata) = trEqRhs eqs
-          (localVars', stateVars) = separateVars (trEqInits eqs) localVars
+          (localVars'', stateVars) = separateVars (trEqInits eqs) localVars'
           precondition = foldl (L.mkExpr2 L.And) (L.constAtExpr $ L.boolConst True) (trEqPrecond eqs)
       -- FIXME: respect multiple points of usages!
       subNodes <- Map.fromList <$> mapM getNode (Set.toList usedNodes)
       return $ L.Node inp outp'
         (L.Declarations (subNodes `Map.union` (Map.fromList $ trEqSubAutom eqs))
-         (localVars' ++ trEqLocalVars eqs) (stateVars ++ trEqStateVars eqs))
+         (localVars'' ++ trEqLocalVars eqs) (stateVars ++ trEqStateVars eqs))
         flow
         outputDefs automata (trEqInits eqs) precondition
 
