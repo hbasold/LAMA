@@ -51,7 +51,7 @@ trSimpleEquation lhsIds expr = do
           Just (Left i) -> return $ TrEquation (L.Flow [] [L.StateTransition x expr']) [] [] (Map.singleton x i) [] []
           Just (Right ie) ->
             do (expr'', initVar, initFlow, stateInits) <- mkInit ie expr'
-               return $ TrEquation (concatFlows (L.Flow [] [L.StateTransition x expr']) initFlow)
+               return $ TrEquation (concatFlows (L.Flow [] [L.StateTransition x expr'']) initFlow)
                  [] [initVar] stateInits [] []
       _ -> throwError $ "Cannot pattern match in state equation"
     NodeExpr rhs ->
