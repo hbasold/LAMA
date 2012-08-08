@@ -31,7 +31,8 @@ zipMaps m1 = Map.foldlWithKey (\m k x -> maybe m (\y -> Map.insert k (y, x) m) $
 -- | Location information are meaningless here,
 --  so we drop them.
 type NodeEnv = Map SimpIdent ConstExpr
-type ActiveLocations = Map Int SimpIdent
+-- | Save for each automaton its current state and wether a transition has been taken in the current cycle
+type ActiveLocations = Map Int (SimpIdent, Bool)
 data State = State { stateEnv :: NodeEnv, stateActiveLocs :: ActiveLocations, stateNodes :: NodeStates } deriving Show
 type NodeStates = Map SimpIdent State
 
@@ -47,7 +48,7 @@ prettyNodeEnv :: NodeEnv -> Doc
 prettyNodeEnv = prettyMap (ptext . identString) prettyConstExpr
 
 prettyActiveLocs :: ActiveLocations -> Doc
-prettyActiveLocs = prettyMap PP.int (ptext . identString)
+prettyActiveLocs = prettyMap PP.int (ptext . identString . fst)
 
 prettyState :: State -> Doc
 prettyState s =
@@ -125,7 +126,10 @@ addParams (Node {nodeInputs = inp}) es env =
   foldl (\env'' (x, c) -> updateNodeEnv (dropPos $ varIdent x) c env'') env (zip inp es)
 
 eval :: State -> Program -> ProgDeps PosIdent -> Either String State
-eval s p d = runReader (runErrorT $ evalProg p d) (emptyEnv{ envState = s})
+eval s p d = runReader (runErrorT $ evalProg p d) (emptyEnv{ envState = resetEdges s })
+  where
+    resetEdges st = st { stateActiveLocs = fmap (second $ const False) $ stateActiveLocs st
+                       , stateNodes = fmap resetEdges $ stateNodes st }
 
 evalProg :: Program -> ProgDeps PosIdent -> EvalM State
 evalProg p d =
@@ -146,7 +150,7 @@ assign (to, e) = case e of
   GlobalExpr inst -> assignInstant to inst
   LocalExpr autom refs -> do
     l <- takeEdge autom -- get next state
-    inst <- lookupErr ("Unknown location " ++ identString l ++ " in expressions " ++ show refs) refs (identBS l)
+    inst <- lookupErr ("Unknown location " ++ (identString $ fst l) ++ " in expressions " ++ show refs) refs (identBS $ fst l)
     localState (\s -> s {stateActiveLocs = Map.alter (const $ Just l) autom (stateActiveLocs s)}) $
       assignInstant to inst
   where
@@ -160,22 +164,27 @@ assign (to, e) = case e of
           env' <- updateM (SimpIdent x) r
           return (s { stateEnv = env', stateNodes = nState' }, emptyNodeEnv)
 
+-- | Executes an assignment under a given environment
 updateAssign :: (State, NodeEnv) -> (IdentCtx PosIdent, ExprCtx PosIdent) -> EvalM (State, NodeEnv)
 updateAssign (s'', tr) = liftM (second (Map.union tr)) . localState (const s'') . assign
 
 -- | Takes an edge in the given automaton and returns the new location
-takeEdge :: Int -> EvalM SimpIdent
+takeEdge :: Int -> EvalM (SimpIdent, Bool)
 takeEdge a = do
     aDecl <- lookupAutomaton a
     al <- liftM stateActiveLocs askState
-    let l = Map.findWithDefault (dropPos $ automInitial aDecl) a al
+    let (l, taken) = Map.findWithDefault (dropPos $ automInitial aDecl, False) a al
     -- TODO: take transition if we just started from an initial state?
-    let sucs = suc (automEdges aDecl) l
-    sucs' <- mapM (\(t, c) -> evalExpr c >>= \c' -> return (t, c')) sucs
-    let s = find (isTrue . snd) sucs'
-    case s of
-      Nothing -> throwError $ "Transition relation is not total at location " ++ identString l
-      Just (t, _) -> return t
+    if taken then return (l, taken)
+    else do
+      let sucs = suc (automEdges aDecl) l
+      sucs' <- mapM (\(t, c) -> evalExpr c >>= \c' -> return (t, c')) sucs
+      let s = find (isTrue . snd) sucs'
+      -- if we have found a usable edge we take that otherwise we stay in
+      -- the current location
+      case s of
+        Nothing -> return (l, True)
+        Just (t, _) -> return (t, True)
   where
     suc es l = foldr (\(Edge h t c) s -> if dropPos h == l then (dropPos t, c) : s else s) [] es
 
