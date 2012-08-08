@@ -17,7 +17,7 @@ import qualified Data.Map as Map
 import Data.String (fromString)
 import Data.List (intercalate)
 import Data.Ratio
-import Data.Maybe (maybeToList)
+
 import Data.Traversable (mapM, sequence)
 
 import qualified Data.ByteString.Char8 as BS
