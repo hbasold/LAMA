@@ -23,6 +23,7 @@ import Text.PrettyPrint (render)
 
 import Options
 import VarGen
+import qualified RewriteTimesExpr as Times
 import qualified FlattenListExpr as FlattenList
 import qualified Inlining as Inline
 import qualified RewriteClockedEquation as Clocked
@@ -133,3 +134,4 @@ rewrite = -- Temporal.rewrite
           <=< Inline.rewrite -- for now: after clock equation rewrite because that produces states
           <=< Clocked.rewrite
           <=< return . FlattenList.rewrite
+          <=< return . Times.rewrite
