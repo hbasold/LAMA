@@ -1,0 +1,97 @@
+/* $*************** KCG Version 6.1.3 (build i6) ****************
+** Command: x2s613 F:/ScadeProjects/Examples/Operator4.xscade
+** Generation date: 2012-08-07T16:24:03
+*************************************************************$ */
+
+/* xscade source: F:/ScadeProjects/Examples/Operator4.xscade */
+node Chrono(StSt : bool; Rst : bool) returns (disp_1 : int; disp_2 : int)
+var
+  s : int;
+  m : int;
+  run : bool;
+let
+  
+  automaton SM1
+    initial state CHRONO
+      var
+        l_s : int;
+        l_m : int;
+        _L7 : int;
+        _L8 : int;
+      let
+        
+        automaton SM2
+          initial state STOP
+            unless
+              if StSt resume START;
+            var
+              _L4 : int;
+              _L6 : int;
+              _L8 : bool;
+            let
+              s= _L4;
+              _L4= l_s;
+              m= _L6;
+              _L6= l_m;
+              run= _L8;
+              _L8= false;
+            tel
+
+          state START
+            unless
+              if StSt resume STOP;
+            var
+              d : int;
+              _L2 : int;
+              _L3 : int;
+              _L6 : int;
+              _L8 : bool;
+            let
+              d= _L2;
+              _L2= 0 -> (pre d + 1) mod 100;
+              s= _L3;
+              _L3= if d < (0 -> pre d) then (l_s + 1) mod 60 else l_s;
+              _L6= if s < l_s then (l_m + 1) mod 60 else l_m;
+              m= _L6;
+              run= _L8;
+              _L8= true;
+            tel
+        returns ..;
+        l_s= _L8;
+        l_m= _L7;
+        _L7= 0 -> last 'm;
+        _L8= 0 -> last 's;
+      tel
+      until
+        if Rst and not run do restart CHRONO;
+  returns ..;
+  
+  automaton SM3
+    state LAP
+      var
+        _L2 : int;
+        _L1 : int;
+      let
+        _L1= 0 -> last 'disp_2;
+        _L2= 0 -> last 'disp_1;
+        disp_1= _L2;
+        disp_2= _L1;
+      tel
+      until
+        if Rst do restart TIME;
+
+    initial state TIME
+      unless
+        if Rst and run restart LAP;
+      var
+        _L1 : int;
+        _L2 : int;
+      let
+        disp_1= _L1;
+        _L1= s;
+        disp_2= _L2;
+        _L2= m;
+      tel
+  returns ..;
+tel
+
