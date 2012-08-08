@@ -206,14 +206,16 @@ trStateEquation sts ret returnsAll =
 mkAutomaton :: MonadError String m => StateGr -> m (TrEquation L.Automaton)
 mkAutomaton gr =
   let ns = labNodes gr
-      (locs, init, eq) = foldr (\l (ls, i, eq') ->
-                                 let (l', i', eq'') = mkLocation l
-                                 in (l':ls, i `mappend` (First i'), mergeEq eq' eq''))
-                         ([], First Nothing, baseEq ()) ns
-      es = labEdges gr
-  in case getFirst init of
+      (locs, inits, eq) =
+        foldr (\l (ls, i, eq') ->
+                let (l', i', eq'') = mkLocation l
+                in (l':ls, i `mappend` (First i'), mergeEq eq' eq''))
+        ([], First Nothing, baseEq ()) ns
+      grEdges = labEdges gr
+      automEdges = map (mkEdge gr) grEdges
+  in case getFirst inits of
     Nothing -> throwError "No initial state given"
-    Just i -> let autom = undefined
+    Just i -> let autom = L.Automaton locs i automEdges
               in return $ eq { trEqRhs = autom }
   where
     mkLocation :: TrLocation -> (L.Location, Maybe L.SimpIdent, TrEquation ())
@@ -225,3 +227,10 @@ mkAutomaton gr =
     mergeEq :: TrEquation () -> TrEquation () -> TrEquation ()
     mergeEq e1 e2 = foldlTrEq (const $ const ()) () [e1, e2]
 
+    mkEdge :: StateGr -> LEdge EdgeData -> L.Edge
+    mkEdge gr (h, t, EdgeData { edgeCondition = cond
+                              , edgeType = eType
+                              , edgeActions = actions }) =
+      let (Just LocationData { stName = hName }) = lab gr h
+          (Just LocationData { stName = tName }) = lab gr t
+      in L.Edge hName tName cond
