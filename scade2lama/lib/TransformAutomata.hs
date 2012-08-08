@@ -94,8 +94,9 @@ extractEdges nodes sts =
                          $ getter s) []
 
     extract nodeMap from (S.Transition c act (S.TargetFork forkType to)) =
-      ((nodeMap ! from), (nodeMap ! (fromString to)), )
-      <$> (EdgeData <$> trExpr' c <*> pure forkType <*> pure act )
+      do fromNode <- lookupErr ("Unknown state " ++ L.identString from) from nodeMap
+         toNode <- lookupErr ("Unknown state " ++ to) (fromString to) nodeMap
+         (fromNode, toNode, ) <$> (EdgeData <$> trExpr' c <*> pure forkType <*> pure act)
     extract nodeMap from (S.Transition c act (S.ConditionalFork _ _)) = $notImplemented
 
     -- Rewrites a weak transition such that the condition
@@ -147,7 +148,7 @@ extractDataDef (S.DataDef sigs vars eqs) =
      varNames <- newVarNames localVars
      let varMap = Map.fromList $ zip (map (L.identString . L.varIdent) localVars) (map L.identString varNames)
          localVars' = map (renameVar (varMap !)) localVars
-         eqs' = everywhere (mkT $ rename (varMap !)) eqs
+         eqs' = everywhere (mkT $ rename varMap) eqs
      trEqs <- mapM trEquation eqs'
      let trEq = foldlTrEq (\f1 -> maybe f1 (concatFlows f1)) (L.Flow [] []) trEqs
          (localVars'', stateVars) = separateVars (trEqInits trEq) localVars
@@ -157,8 +158,10 @@ extractDataDef (S.DataDef sigs vars eqs) =
     newVarNames :: MonadVarGen m => [L.Variable] -> m [L.SimpIdent]
     newVarNames = mapM (liftM fromString . newVar . L.identString . L.varIdent)
 
-    rename :: (String -> String) -> S.Expr -> S.Expr
-    rename r e@(S.IdExpr (S.Path [x])) = S.IdExpr $ S.Path [r x]
+    rename :: Map String String -> S.Expr -> S.Expr
+    rename r e@(S.IdExpr (S.Path [x])) = case Map.lookup x r of
+      Nothing -> e
+      Just x' -> S.IdExpr $ S.Path [x']
     rename _ e = e
 
     renameVar r v = L.Variable (fromString . r . L.identString $ L.varIdent v) (L.varType v)
