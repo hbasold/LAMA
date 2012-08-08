@@ -1,0 +1,66 @@
+/* $*************** KCG Version 6.1.3 (build i6) ****************
+** -
+** Generation date: 2012-08-07T16:24:04
+*************************************************************$ */
+/* $*************** KCG Version 6.1.3 (build i6) ****************
+** Command: x2s613 F:/ScadeProjects/Examples/Operator9.xscade
+** Generation date: 2012-08-07T16:24:04
+*************************************************************$ */
+
+/* xscade source: F:/ScadeProjects/Examples/Operator9.xscade */
+node NestedStates(c1 : bool; c2 : bool)
+  returns (inA1 : bool; inA2 : bool; inB : bool)
+let
+  
+  automaton SM1
+    initial state A
+      unless
+        if c2 restart B;
+      let
+        
+        automaton SM2
+          initial state A1
+            unless
+              if c1 restart A2;
+            var
+              _L1 : bool;
+              _L2 : bool;
+            let
+              inB= _L2;
+              inA2= _L2;
+              inA1= _L1;
+              _L1= true;
+              _L2= false;
+            tel
+
+          state A2
+            unless
+              if c1 restart A1;
+            var
+              _L2 : bool;
+              _L4 : bool;
+            let
+              inB= _L4;
+              inA1= _L4;
+              inA2= _L2;
+              _L2= true;
+              _L4= false;
+            tel
+        returns ..;
+      tel
+
+    state B
+      unless
+        if c2 restart A;
+      var
+        _L1 : bool;
+        _L2 : bool;
+      let
+        inB= _L1;
+        inA1= _L2;
+        inA2= _L2;
+        _L1= true;
+        _L2= false;
+      tel
+  returns ..;
+tel
