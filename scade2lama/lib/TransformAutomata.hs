@@ -10,10 +10,13 @@ import Data.Graph.Inductive.PatriciaTree
 import Data.Graph.Inductive.GenShow ()
 import qualified Data.Map as Map
 import Data.Map (Map, (!))
+import qualified Data.Set as Set
+import Data.Set (Set)
 import Data.String (fromString)
 import Data.Tuple (swap)
 import Data.Foldable (foldlM)
 import Data.Monoid
+import Data.Maybe (maybeToList)
 
 import Data.Generics.Schemes
 import Data.Generics.Aliases
@@ -21,12 +24,14 @@ import Data.Generics.Aliases
 import Control.Monad (when, liftM)
 import Control.Monad.Trans.Class
 import Control.Applicative (Applicative(..), (<$>))
-import Control.Arrow (first, second)
+import Control.Arrow ((&&&), (***), first, second)
 import Control.Monad.Error (MonadError(..))
+import Control.Monad.Reader (MonadReader)
 
 import qualified Language.Scade.Syntax as S
 import qualified Lang.LAMA.Structure.SimpIdentUntyped as L
 import qualified Lang.LAMA.Identifier as L
+import qualified Lang.LAMA.Types as L
 
 import VarGen
 import TransformMonads
@@ -62,21 +67,41 @@ type StateGr = Gr LocationData EdgeData
 -- is the new initial state.
 buildStateGraph :: [S.State] -> TrackUsedNodes (StateGr, L.Flow, L.StateInit)
 buildStateGraph sts =
-  do ls <- extractLocations $ zip [0..] sts
-     let nodeMap = Map.fromList $ map (swap . second stName) ls
+  do extracted <- extractLocations $ zip [0..] sts
+     let (locs, defaultFlows) =
+           unzip $ map (fst &&& (fst *** id)) extracted
+         locs' = putDefaultFlows defaultFlows locs
+         nodeMap = Map.fromList $ map (swap . second stName) locs'
      (es, condFlow, condInits) <- lift $ extractEdges nodeMap sts
-     return (mkGraph ls es, condFlow, condInits)
+     return (mkGraph locs' es, condFlow, condInits)
+  where
+    -- Given a list of flows which should _not_ be put into the given
+    -- node, this puts into every other given flow except the excluded.
+    putDefaultFlows :: [(Node, L.Flow)] -> [TrLocation] -> [TrLocation]
+    putDefaultFlows defaultFlows = map (putDefaultFlow defaultFlows)
 
-extractLocations :: [(Node, S.State)] -> TrackUsedNodes [TrLocation]
+    putDefaultFlow defaultFlows (n, locData) =
+      let flow = trEqRhs $ stTrEquation locData
+          flow' = foldl (\f (n', defFlow) ->
+                          if n /= n' then concatFlows f defFlow else f)
+                  flow defaultFlows
+      in (n, locData { stTrEquation = (stTrEquation locData) { trEqRhs = flow' } })
+
+-- | Extracts all locations from the given states together with a default
+-- flow to be placed in every other location.
+extractLocations :: [(Node, S.State)] -> TrackUsedNodes [(TrLocation, L.Flow)]
 extractLocations = mapM extractLocation
 
-extractLocation :: (Node, S.State) -> TrackUsedNodes TrLocation
+extractLocation :: (Node, S.State) -> TrackUsedNodes (TrLocation, L.Flow)
 extractLocation (n, s) =
-  do flow <- extractDataDef (S.stateData s)
-     return (n, LocationData
+  do eq <- extractDataDef (S.stateData s)
+     let flow = fmap fst eq
+         defaultFlow = snd $ trEqRhs eq
+     return ((n, LocationData
                 (fromString $ S.stateName s)
                 (S.stateInitial s) (S.stateFinal s)
-                flow)
+                flow),
+             defaultFlow)
 
 extractEdges :: Map L.SimpIdent Node -> [S.State] -> TransM ([TrEdge], L.Flow, L.StateInit)
 extractEdges nodes sts =
@@ -138,7 +163,9 @@ extractEdges nodes sts =
 -- here as local as possible. That means we keep variables
 -- declared in the states of the subautomaton local to the
 -- generated node.
-extractDataDef :: S.DataDef -> TrackUsedNodes (TrEquation L.Flow)
+-- Gives back the flow to be placed in the current state and
+-- one that has to placed in all other states.
+extractDataDef :: S.DataDef -> TrackUsedNodes (TrEquation (L.Flow, L.Flow))
 extractDataDef (S.DataDef sigs vars eqs) =
   do (localVars, localsDefault, localsInit) <- lift $ trVarDecls vars
      -- Fixme: we ignore last and default in states for now
@@ -149,9 +176,13 @@ extractDataDef (S.DataDef sigs vars eqs) =
      let varMap = Map.fromList $ zip (map (L.identString . L.varIdent) localVars) (map L.identString varNames)
          localVars' = map (renameVar (varMap !)) localVars
          eqs' = everywhere (mkT $ rename varMap) eqs
-     trEqs <- mapM trEquation eqs'
-     let trEq = foldlTrEq (\f1 -> maybe f1 (concatFlows f1)) (L.Flow [] []) trEqs
-         (localVars'', stateVars) = separateVars (trEqInits trEq) localVars
+     trEqs <- localScope (\sc -> sc { scopeLocals = scopeLocals sc `mappend` (mkVarMap localVars) })
+              $ mapM trEquation eqs'
+     let trEq = foldlTrEq (\(gf1, sf1) (gf2, sf2) ->
+                            (maybe gf1 (concatFlows gf1) gf2,
+                             maybe sf1 (concatFlows sf1) sf2))
+                (L.Flow [] [], L.Flow [] []) trEqs
+         (localVars'', stateVars) = separateVars (trEqInits trEq) localVars'
      return $ trEq { trEqLocalVars = (trEqLocalVars trEq) ++ localVars''
                    , trEqStateVars = (trEqStateVars trEq) ++ stateVars }
   where
@@ -166,28 +197,110 @@ extractDataDef (S.DataDef sigs vars eqs) =
 
     renameVar r v = L.Variable (fromString . r . L.identString $ L.varIdent v) (L.varType v)
 
-trEquation :: S.Equation -> TrackUsedNodes (TrEquation (Maybe L.Flow))
+-- | Translates an equation inside a state. This may
+-- produce a flow to be executed in that state and one
+-- that has to be pushed to all other states.
+trEquation :: S.Equation -> TrackUsedNodes (TrEquation (Maybe L.Flow, Maybe L.Flow))
 trEquation (S.SimpleEquation lhsIds expr) =
-  fmap Just <$> trSimpleEquation lhsIds expr
+  fmap (Just &&& const Nothing) <$> trSimpleEquation lhsIds expr
 trEquation (S.AssertEquation S.Assume _name expr) =
-  lift $ trExpr' expr >>= \pc -> return $ TrEquation Nothing [] [] Map.empty [] [pc]
+  lift $ trExpr' expr >>= \pc -> return $ TrEquation (Nothing, Nothing) [] [] Map.empty [] [pc]
 trEquation (S.AssertEquation S.Guarantee _name expr) = $notImplemented
 trEquation (S.EmitEquation body) = $notImplemented
-trEquation (S.StateEquation (S.StateMachine name sts) ret returnsAll) = $notImplemented
---  do autom <- trStateEquation sts ret returnsAll
---     let node = mkSubAutomatonNode name autom
+trEquation (S.StateEquation (S.StateMachine name sts) ret returnsAll) =
+  do autom <- trStateEquation sts ret returnsAll
+     liftM (fmap $ Just *** Just) $ mkSubAutomatonNode name autom
 trEquation (S.ClockedEquation name block ret returnsAll) = $notImplemented
 
-{-
-mkSubAutomatonNode :: MonadVarGen m => Maybe String -> TrEquation L.Automaton -> m (TrEquation TrEqCont)
+-- | Creates a node which contains the given automaton together with a connecting
+-- flow for the current state and a default flow to be placed in all parallel states.
+mkSubAutomatonNode :: (MonadReader Environment m, MonadVarGen m, MonadError String m) =>
+                      Maybe String -> TrEquation L.Automaton -> m (TrEquation (L.Flow, L.Flow))
 mkSubAutomatonNode n eq =
   do name <- case n of
        Nothing -> liftM fromString $ newVar "SubAutomaton"
-       Just n' -> fromString n'
-     let readDeps = everything (++) (mkQ [] getDeps) $ trEqRhs eq
-     return undefined
--- Fixme: create flow which uses this node.
--}
+       Just n' -> return $ fromString n'
+     let (deps, written) = getAutomDeps $ trEqRhs eq
+     scope <- askScope
+     inp <- mkInputs scope deps
+     outp <- mkOutputs scope written
+     let automNode =
+           L.Node inp outp
+           (L.Declarations (Map.fromList $ trEqSubAutom eq) (trEqLocalVars eq) (trEqStateVars eq))
+           (L.Flow [] []) []
+           (Map.singleton 0 $ trEqRhs eq)
+           (trEqInits eq)
+           (foldl (L.mkExpr2 L.And) (L.constAtExpr $ L.boolConst True) $ trEqPrecond eq)
+     (connects, retVar) <- connectNode name inp outp
+     return $
+       (baseEq (L.Flow connects [], defaultFlow retVar)) {
+         trEqLocalVars = maybeToList retVar,
+         trEqSubAutom = [(name, automNode)] }
+  where
+    mkVars :: MonadError String m =>
+             Map L.SimpIdent (L.Type L.SimpIdent) -> [L.SimpIdent] -> m [L.Variable]
+    mkVars vs = mapM $ \i ->
+      lookupErr ("Not in scope: " ++ L.identPretty i) i vs >>= \t ->
+      return $ L.Variable i t
+
+    mkInputs sc = mkVars (scopeInputs sc `mappend` scopeLocals sc) . Set.toList
+    mkOutputs sc = mkVars (scopeOutputs sc `mappend` scopeLocals sc) . Set.toList
+
+    connectNode :: (MonadError String m, MonadVarGen m) =>
+                   L.SimpIdent -> [L.Variable] -> [L.Variable] -> m ([L.InstantDefinition], Maybe L.Variable)
+    connectNode nodeName inp outp =
+      let params = map (L.mkAtomVar . L.varIdent) inp
+          retType = L.mkProductT (map L.varType outp)
+      in do mkLocalAssigns (map L.varIdent outp) (Right (nodeName, params, retType))
+
+    defaultFlow :: Maybe L.Variable -> L.Flow
+    defaultFlow Nothing = L.Flow [] []
+    defaultFlow (Just v) = L.Flow [L.InstantExpr (L.varIdent v) (defaultValue $ L.varType v)] []
+
+defaultValue :: L.Type L.SimpIdent -> L.Expr
+defaultValue (L.GroundType L.BoolT) = L.constAtExpr $ L.boolConst False
+defaultValue (L.GroundType L.IntT) = L.constAtExpr $ L.mkIntConst 0
+defaultValue (L.GroundType L.RealT) = L.constAtExpr $ L.mkRealConst 1
+defaultValue (L.GroundType (L.SInt n)) = L.constAtExpr . L.Fix $ L.SIntConst n 0
+defaultValue (L.GroundType (L.UInt n)) = L.constAtExpr . L.Fix $ L.UIntConst n 0
+defaultValue (L.EnumType _) = error "no default value for enums available atm"
+defaultValue (L.ProdType ts) = L.Fix . L.ProdCons . L.Prod $ map defaultValue ts
+       
+-- | FIXME: make Natural an instance of Typeable, Data and
+-- with that everything in LAMA. Next generalise Expr to
+-- a view and with that be able to generalise getDeps and
+-- use everything from syb.
+--
+-- Gives back the used inputs and the written outputs.
+getAutomDeps :: L.Automaton -> (Set L.SimpIdent, Set L.SimpIdent)
+getAutomDeps a =
+  let (locInp, locOutp) = (mconcat *** mconcat) . unzip . map getLocDeps $ L.automLocations a
+      edgeDeps = mconcat . map getEdgeDeps $ L.automEdges a
+  in (locInp `mappend` edgeDeps, locOutp)
+  where
+    getLocDeps :: L.Location -> (Set L.SimpIdent, Set L.SimpIdent)
+    getLocDeps (L.Location _ flow) = getFlowDeps flow
+    getEdgeDeps (L.Edge _ _ cond) = getDeps $ L.unfix cond
+    getFlowDeps (L.Flow defs trans) =
+      let (i1, o1) = unzip $ map getInstDefDeps defs
+          (i2, o2) = unzip $ map getTransDeps trans
+      in (mconcat *** mconcat) $ (i1 ++ i2, o1 ++ o2)
+    getInstDefDeps (L.InstantExpr x e) = (getDeps $ L.unfix e, Set.singleton x)
+    getInstDefDeps (L.NodeUsage x _ es) = (mconcat $ map (getDeps . L.unfix) es, Set.singleton x)
+    getTransDeps (L.StateTransition x e) = (getDeps $ L.unfix e, Set.singleton x)
+
+    getDeps :: L.GExpr L.SimpIdent L.Constant L.Atom L.Expr -> Set L.SimpIdent
+    getDeps (L.AtExpr (L.AtomVar ident)) = Set.singleton ident
+    getDeps (L.AtExpr _) = Set.empty
+    getDeps (L.LogNot e) = getDeps $ L.unfix e
+    getDeps (L.Expr2 _ e1 e2) = (getDeps $ L.unfix e1) `mappend` (getDeps $ L.unfix e2)
+    getDeps (L.Ite c e1 e2) = (getDeps $ L.unfix c) `mappend` (getDeps $ L.unfix e1) `mappend` (getDeps $ L.unfix e2)
+    getDeps (L.ProdCons (L.Prod es)) = mconcat $ map (getDeps . L.unfix) es
+    getDeps (L.Match e pats) = (getDeps $ L.unfix e) `mappend` (mconcat $ map getDepsPattern pats)
+    getDeps (L.Project x _) = Set.singleton x
+
+    getDepsPattern :: L.Pattern -> Set L.SimpIdent
+    getDepsPattern (L.Pattern _ e) = (getDeps $ L.unfix e)
 
 -- | Returns the generated top level automaton and the nodes generated
 -- for the nested state machines.
