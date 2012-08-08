@@ -122,13 +122,6 @@ trOpDecl (S.UserOpDecl {
           in (f1, a)
         mergeEq r NonExecutable = r
 
-    separateVars :: L.StateInit -> [L.Variable] -> ([L.Variable], [L.Variable])
-    separateVars i =
-      foldr (\v (ls, sts) ->
-              if (L.varIdent v `Map.member` i)
-              then (ls, v : sts) else (v : ls, sts))
-      ([], [])
-
 trOpDecl _ = undefined
 
 mkPath :: String -> S.Path
