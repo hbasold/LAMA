@@ -12,6 +12,7 @@ import Control.Monad.State (MonadState(..), StateT(..), gets, modify)
 import Control.Monad.Error (MonadError(..), ErrorT(..))
 import Control.Monad.Reader (MonadReader(..), ReaderT(..))
 import Control.Monad.Writer (MonadWriter(..), WriterT(..))
+import Control.Arrow ((&&&), first, second)
 
 import qualified Language.Scade.Syntax as S
 import qualified Lang.LAMA.Structure.SimpIdentUntyped as L
@@ -50,24 +51,43 @@ data ScadePackages = ScadePackages
                      , current :: Package
                      } deriving Show
 
-type PackageEnv = ReaderT ScadePackages VarGen
-type TransM = StateT Decls (ErrorT String PackageEnv)
+data Scope = Scope
+             { scopeInputs :: Map L.SimpIdent (L.Type L.SimpIdent)
+             , scopeOutputs :: Map L.SimpIdent (L.Type L.SimpIdent)
+             , scopeLocals :: Map L.SimpIdent (L.Type L.SimpIdent)
+             } deriving Show
+
+emptyScope :: Scope
+emptyScope = Scope Map.empty Map.empty Map.empty
+
+type Environment = (ScadePackages, Scope)
+type EnvM = ReaderT Environment VarGen
+type TransM = StateT Decls (ErrorT String EnvM)
 
 runTransM :: TransM a -> Package -> Either String (a, Decls)
 runTransM m p = (flip evalVarGen 50)
-                . (flip runReaderT (ScadePackages p p))
+                . (flip runReaderT (ScadePackages p p, emptyScope))
                 . runErrorT
                 . (flip runStateT emptyDecls)
                 $ m
 
-askGlobalPkg :: (MonadReader ScadePackages m) => m Package
-askGlobalPkg = reader global
+askGlobalPkg :: (MonadReader Environment m) => m Package
+askGlobalPkg = reader (global . fst)
 
-askCurrentPkg :: (MonadReader ScadePackages m) => m Package
-askCurrentPkg = reader current
+askCurrentPkg :: (MonadReader Environment m) => m Package
+askCurrentPkg = reader (current . fst)
 
-localPkg :: (MonadReader ScadePackages m) => (Package -> Package) -> m a -> m a
-localPkg f = local (\ps -> ps { current = f $ current ps })
+localPkg :: (MonadReader Environment m) => (Package -> Package) -> m a -> m a
+localPkg f = local $ first (\ps -> ps { current = f $ current ps })
+
+askScope :: (MonadReader Environment m) => m Scope
+askScope = reader snd
+
+localScope :: (MonadReader Environment m) => (Scope -> Scope) -> m a -> m a
+localScope = local . second
+
+mkVarMap :: [L.Variable] -> Map L.SimpIdent (L.Type L.SimpIdent)
+mkVarMap = Map.fromList . map (L.varIdent &&& L.varType)
 
 -- | Executes an action with a local state. The resulting state
 -- is then combined with that befor using the given function
@@ -88,7 +108,7 @@ createPackage :: MonadState Decls m => L.SimpIdent -> m Decls
 createPackage p = gets packages >>= return . Map.findWithDefault emptyDecls p
 
 -- | Opens a package using the given reader action.
-openPackage :: (MonadState Decls m, MonadReader ScadePackages m, MonadError String m) => [String] -> m a -> m a
+openPackage :: (MonadState Decls m, MonadReader Environment m, MonadError String m) => [String] -> m a -> m a
 openPackage [] m = m
 openPackage (p:ps) m =
   do scadePkg <- lookupErr ("Unknown package " ++ p) p =<< liftM pkgSubPackages askCurrentPkg

@@ -96,7 +96,11 @@ trOpDecl (S.UserOpDecl {
           outputDefs = foldr
                        (\(x, x') ds -> (L.InstantExpr (L.varIdent x') $ L.mkAtomVar (L.varIdent x)) : ds )
                        [] $ zip outp outp'
-      (eqs, usedNodes) <- liftM (first extract) . runWriterT $ mapM trEquation equations
+      (eqs, usedNodes) <-
+        liftM (first extract)
+        . localScope (const $ Scope (mkVarMap inp) (mkVarMap outp) (mkVarMap localVars))
+        . runWriterT
+        $ mapM trEquation equations
       let (flow, automata) = trEqRhs eqs
           (localVars'', stateVars) = separateVars (trEqInits eqs) localVars'
           precondition = foldl (L.mkExpr2 L.And) (L.constAtExpr $ L.boolConst True) (trEqPrecond eqs)
