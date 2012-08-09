@@ -1,0 +1,15 @@
+typedef
+  enum E1 = {A, B, C, D};
+
+local
+  i : int; -- FIXME: allow enum inputs in interpreter
+  s : E1;
+  r : int;
+definition
+  s = (ite (= i 0) A (ite (= i 1) B (ite (= i 2) C D)));
+  r = (match s {
+        A. 0,
+        B. 1,
+        _. 2
+      });
+invariant (=> (and (>= i 0) (<= i 2)) (= i r));
