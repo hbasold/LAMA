@@ -68,14 +68,14 @@ data BoolV =
  | FalseV
   deriving (Eq,Ord,Show)
 
-data Assertion =
-   NoAssertion
- | JustAssertion Expr
-  deriving (Eq,Ord,Show)
-
 data Initial =
    NoInitial
  | JustInitial [StateInit]
+  deriving (Eq,Ord,Show)
+
+data Assertion =
+   NoAssertion
+ | JustAssertion Expr
   deriving (Eq,Ord,Show)
 
 data Invariant =
@@ -161,7 +161,7 @@ data ControlStructure =
   deriving (Eq,Ord,Show)
 
 data Automaton =
-   Automaton [Location] InitialLocation [Edge]
+   Automaton [Location] InitialLocation [Edge] Defaults
   deriving (Eq,Ord,Show)
 
 data Location =
@@ -174,6 +174,15 @@ data InitialLocation =
 
 data Edge =
    Edge Identifier Identifier Expr
+  deriving (Eq,Ord,Show)
+
+data Defaults =
+   NoDefaults
+ | JustDefaults [Default]
+  deriving (Eq,Ord,Show)
+
+data Default =
+   Default Identifier Expr
   deriving (Eq,Ord,Show)
 
 data Atom =
@@ -197,6 +206,7 @@ data Pattern =
 
 data PatHead =
    EnumPat EnumConstr
+ | BottomPat
   deriving (Eq,Ord,Show)
 
 data List2Id =

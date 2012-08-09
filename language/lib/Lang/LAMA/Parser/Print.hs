@@ -175,16 +175,16 @@ instance Print BoolV where
    FalseV  -> prPrec i 0 (concatD [doc (showString "false")])
 
 
-instance Print Assertion where
-  prt i e = case e of
-   NoAssertion  -> prPrec i 0 (concatD [])
-   JustAssertion expr -> prPrec i 0 (concatD [doc (showString "assertion") , prt 0 expr , doc (showString ";")])
-
-
 instance Print Initial where
   prt i e = case e of
    NoInitial  -> prPrec i 0 (concatD [])
    JustInitial stateinits -> prPrec i 0 (concatD [doc (showString "initial") , prt 0 stateinits , doc (showString ";")])
+
+
+instance Print Assertion where
+  prt i e = case e of
+   NoAssertion  -> prPrec i 0 (concatD [])
+   JustAssertion expr -> prPrec i 0 (concatD [doc (showString "assertion") , prt 0 expr , doc (showString ";")])
 
 
 instance Print Invariant where
@@ -304,7 +304,7 @@ instance Print ControlStructure where
 
 instance Print Automaton where
   prt i e = case e of
-   Automaton locations initiallocation edges -> prPrec i 0 (concatD [doc (showString "automaton") , doc (showString "let") , prt 0 locations , prt 0 initiallocation , prt 0 edges , doc (showString "tel")])
+   Automaton locations initiallocation edges defaults -> prPrec i 0 (concatD [doc (showString "automaton") , doc (showString "let") , prt 0 locations , prt 0 initiallocation , prt 0 edges , prt 0 defaults , doc (showString "tel")])
 
   prtList es = case es of
    [] -> (concatD [])
@@ -330,6 +330,20 @@ instance Print Edge where
   prtList es = case es of
    [x] -> (concatD [prt 0 x])
    x:xs -> (concatD [prt 0 x , prt 0 xs])
+
+instance Print Defaults where
+  prt i e = case e of
+   NoDefaults  -> prPrec i 0 (concatD [])
+   JustDefaults defaults -> prPrec i 0 (concatD [doc (showString "default") , prt 0 defaults , doc (showString ";")])
+
+
+instance Print Default where
+  prt i e = case e of
+   Default identifier expr -> prPrec i 0 (concatD [prt 0 identifier , doc (showString "=") , prt 0 expr])
+
+  prtList es = case es of
+   [x] -> (concatD [prt 0 x])
+   x:xs -> (concatD [prt 0 x , doc (showString ",") , prt 0 xs])
 
 instance Print Atom where
   prt i e = case e of
@@ -362,6 +376,7 @@ instance Print Pattern where
 instance Print PatHead where
   prt i e = case e of
    EnumPat enumconstr -> prPrec i 0 (concatD [prt 0 enumconstr])
+   BottomPat  -> prPrec i 0 (concatD [doc (showString "_")])
 
 
 instance Print List2Id where

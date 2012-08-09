@@ -35,45 +35,47 @@ import qualified Data.ByteString.Lazy.Char8 as BS
  '[' { PT _ (TS _ 17) }
  ']' { PT _ (TS _ 18) }
  '^' { PT _ (TS _ 19) }
- 'and' { PT _ (TS _ 20) }
- 'assertion' { PT _ (TS _ 21) }
- 'automaton' { PT _ (TS _ 22) }
- 'bool' { PT _ (TS _ 23) }
- 'constants' { PT _ (TS _ 24) }
- 'definition' { PT _ (TS _ 25) }
- 'div' { PT _ (TS _ 26) }
- 'edge' { PT _ (TS _ 27) }
- 'enum' { PT _ (TS _ 28) }
- 'false' { PT _ (TS _ 29) }
- 'initial' { PT _ (TS _ 30) }
- 'int' { PT _ (TS _ 31) }
- 'invariant' { PT _ (TS _ 32) }
- 'ite' { PT _ (TS _ 33) }
- 'let' { PT _ (TS _ 34) }
- 'local' { PT _ (TS _ 35) }
- 'location' { PT _ (TS _ 36) }
- 'match' { PT _ (TS _ 37) }
- 'mod' { PT _ (TS _ 38) }
- 'node' { PT _ (TS _ 39) }
- 'nodes' { PT _ (TS _ 40) }
- 'not' { PT _ (TS _ 41) }
- 'or' { PT _ (TS _ 42) }
- 'output' { PT _ (TS _ 43) }
- 'prod' { PT _ (TS _ 44) }
- 'project' { PT _ (TS _ 45) }
- 'real' { PT _ (TS _ 46) }
- 'returns' { PT _ (TS _ 47) }
- 'sint' { PT _ (TS _ 48) }
- 'state' { PT _ (TS _ 49) }
- 'tel' { PT _ (TS _ 50) }
- 'transition' { PT _ (TS _ 51) }
- 'true' { PT _ (TS _ 52) }
- 'typedef' { PT _ (TS _ 53) }
- 'uint' { PT _ (TS _ 54) }
- 'use' { PT _ (TS _ 55) }
- 'xor' { PT _ (TS _ 56) }
- '{' { PT _ (TS _ 57) }
- '}' { PT _ (TS _ 58) }
+ '_' { PT _ (TS _ 20) }
+ 'and' { PT _ (TS _ 21) }
+ 'assertion' { PT _ (TS _ 22) }
+ 'automaton' { PT _ (TS _ 23) }
+ 'bool' { PT _ (TS _ 24) }
+ 'constants' { PT _ (TS _ 25) }
+ 'default' { PT _ (TS _ 26) }
+ 'definition' { PT _ (TS _ 27) }
+ 'div' { PT _ (TS _ 28) }
+ 'edge' { PT _ (TS _ 29) }
+ 'enum' { PT _ (TS _ 30) }
+ 'false' { PT _ (TS _ 31) }
+ 'initial' { PT _ (TS _ 32) }
+ 'int' { PT _ (TS _ 33) }
+ 'invariant' { PT _ (TS _ 34) }
+ 'ite' { PT _ (TS _ 35) }
+ 'let' { PT _ (TS _ 36) }
+ 'local' { PT _ (TS _ 37) }
+ 'location' { PT _ (TS _ 38) }
+ 'match' { PT _ (TS _ 39) }
+ 'mod' { PT _ (TS _ 40) }
+ 'node' { PT _ (TS _ 41) }
+ 'nodes' { PT _ (TS _ 42) }
+ 'not' { PT _ (TS _ 43) }
+ 'or' { PT _ (TS _ 44) }
+ 'output' { PT _ (TS _ 45) }
+ 'prod' { PT _ (TS _ 46) }
+ 'project' { PT _ (TS _ 47) }
+ 'real' { PT _ (TS _ 48) }
+ 'returns' { PT _ (TS _ 49) }
+ 'sint' { PT _ (TS _ 50) }
+ 'state' { PT _ (TS _ 51) }
+ 'tel' { PT _ (TS _ 52) }
+ 'transition' { PT _ (TS _ 53) }
+ 'true' { PT _ (TS _ 54) }
+ 'typedef' { PT _ (TS _ 55) }
+ 'uint' { PT _ (TS _ 56) }
+ 'use' { PT _ (TS _ 57) }
+ 'xor' { PT _ (TS _ 58) }
+ '{' { PT _ (TS _ 59) }
+ '}' { PT _ (TS _ 60) }
 
 L_integ  { PT _ (TI $$) }
 L_Identifier { PT _ (T_Identifier _) }
@@ -165,14 +167,14 @@ BoolV : 'true' { TrueV }
   | 'false' { FalseV }
 
 
-Assertion :: { Assertion }
-Assertion : {- empty -} { NoAssertion } 
-  | 'assertion' Expr ';' { JustAssertion $2 }
-
-
 Initial :: { Initial }
 Initial : {- empty -} { NoInitial } 
   | 'initial' ListStateInit ';' { JustInitial $2 }
+
+
+Assertion :: { Assertion }
+Assertion : {- empty -} { NoAssertion } 
+  | 'assertion' Expr ';' { JustAssertion $2 }
 
 
 Invariant :: { Invariant }
@@ -288,7 +290,7 @@ ControlStructure : ListAutomaton { ControlStructure (reverse $1) }
 
 
 Automaton :: { Automaton }
-Automaton : 'automaton' 'let' ListLocation InitialLocation ListEdge 'tel' { Automaton $3 $4 $5 } 
+Automaton : 'automaton' 'let' ListLocation InitialLocation ListEdge Defaults 'tel' { Automaton $3 $4 $5 $6 } 
 
 
 Location :: { Location }
@@ -316,6 +318,20 @@ ListEdge : Edge { (:[]) $1 }
 ListAutomaton :: { [Automaton] }
 ListAutomaton : {- empty -} { [] } 
   | ListAutomaton Automaton { flip (:) $1 $2 }
+
+
+Defaults :: { Defaults }
+Defaults : {- empty -} { NoDefaults } 
+  | 'default' ListDefault ';' { JustDefaults $2 }
+
+
+ListDefault :: { [Default] }
+ListDefault : Default { (:[]) $1 } 
+  | Default ',' ListDefault { (:) $1 $3 }
+
+
+Default :: { Default }
+Default : Identifier '=' Expr { Default $1 $3 } 
 
 
 Atom :: { Atom }
@@ -349,6 +365,7 @@ Pattern : PatHead '.' Expr { Pattern $1 $3 }
 
 PatHead :: { PatHead }
 PatHead : EnumConstr { EnumPat $1 } 
+  | '_' { BottomPat }
 
 
 List2Id :: { List2Id }
