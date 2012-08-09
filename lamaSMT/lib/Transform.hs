@@ -32,7 +32,7 @@ import qualified Data.Map as Map
 import Data.Map (Map)
 import Prelude hiding (mapM)
 import Data.Traversable
-import Data.Foldable (foldlM)
+import Data.Foldable (foldrM)
 
 import Control.Monad.State (StateT(..), MonadState(..), modify, gets)
 import Control.Monad.Error (ErrorT(..), MonadError(..))
@@ -494,13 +494,17 @@ trPattern _ = $notImplemented
 
 trEnumMatch :: Ident i => TypedExpr i -> [Pattern i] -> TransM i (TypedExpr i)
 trEnumMatch x pats =
-  do firstPat <- fmap snd . trEnumPattern x $ head pats
-     foldlM (chainPatterns x) firstPat (tail pats)
+  -- respect order of patterns here by putting the last in the default match
+  -- and bulding the expression bottom-up:
+  -- (match x {P_1.e_1, ..., P_n.e_n})
+  -- ~> (ite P_1 e_1 (ite ... (ite P_n-1 e_n-1 e_n) ...))
+  do innermostPat <- fmap snd . trEnumPattern x $ last pats
+     foldrM (chainPatterns x) innermostPat (init pats)
   where
-    chainPatterns c ifs p = trEnumPattern c p >>= \(cond, e) -> return $ liftIte cond e ifs
+    chainPatterns c p ifs = trEnumPattern c p >>= \(cond, e) -> return $ liftIte cond e ifs
     trEnumPattern c (Pattern h e) = (,) <$> trEnumHead c h <*> trExpr e
-    trEnumHead c h = trEnumCons h >>= \y -> return $ liftRel (.==.) c y
-    trEnumHead _ _ = error "trEnumMatch: not an enum pattern"
+    trEnumHead c (EnumPattern e) = trEnumCons e >>= \y -> return $ liftRel (.==.) c y
+    trEnumHead _ BottomPattern = return . BoolExpr $ constant True
 
 trEnumConsAnn :: Ident i => EnumConstr i -> SMTAnnotation SMTEnum -> TypedExpr i
 trEnumConsAnn x = EnumExpr . constantAnn (SMTEnum . fromString $ identString x)

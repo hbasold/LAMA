@@ -22,7 +22,7 @@ mkAutomatonEquations automName a =
   let enumName = fromString $ automName ++ "States"
       stateT = EnumType enumName
       (s, s_1) = mkStateVars automName
-      (enum, locNames, eqs) = mkEq automName stateT s $ automLocations a
+      (enum, locNames, eqs) = mkEq automName stateT s (automDefaults a) (automLocations a)
       sEqs = mkTransitionEq locNames stateT s s_1 $ automEdges a
       i = mkStateInitEq locNames stateT s_1 $ automInitial a
       (sVar, s_1Var) = (Variable s stateT, Variable s_1 stateT)
@@ -49,7 +49,7 @@ mkTransitionEq :: Ord i => Map (LocationId i) i -> Type i -> i -> i -> [Edge i] 
 mkTransitionEq locNames stateT s s_1 es =
   -- We use foldr to enforce that transition that occur later in the
   -- source get a lower priority.
-  let stateDef = mkMatch locNames stateT s_1
+  let stateDef = mkMatch locNames stateT s_1 Nothing
                  . Map.toList
                  $ foldr addEdge Map.empty es
       stateTr = StateTransition s_1 (mkTyped (AtExpr $ AtomVar s) stateT)
@@ -77,12 +77,12 @@ mkStateInitEq locNames stateT s_1 initLoc =
 -- the corresponding expression.
 -- Extracts all location names thereby and makes a mapping from
 -- the location names in the source to the mangled names.
-mkEq :: Ident i => String -> Type i -> i -> [Location i] -> (EnumDef i, Map (LocationId i) i, Flow i)
-mkEq automName stateT s locs =
+mkEq :: Ident i => String -> Type i -> i -> Map i (Expr i) -> [Location i] -> (EnumDef i, Map (LocationId i) i, Flow i)
+mkEq automName stateT s defaults locs =
   let locNames = Map.fromList . map (id &&& locationName automName) . map getLocId $ locs
       (defExprs, stateExprs) = extractExprs locs
-      defExprs' = fmap (mkMatch locNames stateT s) defExprs
-      stateExprs' = fmap (mkMatch locNames stateT s) stateExprs
+      defExprs' = Map.mapWithKey (\x -> mkMatch locNames stateT s $ Map.lookup x defaults) defExprs
+      stateExprs' = Map.mapWithKey (\x -> mkMatch locNames stateT s $ Map.lookup x defaults) stateExprs
   in (EnumDef . map EnumCons $ Map.elems locNames,
       locNames,
       Flow (mkInstantDefs defExprs') (mkTransitions stateExprs'))
@@ -108,9 +108,16 @@ extractExprs = foldl addLocExprs (Map.empty, Map.empty)
     putTrans l (StateTransition x e) = Map.alter (putDef (l, e)) x
 
 -- | Build match expression (pattern matches on last state s_1)
-mkMatch :: Ord i => Map (LocationId i) i -> Type i -> i -> [(LocationId i, Expr i)] -> Expr i
-mkMatch locNames stateT s_1 locExprs = mkTyped (Match (mkVarExpr stateT s_1) (mkPattern locExprs)) stateT
-  where mkPattern = foldl (\pats (h, e) -> (Pattern (EnumCons (locNames ! h)) e) : pats) []
+mkMatch :: Ord i => Map (LocationId i) i -> Type i -> i -> Maybe (Expr i) -> [(LocationId i, Expr i)] -> Expr i
+mkMatch locNames stateT s_1 defaultExpr locExprs =
+  mkTyped (
+    Match (mkVarExpr stateT s_1)
+    $ (mkPattern locExprs) ++ (mkDefaultPattern defaultExpr))
+  stateT
+  where
+    mkPattern = foldl (\pats (h, e) -> (Pattern (EnumPattern $ EnumCons (locNames ! h)) e) : pats) []
+    mkDefaultPattern Nothing = []
+    mkDefaultPattern (Just e) = [Pattern BottomPattern e]
 
 mkInstantDefs :: Map i (Expr i) -> [InstantDefinition i]
 mkInstantDefs = map (uncurry InstantExpr) . Map.toList
