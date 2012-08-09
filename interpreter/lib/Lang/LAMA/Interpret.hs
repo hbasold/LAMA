@@ -239,10 +239,11 @@ match c pats = do
   where
     match' :: ConstExpr -> Maybe ConstExpr -> Pattern -> EvalM (Maybe ConstExpr)
     match' _ r@(Just _) _ = return r
-    match' v Nothing (Pattern x e) = do
+    match' v Nothing (Pattern (EnumPattern x) e) =
       if (ConstEnum x) == (untyped v)
       then liftM Just $ evalExpr e
       else return Nothing
+    match' _ Nothing (Pattern BottomPattern e) = liftM Just $ evalExpr e
 
 evalAtom :: Type PosIdent -> GAtom PosIdent Constant Atom -> EvalM ConstExpr
 evalAtom _ (AtomConst c) = return $ preserveType Const c
