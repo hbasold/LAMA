@@ -154,6 +154,7 @@ separator Expr "" ;
 separator nonempty Pattern "," ;
 Pattern. Pattern ::= PatHead "." Expr ;
 EnumPat. PatHead ::= EnumConstr ;
+BottomPat. PatHead ::= "_" ;
 Id2. List2Id ::= Identifier Identifier ;
 ConsId. List2Id ::= Identifier List2Id ;
 
