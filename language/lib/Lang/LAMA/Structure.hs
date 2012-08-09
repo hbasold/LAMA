@@ -20,7 +20,7 @@ module Lang.LAMA.Structure (
   -- * Expressions
   -- ** Untyped expressions
   -- $untyped-doc
-  GProd(..), GPattern(..),
+  GProd(..), GPatternHead(..), GPattern(..),
   GAtom(..), GExpr(..), GConstExpr(..), BinOp(..)
 ) where
 
@@ -119,7 +119,8 @@ data GEdge i expr = Edge (GLocationId i) (GLocationId i) expr deriving (Eq, Show
 data GAutomaton i expr = Automaton {
     automLocations :: [GLocation i expr],
     automInitial :: GLocationId i,
-    automEdges :: [GEdge i expr]
+    automEdges :: [GEdge i expr],
+    automDefaults :: Map i expr
   } deriving (Eq, Show)
 
 
@@ -134,7 +135,12 @@ data GAtom i const f
 
 data GProd expr = Prod [expr] deriving (Eq, Show)
 
-data GPattern i expr = Pattern (GEnumConstr i) expr deriving (Eq, Show)
+data GPatternHead i =
+  EnumPattern (GEnumConstr i)
+  | BottomPattern
+  deriving (Eq, Show)
+
+data GPattern i expr = Pattern (GPatternHead i) expr deriving (Eq, Show)
 
 -- | Untyped LAMA expressions
 data GExpr i const atom f

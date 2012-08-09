@@ -321,17 +321,27 @@ checkStateTransition (StateTransition x e) = do
   return $ StateTransition x e'
 
 checkAutomaton :: Ident i => UT.Automaton i -> Result i (Automaton i)
-checkAutomaton (Automaton locs initial edges) =
+checkAutomaton (Automaton locs initial edges defaults) =
   Automaton <$>
     mapM checkLocation locs <*>
     pure initial <*>
-    mapM checkEdge edges
+    mapM checkEdge edges <*>
+    checkDefaults defaults
 
 checkLocation :: Ident i => UT.Location i -> Result i (Location i)
 checkLocation (Location l flow) = Location l <$> checkFlow flow
 
 checkEdge :: Ident i => UT.Edge i -> Result i (Edge i)
 checkEdge (Edge t h c) = Edge t h <$> checkExpr c
+
+checkDefaults :: Ident i => Map i (UT.Expr i) -> Result i (Map i (Expr i))
+checkDefaults = fmap Map.fromList . mapM checkDefault . Map.toList
+  where
+    checkDefault (x, e) = do
+      t <- envLookupWritable x
+      e' <- checkExpr e
+      void $ unify (getGround e') (mkGround t)
+      return (x, e')
 
 checkInitial :: Ident i => UT.StateInit i -> Result i (StateInit i)
 checkInitial = fmap Map.fromList . mapM checkInit . Map.toList
@@ -405,10 +415,16 @@ checkExpr = checkExpr' . UT.unfix
 
 checkPattern :: Ident i => Type i -> UT.Pattern i -> Result i (Pattern i, Type i)
 checkPattern inType (Pattern h e) = do
-  t <- envLookupEnum h
-  void $ unify (mkGround inType) (mkGround t)
+  t <- patternHeadType h
+  void $ unify (mkGround inType) t
   e' <- checkExpr e
   return (Pattern h e', getType e')
+
+patternHeadType :: Ident i => UT.PatternHead i -> Result i (InterType i)
+patternHeadType (EnumPattern e) = mkGround <$> envLookupEnum e
+patternHeadType BottomPattern =
+  do a <- genTypeId
+     return (Forall a TypeU $ Simple $ Named a)
 
 -- | Checks the signature of a used node
 checkNodeTypes :: Ident i => String -> i -> [Variable i] -> [Type i] -> Result i ()

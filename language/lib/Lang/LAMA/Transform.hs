@@ -332,11 +332,12 @@ transControlStructure x = case x of
 
 transAutomaton :: Abs.Automaton -> Result Automaton
 transAutomaton x = case x of
-  Abs.Automaton locations initiallocation edges  -> do
+  Abs.Automaton locations initiallocation edges defaults  -> do
     locs <- mapM transLocation locations
     Automaton locs <$>
       (transInitialLocation locs initiallocation) <*>
-      (mapM (transEdge locs) edges)
+      (mapM (transEdge locs) edges) <*>
+      transDefaults defaults
 
 
 transLocation :: Abs.Location -> Result Location
@@ -366,6 +367,18 @@ transEdge locs x = case x of
     isKnownLocation locs h
     e <- transExpr expr
     return $ Edge t h e
+
+
+transDefaults :: Abs.Defaults -> Result (Map PosIdent Expr)
+transDefaults x = case x of
+  Abs.NoDefaults  -> return $ Map.empty
+  Abs.JustDefaults defaults  -> Map.fromList <$> mapM transDefault defaults
+
+
+transDefault :: Abs.Default -> Result (PosIdent, Expr)
+transDefault x = case x of
+  Abs.Default identifier expr  ->
+    (,) <$> transIdentifier identifier <*> transExpr expr
 
 
 transAtom :: Abs.Atom -> Result Atom
@@ -408,10 +421,10 @@ transPattern x = case x of
   Abs.Pattern pathead expr  -> Pattern <$> transPatHead pathead <*> transExpr expr
 
 
-transPatHead :: Abs.PatHead -> Result EnumConstr
+transPatHead :: Abs.PatHead -> Result PatternHead
 transPatHead x = case x of
-  Abs.EnumPat enumconstr  -> transEnumConstr enumconstr
-
+  Abs.EnumPat enumconstr  -> EnumPattern <$> transEnumConstr enumconstr
+  Abs.BottomPat  -> return BottomPattern
 
 transBinOp :: Abs.BinOp -> Result BinOp
 transBinOp = return . transBinOp'

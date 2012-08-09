@@ -147,8 +147,8 @@ trControlStructure :: Ident i => Map Int (Automaton i) -> Abs.ControlStructure
 trControlStructure = Abs.ControlStructure . map trAutomaton . Map.elems
 
 trAutomaton :: Ident i => Automaton i -> Abs.Automaton
-trAutomaton (Automaton locs init edges)
-  = Abs.Automaton (map trLocation locs) (trInitialLocation init) (map trEdge edges)
+trAutomaton (Automaton locs init edges defaults)
+  = Abs.Automaton (map trLocation locs) (trInitialLocation init) (map trEdge edges) (trDefaults defaults)
 
 trLocation :: Ident i => Location i -> Abs.Location
 trLocation (Location s f) = Abs.Location (trIdent s) (trFlow f)
@@ -161,6 +161,12 @@ trEdge (Edge t h c) = Abs.Edge (trIdent t) (trIdent h) (trExpr c)
 
 trInitial :: Ident i => StateInit i -> Abs.Initial
 trInitial = mapDefault Abs.NoInitial (Abs.JustInitial . map trStateInit . Map.toList)
+
+trDefaults :: Ident i => Map i (Expr i) -> Abs.Defaults
+trDefaults = mapDefault Abs.NoDefaults (Abs.JustDefaults . map trDefault . Map.toList)
+
+trDefault :: Ident i => (i, Expr i) -> Abs.Default
+trDefault (x, e) = Abs.Default (trIdent x) (trExpr e)
 
 trStateInit :: Ident i => (i, ConstExpr i) -> Abs.StateInit
 trStateInit (x, c) = Abs.StateInit (trIdent x) (trConstExpr c)
@@ -181,7 +187,11 @@ trConstant = trConstant' . unfix
     trConstant' (UIntConst s v) = Abs.UIntConst (trNatural $ s) (trNatural v)
 
 trPattern :: Ident i => Pattern i -> Abs.Pattern
-trPattern (Pattern h e) = Abs.Pattern (Abs.EnumPat $ trEnumConstr h) (trExpr e)
+trPattern (Pattern h e) = Abs.Pattern (trPatternHead h) (trExpr e)
+
+trPatternHead :: Ident i => PatternHead i -> Abs.PatHead
+trPatternHead (EnumPattern e) = (Abs.EnumPat $ trEnumConstr e)
+trPatternHead BottomPattern = Abs.BottomPat
 
 trExpr :: Ident i => Expr i -> Abs.Expr
 trExpr = trExpr' . unfix

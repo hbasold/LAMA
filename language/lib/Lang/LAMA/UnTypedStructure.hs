@@ -19,7 +19,7 @@ module Lang.LAMA.UnTypedStructure (
   -- * Automata
   LocationId, Location, Edge, Automaton,
   -- * Expressions
-  Prod, Pattern,
+  Prod, PatternHead, Pattern,
   Atom, Expr, ConstExpr,
   -- * Constructors
   boolConst, mkIntConst, mkRealConst, constAtExpr, mkAtomVar,
@@ -54,6 +54,7 @@ type EnumConstr i = GEnumConstr i
 type Variable i = GVariable i
 type LocationId i = GLocationId i
 type Prod i = GProd (Expr i)
+type PatternHead i = GPatternHead i
 type Pattern i = GPattern i (Expr i)
 
 boolConst :: Bool -> Constant

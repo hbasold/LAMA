@@ -18,7 +18,7 @@ module Lang.LAMA.Structure.PosIdentUntyped (
   -- * Automata
   LocationId, Location, Edge, Automaton,
   -- * Expressions
-  Prod, Pattern,
+  Prod, PatternHead, Pattern,
   Atom, Expr, ConstExpr,
   -- * Constructors
   boolConst, constAtExpr,
@@ -52,4 +52,5 @@ type EnumConstr = S.EnumConstr PosIdent
 type Variable = S.Variable PosIdent
 type LocationId = S.LocationId PosIdent
 type Prod = S.Prod PosIdent
+type PatternHead = S.PatternHead PosIdent
 type Pattern = S.Pattern PosIdent

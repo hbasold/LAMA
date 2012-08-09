@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TupleSections #-}
 
 module Lang.LAMA.Dependencies (
@@ -15,23 +16,30 @@ import Data.Graph.Inductive.DAG
 import qualified Data.Graph.Inductive.Graph as G
 import qualified Data.Graph.Inductive.UnlabeledGraph as U
 import Data.Graph.Inductive.Graph (Context, ufold, insEdges, pre)
+import qualified Data.Set as Set
+import Data.Set (Set)
 import Data.Map as Map hiding (map, null, foldl, (\\))
 import Data.List (intercalate)
 import Data.Foldable (foldl, foldlM)
 import Data.Traversable (mapM)
 import qualified Data.ByteString.Char8 as BS
 import Data.Maybe (isJust)
+import Data.Monoid
 
-import Control.Monad.Error (ErrorT, runErrorT, throwError)
+import Control.Monad.Error (MonadError(..), ErrorT, runErrorT)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad (forM_, void)
-import Control.Monad.Trans.Reader (ReaderT, runReaderT, ask)
+import Control.Monad.Reader (MonadReader(..), ReaderT, runReaderT)
+import Control.Arrow ((&&&))
 
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
 import Lang.LAMA.Typing.TypedStructure
 
 import Data.Graph.Inductive.GenShow ()
+
+fromSet :: Ord k => (k -> a) -> Set k -> Map k a
+fromSet f = Map.fromList . map (id &&& f) . Set.toList
 
 -- | Context in which a variable is used. With this context state variables
 --  can be distinguished if they are use on lhs or rhs of an assignment.
@@ -273,7 +281,11 @@ mkDepsNode consts node = do
   subDeps <- mkDepsMapNodes consts (declsNode $ nodeDecls node)
 
   let vars = varMap node `Map.union` (fmap (const Constant) consts)
-  let (mes, (vs, deps)) = G.run G.empty $ runReaderT (runErrorT $ mkDepsNodeParts (nodeFlow node) (nodeOutputDefs node) (Map.toList $ nodeAutomata node)) vars
+  let (mes, (vs, deps)) =
+        G.run G.empty
+        . (flip runReaderT vars)
+        $ runErrorT
+        $ mkDepsNodeParts (nodeFlow node) (nodeOutputDefs node) (Map.toList $ nodeAutomata node)
   es <- mes
   dagDeps <- checkCycles deps
   return $ InterNodeDeps subDeps dagDeps vs es
@@ -325,8 +337,8 @@ mkDepsState m boundExprs (StateTransition x e) = do
   return $ Map.insert xu (InstantExpr x e) boundExprs
 
 mkDepsAutomaton :: Ident i => (Int, Automaton i) -> DepGraphM i (InstantMap i)
-mkDepsAutomaton (autom, (Automaton locs _ edges)) = do
-  im <- (fmap Map.unions) $ mapM (mkDepsLocation autom) locs
+mkDepsAutomaton (autom, (Automaton locs _ edges defaults)) = do
+  im <- (fmap Map.unions) $ mapM (mkDepsLocation defaults autom) locs
   mapM_ (mkDepsEdge (map fst $ Map.toList im)) edges
   return im
   where
@@ -340,12 +352,39 @@ mkDepsAutomaton (autom, (Automaton locs _ edges)) = do
       let ds = getDeps $ untyped e
       mapM_ (insDeps ds) vs
 
-    mkDepsLocation :: Ident i => Int -> Location i -> DepGraphM i (InstantMap i)
-    mkDepsLocation a (Location l flow) = mkDepsFlow (LocationMode a l) flow
+    mkDepsLocation :: Ident i => Map i (Expr i) -> Int -> Location i -> DepGraphM i (InstantMap i)
+    mkDepsLocation defaults a (Location l flow) =
+      do let definedVars = getDefinedVars flow
+         flow' <- complementFlow defaults definedVars flow
+         mkDepsFlow (LocationMode a l) flow'
 
-varUsage :: Ident i => i -> DepGraphM i VarUsage
+    -- Gives back the defined variables in a flow
+    getDefinedVars :: Ident i => Flow i -> Set i
+    getDefinedVars (Flow defs trans) =
+      (mconcat $ map getDefinedInst defs) `mappend` (mconcat $ map getDefinedTrans trans)
+
+    getDefinedInst (InstantExpr x _) = Set.singleton x
+    getDefinedInst (NodeUsage x _ _) = Set.singleton x
+    getDefinedTrans (StateTransition x _) = Set.singleton x
+
+    complementFlow :: (Ident i, MonadReader (VarMap i) m, MonadError String m) =>
+                      Map i (Expr i) -> Set i -> Flow i -> m (Flow i)
+    complementFlow defaults defined flow =
+      let missing = defaults `Map.difference` (fromSet (const ()) defined)
+      in foldlM addAssignment flow $ Map.toList missing
+
+    addAssignment flow (x, e) =
+      do usage <- varUsage x
+         if usage == Local || usage == Output
+           then return $ flow { flowDefinitions = flowDefinitions flow ++ [InstantExpr x e] }
+           else if usage == StateIn || usage == StateOut
+                then return $ flow { flowTransitions = flowTransitions flow ++ [StateTransition x e] }
+                else throwError $ "Invalid default expression for " ++
+                     identPretty x ++ ". Variable must be writable."
+
+varUsage :: (Ident i, MonadReader (VarMap i) m, MonadError String m) => i -> m VarUsage
 varUsage v = do
-  vars <- lift ask
+  vars <- ask
   case Map.lookup v vars of
     Just u -> return u
     Nothing -> throwError $ "Unknown variable " ++ identPretty v ++ " in " ++ show vars
