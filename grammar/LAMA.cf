@@ -115,13 +115,24 @@ Transition. Transition ::= StateId "=" Expr ;
 
 -----
 ControlStructure. ControlStructure ::= [Automaton] ;
-Automaton. Automaton ::= "automaton" "let" [Location] InitialLocation [Edge] "tel" ;
+Automaton. Automaton ::= "automaton" "let"
+                            [Location]
+                            InitialLocation
+                            [Edge]
+                            Defaults
+                          "tel" ;
 Location. Location ::= "location" Identifier "let" Flow "tel" ;
 InitialLocation. InitialLocation ::= "initial" Identifier ";" ;
 Edge. Edge ::= "edge" "(" Identifier "," Identifier ")" ":" Expr ";" ;
+
 separator nonempty Location "" ;
 separator nonempty Edge "" ;
 separator Automaton "" ;
+
+NoDefaults. Defaults ::= ;
+JustDefaults. Defaults ::= "default" [Default] ";" ;
+separator nonempty Default "," ;
+Default. Default ::= Identifier "=" Expr ;
 
 -----
 -- Array ggf. zu restriktiv (erfordert evtl. viele temporäre Variable)
