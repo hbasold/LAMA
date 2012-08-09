@@ -56,10 +56,10 @@ TrueV. BoolV ::= "true" ;
 FalseV. BoolV ::= "false" ;
 
 ------
-NoAssertion. Assertion ::= ;
-JustAssertion. Assertion ::= "assertion" Expr ";" ;
 NoInitial. Initial ::= ;
 JustInitial. Initial ::= "initial" [StateInit] ";" ;
+NoAssertion. Assertion ::= ;
+JustAssertion. Assertion ::= "assertion" Expr ";" ;
 NoInvariant. Invariant ::= ;
 JustInvariant. Invariant ::= "invariant" Expr ";" ;
 
