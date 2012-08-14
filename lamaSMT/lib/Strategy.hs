@@ -10,7 +10,9 @@ import Control.Monad.Error
 
 import Language.SMTLib2
 
-import Transform
+import LamaSMTTypes
+import Definition
+import TransformEnv
 import Model
 
 type SMTErr = ErrorT String SMT

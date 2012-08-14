@@ -2,6 +2,7 @@
 module Strategies.BMC where
 
 import Data.Natural
+import NatInstance
 import Data.List (stripPrefix)
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -9,7 +10,8 @@ import Data.Map (Map)
 import Language.SMTLib2
 
 import Strategy
-import Transform
+import LamaSMTTypes
+import Definition
 import Model (Model)
 
 data BMC = BMC { bmcDepth :: Maybe Natural }

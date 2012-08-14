@@ -15,8 +15,9 @@ import Language.SMTLib2 as SMT
 
 import Lang.LAMA.Identifier
 
-import Transform
 import SMTEnum
+import LamaSMTTypes
+import TransformEnv
 
 type ValueStreamT t = Map Natural t
 data ValueStream

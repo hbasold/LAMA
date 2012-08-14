@@ -8,7 +8,9 @@
 module NatInstance where
 
 import Data.Natural
+import Data.Unit
 import Language.SMTLib2.Internals
+import Language.SMTLib2
 import qualified Data.AttoLisp as L
 
 import Data.Typeable
@@ -34,3 +36,9 @@ instance SMTValue Natural where
 
   mangle (view -> Zero) _ = L.Symbol "zero"
   mangle (view -> Succ n) a = L.List [L.Symbol "succ", mangle n a]
+
+zero' :: SMTExpr Natural
+zero' = Var "zero" unit
+
+succ' :: SMTExpr Natural -> SMTExpr Natural
+succ' e = Fun "succ" (extractAnnotation e) (extractAnnotation e) `app` e
