@@ -21,7 +21,7 @@ instance SMTType Natural where
   type SMTAnnotation Natural = ()
   getSort _ _ = L.Symbol "Nat"
   declareType u _ =
-    declareType' (typeOf u) decl (return ())
+    declareType' (typeOf u) decl
     where
       decl = declareDatatypes [] [
         ("Nat",

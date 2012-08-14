@@ -8,6 +8,7 @@ import qualified Data.AttoLisp as L
 import Data.Text (Text)
 
 import Data.Typeable
+import Data.String (IsString(..))
 
 type EnumAlias = Text
 type EnumCons = Text
@@ -15,11 +16,17 @@ type EnumCons = Text
 newtype SMTEnum = SMTEnum { getEnumCons :: EnumCons }
                 deriving (Eq, Show, Typeable)
 
+mkSMTEnumAnn :: String -> [String] -> SMTAnnotation SMTEnum
+mkSMTEnumAnn e cons =
+  let e' = "SMTEnum_" ++ e
+      ty = mkTyConApp (mkTyCon3 "" "" e') []
+  in (fromString e', map fromString cons, ty)
+
 instance SMTType SMTEnum where
-  type SMTAnnotation SMTEnum = (EnumAlias, [EnumCons])
-  getSort _ (a, _) = L.Symbol a
-  declareType u ann = declareType' (typeOf u) (decl ann) (return ())
-    where decl (a, cs) =
+  type SMTAnnotation SMTEnum = (EnumAlias, [EnumCons], TypeRep)
+  getSort _ (a, _, _) = L.Symbol a
+  declareType u (e, cons, ty) = declareType' ty (decl e cons)
+    where decl a cs =
             declareDatatypes [] [(a, map (,[]) cs)]
 
 instance SMTValue SMTEnum where
