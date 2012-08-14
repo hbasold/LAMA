@@ -21,7 +21,7 @@ import Lang.LAMA.Identifier
 import Lang.LAMA.Typing.TypedStructure
 import Lang.LAMA.Types
 import Language.SMTLib2 as SMT
-import Language.SMTLib2.Internals (SMTType(..), SMTExpr(Var, Fun))
+import Language.SMTLib2.Internals (SMTType(..))
 import Data.Unit
 import Data.String (IsString(..))
 import Data.Array as Arr
@@ -34,11 +34,11 @@ import Prelude hiding (mapM)
 import Data.Traversable
 import Data.Foldable (foldrM)
 
-import Control.Monad.State (StateT(..), MonadState(..), modify, gets)
+import Control.Monad.State (StateT(..), MonadState(..), gets)
 import Control.Monad.Error (ErrorT(..), MonadError(..))
 import Control.Monad.Reader (ReaderT(..), asks)
 import Control.Applicative (Applicative(..), (<$>))
-import Control.Arrow (second, (&&&))
+import Control.Arrow (second)
 
 import SMTEnum
 import LamaSMTTypes
@@ -71,7 +71,7 @@ declareEnums es =
   do anns <- (fmap Map.fromList . mapM declareEnum $ Map.toList es)
      let consAnns =
            foldl
-           (\consAnns (x, EnumDef conss) -> insEnumConstrs (anns Map.! x) consAnns conss)
+           (\consAnns' (x, EnumDef conss) -> insEnumConstrs (anns Map.! x) consAnns' conss)
            Map.empty $ Map.toList es
      putEnumAnn anns
      putEnumConsAnn consAnns
@@ -111,7 +111,7 @@ declareVar (Variable x t) = (x,) <$> typedVar t
     typedVar (GroundType IntT) = liftSMT $ fmap IntStream fun
     typedVar (GroundType RealT) = liftSMT $ fmap RealStream fun
     typedVar (GroundType _) = $notImplemented
-    typedVar (EnumType t) = lookupEnumAnn t >>= liftSMT . fmap EnumStream . funAnnRet
+    typedVar (EnumType et) = lookupEnumAnn et >>= liftSMT . fmap EnumStream . funAnnRet
     typedVar (ProdType ts) =
       do vs <- mapM typedVar ts
          return . ProdStream $ listArray (0, (length vs) - 1) vs
@@ -162,7 +162,7 @@ declareAssign _ [] = throwError $ "Cannot assign empty stream"
 declareAssign x [y] = lookupVar x >>= \x' -> declareDef id x' (doAppStream y)
 declareAssign x ys =
   let y = case ys of
-        [y'] -> y
+        [y'] -> y'
         _ -> mkProdStream ys
   in lookupVar x >>= \x' -> declareDef id x' (doAppStream y)
 
@@ -235,8 +235,7 @@ askStreamPos = asks fst
 -- has been done beforehand.
 trExpr :: Ident i => Expr i -> TransM i (TypedExpr i)
 trExpr expr =
-  let t = getType expr
-  in case untyped expr of
+  case untyped expr of
     AtExpr (AtomConst c) -> return $ trConstant c
     AtExpr (AtomVar x) ->
       do s <- lookupVar' x
