@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -10,6 +11,7 @@ import Data.Array as Arr
 import Control.Arrow ((&&&))
 
 import Language.SMTLib2 as SMT
+import Language.SMTLib2.Internals as SMT (SMTExpr(Fun))
 import SMTEnum
 
 data TypedExpr i
@@ -38,8 +40,14 @@ data TypedStream i
   | ProdStream (Array Int (TypedStream i))
   deriving Show
 
+extractStreamAnn :: Stream t -> SMTAnnotation t
+extractStreamAnn (Fun _ _ ann) = ann
+extractStreamAnn _ = error "Not a stream"
+
 mkProdStream :: [TypedStream i] -> TypedStream i
-mkProdStream = ProdStream . uncurry listArray . ((0,) . pred . length &&& id)
+mkProdStream [] = error "Cannot create empty product stream"
+mkProdStream [s] = s
+mkProdStream sts = ProdStream . uncurry listArray $ ((0,) . pred . length &&& id) sts
 
 appStream :: TypedStream i -> StreamPos -> TypedExpr i
 appStream (BoolStream s) n = BoolExpr $ s `app` n
