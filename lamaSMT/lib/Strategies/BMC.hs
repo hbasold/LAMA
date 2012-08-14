@@ -32,13 +32,13 @@ instance StrategyClass BMC where
 
 check' :: BMC -> (Map Natural StreamPos -> SMT (Model i))
           -> ProgDefs -> Map Natural StreamPos -> Natural -> StreamPos -> SMTErr (Maybe (Model i))
-check' s getModel defs is i iDef =
+check' s getModel defs pastIndices i iDef =
   do liftSMT $ assertDefs iDef (flowDef defs)
      liftSMT $ assertPrecond iDef (precondition defs)
      let invs = invariantDef defs
-     r <- liftSMT . stack $ (checkGetModel getModel is =<< checkInvariant iDef invs)
+     r <- liftSMT . stack $ (checkGetModel getModel pastIndices =<< checkInvariant iDef invs)
      case r of
-       Nothing -> next (check' s getModel defs) s is i iDef
+       Nothing -> next (check' s getModel defs) s pastIndices i iDef
        Just m -> return $ Just m
 
 assertDefs :: SMTExpr Natural -> [Definition] -> SMT ()
@@ -59,13 +59,13 @@ checkGetModel getModel indices r =
 
 next :: (Map Natural StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (Model i)))
         -> BMC -> Map Natural StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (Model i))
-next f s is i iDef =
+next checkCont s pastIndices i iDef =
   do let i' = succ i
      iDef' <- liftSMT . defConst $ succ' iDef
-     let is' = Map.insert i iDef' is
+     let pastIndices' = Map.insert i iDef' pastIndices
      case bmcDepth s of
-       Nothing -> f is' i' iDef'
+       Nothing -> checkCont pastIndices' i' iDef'
        Just l ->
          if i' < l
-         then f is' i' iDef'
+         then checkCont pastIndices' i' iDef'
          else return Nothing

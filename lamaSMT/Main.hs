@@ -72,7 +72,7 @@ options =
 
 interpreterOpts :: [String] -> IO Options
 interpreterOpts argv =
-  case getOpt (ReturnInOrder (\f opts -> opts)) options argv of
+  case getOpt (ReturnInOrder (\file opts -> opts)) options argv of
     (o,[],[]) ->
       let opts = foldl (flip id) defaultOptions o
       in return opts
@@ -94,14 +94,14 @@ main = do
     "-" -> BL.hGetContents stdin >>= runMaybeT . run opts "stdin"
     f -> runFile opts f
   case r of
-    Just s -> return ()
+    Just () -> return ()
     Nothing -> return ()
 
 runFile :: Options -> FilePath -> IO (Maybe ())
 runFile opts f = BL.readFile f >>= runMaybeT . run opts f
 
 run :: Options -> FilePath -> BL.ByteString -> MaybeT IO ()
-run opts@Options {optStrategy = strat} f inp = do
+run opts@Options {optStrategy = strat} file inp = do
   p <- checkErrors $ parseLAMA inp
   liftIO $ when (optDumpLama opts) (print p)
   model <- liftIO
