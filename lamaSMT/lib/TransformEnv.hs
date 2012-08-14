@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE TemplateHaskell #-}
 module TransformEnv where
@@ -8,28 +9,19 @@ import Lang.LAMA.Identifier
 import Lang.LAMA.Typing.TypedStructure
 import Lang.LAMA.Types
 import Language.SMTLib2 as SMT
-
 import Data.Unit
 
 import Data.Array as Arr
-
-
-
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Prelude hiding (mapM)
 import Data.Traversable
 
-
 import Control.Monad.State (StateT(..), MonadState(..), modify, gets)
 import Control.Monad.Error (ErrorT(..), MonadError(..))
 
-
-
-
 import SMTEnum
 import LamaSMTTypes
-
 
 data NodeEnv i = NodeEnv
                  { nodeEnvIn :: [TypedStream i]
@@ -48,13 +40,14 @@ data Env i = Env
            , enumAnn :: Map i (SMTAnnotation SMTEnum)
            , enumConsAnn :: Map (EnumConstr i) (SMTAnnotation SMTEnum)
            , varEnv :: VarEnv i
+           , currAutomatonIndex :: Integer
            }
 
 emptyVarEnv :: VarEnv i
 emptyVarEnv = VarEnv Map.empty Map.empty
 
 emptyEnv :: Env i
-emptyEnv = Env Map.empty Map.empty Map.empty emptyVarEnv
+emptyEnv = Env Map.empty Map.empty Map.empty emptyVarEnv 0
 
 type DeclM i = StateT (Env i) (ErrorT String SMT)
 
@@ -85,13 +78,13 @@ lookupErr err k m = case Map.lookup k m of
   Nothing -> throwError err
   Just v -> return v
 
-lookupVar :: Ident i => i -> DeclM i (TypedStream i)
+lookupVar :: (MonadState (Env i) m, MonadError String m, Ident i) => i -> m (TypedStream i)
 lookupVar x = gets (vars . varEnv) >>= lookupErr ("Unknown variable " ++ identPretty x) x
 
 lookupNode :: Ident i => i -> DeclM i (NodeEnv i)
 lookupNode n = gets (nodes . varEnv) >>= lookupErr ("Unknown node " ++ identPretty n) n
 
-lookupEnumAnn :: Ident i => i -> DeclM i (SMTAnnotation SMTEnum)
+lookupEnumAnn :: (MonadState (Env i) m, MonadError String m, Ident i) => i -> m (SMTAnnotation SMTEnum)
 lookupEnumAnn t = gets enumAnn >>= lookupErr ("Unknown enum " ++ identPretty t) t
 
 lookupEnumConsAnn :: Ident i => EnumConstr i -> DeclM i (SMTAnnotation SMTEnum)
@@ -104,6 +97,11 @@ localVarEnv f m =
      r <- m
      put curr
      return r
+
+nextAutomatonIndex :: MonadState (Env i) m => m Integer
+nextAutomatonIndex = state $ \env ->
+  let i = currAutomatonIndex env
+  in (i, env { currAutomatonIndex = i+1 })
 
 -- | Defines a stream analogous to defFun.
 defStream :: Ident i => Type i -> (StreamPos -> TypedExpr i) -> DeclM i (TypedStream i)
