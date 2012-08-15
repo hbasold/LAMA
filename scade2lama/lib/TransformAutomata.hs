@@ -308,7 +308,7 @@ rewriteWeak = (uncurry $ foldlM go)
     go (_, L.Flow _ _, _) _ = error "produced unexpectedly non-state flow"
 
     rewriteWeaks :: MonadVarGen m => StateContext
-nn                    -> m (StateContext, [L.StateTransition], Map L.SimpIdent L.Expr)
+                    -> m (StateContext, [L.StateTransition], Map L.SimpIdent L.Expr)
     rewriteWeaks c@(predSts, st, stData, succSts) =
       let (weakSucc, strongSucc) = partition (\(eData, _) -> edgeType eData == Weak) succSts
           strongPred = filter (\(eData, _) -> edgeType eData == Strong) predSts
