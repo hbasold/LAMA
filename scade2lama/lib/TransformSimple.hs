@@ -41,7 +41,8 @@ trSimpleEquation lhsIds expr = do
              (maybeToList v) [initVar]
              stateInits [] []
     StateExpr (expr', stateInit) -> case ids of
-      [x] ->
+      [Nothing] -> $notImplemented
+      [Just x] ->
         -- There are several possibilities for initialisation:
         -- * no initialisation -> we generate nothing more
         -- * constant initialisation -> we use the system of LAMA
@@ -70,6 +71,6 @@ trSimpleEquation lhsIds expr = do
          return (expr', L.Variable init L.boolT, L.Flow [] [initTrans], Map.singleton init initInit)
 
 
-trLhsId :: S.LHSId -> L.SimpIdent
-trLhsId (S.Named x) = fromString x
-trLhsId S.Bottom = $notImplemented
+trLhsId :: S.LHSId -> Maybe L.SimpIdent
+trLhsId (S.Named x) = Just $ fromString x
+trLhsId S.Bottom = Nothing

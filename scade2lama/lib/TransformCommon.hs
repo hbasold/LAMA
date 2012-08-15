@@ -17,7 +17,7 @@ import qualified Data.Map as Map
 import Data.String (fromString)
 import Data.List (intercalate)
 import Data.Ratio
-
+import Data.Maybe (catMaybes)
 import Data.Traversable (mapM, sequence)
 
 import qualified Data.ByteString.Char8 as BS
@@ -239,33 +239,41 @@ trBinOp S.BinPower = $notImplemented
 -- if necessary. May return an intermediate variable to
 -- be declared in case a pattern matching occurs.
 mkLocalAssigns :: (MonadError String m) =>
-                  [L.SimpIdent] -> Either L.Expr (L.SimpIdent, [L.Expr], L.Type L.SimpIdent)
+                  [Maybe L.SimpIdent] -> Either L.Expr (L.SimpIdent, [L.Expr], L.Type L.SimpIdent)
                   -> m ([L.InstantDefinition], Maybe L.Variable)
 mkLocalAssigns ids rhs =
-  do (x, needsMatching) <- mkReturnId ids
-     if needsMatching
-       then case rhs of
-         Left _ -> throwError $ "Pattern matching only for node expressions allowed"
-         Right (n, exprs', retType) ->
-           return
-           ((L.NodeUsage x n exprs') : (mkProductProjections x ids),
-            Just $ L.Variable x retType)
-       else case rhs of
-         Left expr' -> return ([L.InstantExpr x expr'], Nothing)
-         Right (n, exprs', _) -> return ([L.NodeUsage x n exprs'], Nothing)
+  do r <- mkReturnId ids
+     case r of
+       Nothing -> return ([], Nothing)
+       Just (x, needsMatching) ->
+         if needsMatching
+         then case rhs of
+           Left _ -> throwError $ "Pattern matching only for node expressions allowed"
+           Right (n, exprs', retType) ->
+             return
+               ((L.NodeUsage x n exprs') : (mkProductProjections x ids),
+                Just $ L.Variable x retType)
+         else case rhs of
+           Left expr' -> return ([L.InstantExpr x expr'], Nothing)
+           Right (n, exprs', _) -> return ([L.NodeUsage x n exprs'], Nothing)
 
 -- | Generates an identifier for the lhs of an
 -- assignment. If the given list has only one element,
 -- this is used and no further matching is required.
 -- Otherwise matching is required (snd == True).
-mkReturnId :: (MonadError String m) => [L.SimpIdent] -> m (L.SimpIdent, Bool)
+mkReturnId :: (MonadError String m) => [Maybe L.SimpIdent] -> m (Maybe (L.SimpIdent, Bool))
 mkReturnId [] = throwError $ "Empty lhs in assignment not allowed"
-mkReturnId [x] = return (x, False)
-mkReturnId xs = return (fromString . intercalate "_" $ map L.identString xs, True)
+mkReturnId [x] = return $ fmap (, False) x
+mkReturnId xs =
+  let xs' = catMaybes xs
+  in case xs' of
+    [] -> return Nothing
+    _ -> return $ Just (fromString . intercalate "_" $ map L.identString xs', True)
 
-mkProductProjections :: L.SimpIdent -> [L.SimpIdent] -> [L.InstantDefinition]
+mkProductProjections :: L.SimpIdent -> [Maybe L.SimpIdent] -> [L.InstantDefinition]
 mkProductProjections from = snd . foldl (mkProj from) (0, [])
   where
-    mkProj x (i, defs) y =
+    mkProj _ (i, defs) Nothing = (succ i, defs)
+    mkProj x (i, defs) (Just y) =
       let project = L.mkProject x i
       in (succ i, L.InstantExpr y project : defs)

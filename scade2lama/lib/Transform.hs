@@ -148,7 +148,7 @@ transform topNode ds =
     mkFreeFlow (x, n) =
       let inp = map L.mkAtomVar . map L.varIdent $ L.nodeInputs n
           outpType = L.mkProductT . map L.varType $ L.nodeOutputs n
-          outpIds = map L.varIdent $ L.nodeOutputs n
+          outpIds = map (Just . L.varIdent) $ L.nodeOutputs n
       in do (a, decl) <- mkLocalAssigns outpIds (Right (x, inp, outpType))
             let locs = (L.nodeInputs n) ++ (L.nodeOutputs n) ++ (maybeToList decl)
             let sts = []

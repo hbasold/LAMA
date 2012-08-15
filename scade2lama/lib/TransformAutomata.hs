@@ -220,7 +220,7 @@ mkSubAutomatonNode n eq =
     connectNode nodeName inp outp =
       let params = map (L.mkAtomVar . L.varIdent) inp
           retType = L.mkProductT (map L.varType outp)
-      in do mkLocalAssigns (map L.varIdent outp) (Right (nodeName, params, retType))
+      in do mkLocalAssigns (map (Just . L.varIdent) outp) (Right (nodeName, params, retType))
 
     defaultExpr :: Maybe L.Variable -> Map L.SimpIdent L.Expr
     defaultExpr Nothing = Map.empty
