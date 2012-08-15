@@ -460,4 +460,8 @@ mkAutomaton gr defaultExprs =
           (Just LocationData { stName = tName }) = lab g t
       in case actions of
         Nothing -> L.Edge hName tName cond
-        Just _ -> $notImplemented
+        Just acts -> case acts of
+          S.ActionEmission [] -> L.Edge hName tName cond
+          S.ActionEmission _ -> $notImplemented
+          S.ActionDef (S.DataDef [] [] []) -> L.Edge hName tName cond
+          S.ActionDef _ -> $notImplemented
