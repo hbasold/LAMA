@@ -34,8 +34,8 @@ let
             tel
 
           state A2
-            unless
-              if c1 restart A1;
+            /*unless
+              if c1 restart A1;*/
             var
               _L2 : bool;
               _L4 : bool;
@@ -46,6 +46,8 @@ let
               _L2= true;
               _L4= false;
             tel
+            until
+              if c1 restart A1;
         returns ..;
       tel
 
