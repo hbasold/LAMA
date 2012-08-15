@@ -27,8 +27,8 @@ $u = [\0-\255]          -- universal: any character
 
 $white+ ;
 @rsyms { tok (\p s -> PT p (eitherResIdent (TV . share) s)) }
-$l ($l | $d | \_)* { tok (\p s -> PT p (eitherResIdent (T_Identifier . share) s)) }
-$l ($l | $d | \_)* \' { tok (\p s -> PT p (eitherResIdent (T_StateId . share) s)) }
+($l | \_)($l | $d | \_)* { tok (\p s -> PT p (eitherResIdent (T_Identifier . share) s)) }
+($l | \_)($l | $d | \_)* \' { tok (\p s -> PT p (eitherResIdent (T_StateId . share) s)) }
 
 $l $i*   { tok (\p s -> PT p (eitherResIdent (TV . share) s)) }
 
