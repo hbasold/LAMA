@@ -119,11 +119,11 @@ trOpDecl (S.UserOpDecl {
           (concatFlows f1 f2, a1)
         -- we don't care if variables have been declared inside a state,
         -- we declare them outside nevertheless.
-        mergeEq (f1, a1) (AutomatonEq a2 _) =
+        mergeEq (f1, a1) (AutomatonEq a2 _ condFlow) =
           let a = if Map.null a1
                   then Map.singleton 0 a2
                   else Map.insert ((fst $ Map.findMin a1) + 1) a2 a1
-          in (f1, a)
+          in (concatFlows f1 condFlow, a)
         mergeEq r NonExecutable = r
 
 trOpDecl _ = undefined
@@ -177,5 +177,5 @@ trEquation (S.AssertEquation S.Assume _name expr) =
 trEquation (S.AssertEquation S.Guarantee _name expr) = $notImplemented
 trEquation (S.EmitEquation body) = $notImplemented
 trEquation (S.StateEquation (S.StateMachine _name sts) ret returnsAll) =
-  fmap (flip AutomatonEq []) <$> trStateEquation sts ret returnsAll
+  fmap (uncurry $ flip AutomatonEq []) <$> trStateEquation sts ret returnsAll
 trEquation (S.ClockedEquation name block ret returnsAll) = $notImplemented

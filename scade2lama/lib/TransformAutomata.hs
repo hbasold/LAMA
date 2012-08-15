@@ -11,12 +11,14 @@ import Data.Graph.Inductive.GenShow ()
 import qualified Data.Map as Map
 import Data.Map (Map, (!))
 import qualified Data.Set as Set
-import Data.Set (Set)
+import Data.Set (Set, (\\))
 import Data.String (fromString)
 import Data.Tuple (swap)
 import Data.Foldable (foldlM)
+import Data.Traversable (mapAccumL)
 import Data.Monoid
 import Data.Maybe (maybeToList)
+import Data.List (partition, unzip4)
 
 import Data.Generics.Schemes
 import Data.Generics.Aliases
@@ -46,14 +48,21 @@ data LocationData = LocationData
                     , stTrEquation :: TrEquation L.Flow
                     } deriving Show
 
+data EdgeType = Weak | Strong deriving (Eq, Ord, Show)
+
 data EdgeData = EdgeData
                 { edgeCondition :: L.Expr
-                , edgeType :: S.TargetType
+                , edgeType :: EdgeType
+                , edgeTargetType :: S.TargetType
                 , edgeActions :: Maybe S.Actions
                 } deriving Show
 
+mapCondition :: (L.Expr -> L.Expr) -> EdgeData -> EdgeData
+mapCondition f ed = ed { edgeCondition = f $ edgeCondition ed }
+
 type TrLocation = LNode LocationData
 type TrEdge = LEdge EdgeData
+type StateContext = Context LocationData EdgeData
 type StateGr = Gr LocationData EdgeData
 
 -- | FIXME: we ignore restart completely atm!
@@ -65,34 +74,19 @@ type StateGr = Gr LocationData EdgeData
 -- and a "resume" transition the second. Implicit self transitions are
 -- "resume" transitions. For an initial state the initialisation copy
 -- is the new initial state.
-buildStateGraph :: [S.State] -> TrackUsedNodes (StateGr, L.Flow, L.StateInit)
+buildStateGraph :: [S.State] -> TrackUsedNodes (StateGr, Map L.SimpIdent L.Expr)
 buildStateGraph sts =
-  do extracted <- extractLocations $ zip [0..] sts
-     let (locs, defaultFlows) =
-           unzip $ map (fst &&& (fst *** id)) extracted
-         locs' = putDefaultFlows defaultFlows locs
-         nodeMap = Map.fromList $ map (swap . second stName) locs'
-     (es, condFlow, condInits) <- lift $ extractEdges nodeMap sts
-     return (mkGraph locs' es, condFlow, condInits)
-  where
-    -- Given a list of flows which should _not_ be put into the given
-    -- node, this puts into every other given flow except the excluded.
-    putDefaultFlows :: [(Node, L.Flow)] -> [TrLocation] -> [TrLocation]
-    putDefaultFlows defaultFlows = map (putDefaultFlow defaultFlows)
-
-    putDefaultFlow defaultFlows (n, locData) =
-      let flow = trEqRhs $ stTrEquation locData
-          flow' = foldl (\f (n', defFlow) ->
-                          if n /= n' then concatFlows f defFlow else f)
-                  flow defaultFlows
-      in (n, locData { stTrEquation = (stTrEquation locData) { trEqRhs = flow' } })
+  do (locs, defaultFlows) <- liftM unzip . extractLocations $ zip [0..] sts
+     let nodeMap = Map.fromList $ map (swap . second stName) locs
+     es <- lift $ extractEdges nodeMap sts
+     return (mkGraph locs es, mconcat defaultFlows)
 
 -- | Extracts all locations from the given states together with a default
 -- flow to be placed in every other location.
-extractLocations :: [(Node, S.State)] -> TrackUsedNodes [(TrLocation, L.Flow)]
+extractLocations :: [(Node, S.State)] -> TrackUsedNodes [(TrLocation, Map L.SimpIdent L.Expr)]
 extractLocations = mapM extractLocation
 
-extractLocation :: (Node, S.State) -> TrackUsedNodes (TrLocation, L.Flow)
+extractLocation :: (Node, S.State) -> TrackUsedNodes (TrLocation, Map L.SimpIdent L.Expr)
 extractLocation (n, s) =
   do eq <- extractDataDef (S.stateData s)
      let flow = fmap fst eq
@@ -103,59 +97,27 @@ extractLocation (n, s) =
                 flow),
              defaultFlow)
 
-extractEdges :: Map L.SimpIdent Node -> [S.State] -> TransM ([TrEdge], L.Flow, L.StateInit)
-extractEdges nodes sts =
-  do strong <- extractEdges' nodes S.stateUnless sts
-     weak <- extractEdges' nodes S.stateUntil sts
-     ((conds, inits), weak') <- liftM (first unzip) . liftM unzip $ mapM rewriteWeak weak
-     let weak'' = concat $ map (strongAfterWeak strong) weak'
-     return (strong ++ weak'', L.Flow [] conds, Map.fromList inits)
+-- | Extracts the edges from a given set of Scade states. This may result in
+-- an additional data flow to be placed outside of the automaton which
+-- calculates the conditions for weak transitions.
+extractEdges :: Map L.SimpIdent Node -> [S.State] -> TransM [TrEdge] --, L.Flow, [L.Variable], L.StateInit)
+extractEdges stateNodeMap sts =
+  do strong <- extractEdges' stateNodeMap S.stateUnless Strong sts
+     weak <- extractEdges' stateNodeMap S.stateUntil Weak sts
+     return $ strong ++ weak
   where
-    extractEdges' :: Map L.SimpIdent Node -> (S.State -> [S.Transition]) -> [S.State] -> TransM [TrEdge]
-    extractEdges' nodeMap getter =
+    extractEdges' :: Map L.SimpIdent Node -> (S.State -> [S.Transition]) -> EdgeType -> [S.State] -> TransM [TrEdge]
+    extractEdges' nodeMap getter eType =
       liftM concat
       . foldlM (\es s -> liftM (:es)
-                         . mapM (extract nodeMap (fromString $ S.stateName s))
+                         . mapM (extract nodeMap eType (fromString $ S.stateName s))
                          $ getter s) []
 
-    extract nodeMap from (S.Transition c act (S.TargetFork forkType to)) =
+    extract nodeMap eType from (S.Transition c act (S.TargetFork forkType to)) =
       do fromNode <- lookupErr ("Unknown state " ++ L.identString from) from nodeMap
          toNode <- lookupErr ("Unknown state " ++ to) (fromString to) nodeMap
-         (fromNode, toNode, ) <$> (EdgeData <$> trExpr' c <*> pure forkType <*> pure act)
-    extract nodeMap from (S.Transition c act (S.ConditionalFork _ _)) = $notImplemented
-
-    -- Rewrites a weak transition such that the condition
-    -- is moved into a state transition and the new condition
-    -- just checks the corresponding variable.
-    -- This ensures that the condition is checked in the next state.
-    rewriteWeak (from, to, eData) =
-      do c <- liftM fromString $ newVar "cond"
-         let cond = L.StateTransition c $ edgeCondition eData
-         return ((cond, (c, L.mkConst $ L.boolConst True)),
-                 (from, to, eData { edgeCondition = L.mkAtomVar c }))
-
-    -- Rewrites a weak transition and builds a transitive transition
-    -- if there is a strong transition going out of the state into
-    -- which the weak transition leads.
-    -- s_1   >-- c_1 -->   s_2   -- c_2 -->>   s_3
-    -- This means semantically that if at time n c_1 holds, the transition
-    -- to s_2 is deferred to time n+1. But if then c_2 holds, the transition
-    -- to s_3 is taken without activating s_2. So we build:
-    -- s_1  -- pre c_1 and not c_2 -->>  s_2
-    --  \                                 / c_2
-    --   \-- pre c_1 and c_2 -->> s_3 <<-/
-    --
-    -- Here >--> stands for a weak and -->> stands for a strong transition
-    -- with the annotation of the corresponding condition. pre c_1 should
-    -- be initialised with false.
-    strongAfterWeak strong (from, to, eData) =
-      let followUps = filter (\(h, _, _) -> h == to) strong
-          (c', transEdges) = foldr (addEdge $ edgeCondition eData) (edgeCondition eData, []) followUps
-      in (from, to, eData { edgeCondition = c' }) : transEdges
-      where
-        addEdge c1 (_, t, ed@(EdgeData{ edgeCondition = c2 })) (c1', es) =
-          (L.mkExpr2 L.And c1' (L.mkLogNot c2),
-           (from, t, ed { edgeCondition = L.mkExpr2 L.And c1 c2 } ) : es)
+         (fromNode, toNode, ) <$> (EdgeData <$> trExpr' c <*> pure eType <*> pure forkType <*> pure act)
+    extract nodeMap eType from (S.Transition c act (S.ConditionalFork _ _)) = $notImplemented
 
 -- | We translate all equations for the current state. If
 -- there occurs another automaton, a node containing that
@@ -164,8 +126,8 @@ extractEdges nodes sts =
 -- declared in the states of the subautomaton local to the
 -- generated node.
 -- Gives back the flow to be placed in the current state and
--- one that has to placed in all other states.
-extractDataDef :: S.DataDef -> TrackUsedNodes (TrEquation (L.Flow, L.Flow))
+-- default expressions.
+extractDataDef :: S.DataDef -> TrackUsedNodes (TrEquation (L.Flow, Map L.SimpIdent L.Expr))
 extractDataDef (S.DataDef sigs vars eqs) =
   do (localVars, localsDefault, localsInit) <- lift $ trVarDecls vars
      -- Fixme: we ignore last and default in states for now
@@ -178,10 +140,10 @@ extractDataDef (S.DataDef sigs vars eqs) =
          eqs' = everywhere (mkT $ rename varMap) eqs
      trEqs <- localScope (\sc -> sc { scopeLocals = scopeLocals sc `mappend` (mkVarMap localVars) })
               $ mapM trEquation eqs'
-     let trEq = foldlTrEq (\(gf1, sf1) (gf2, sf2) ->
+     let trEq = foldlTrEq (\(gf1, default1) (gf2, default2) ->
                             (maybe gf1 (concatFlows gf1) gf2,
-                             maybe sf1 (concatFlows sf1) sf2))
-                (L.Flow [] [], L.Flow [] []) trEqs
+                             default1 `mappend` default2))
+                (L.Flow [] [], Map.empty) trEqs
          (localVars'', stateVars) = separateVars (trEqInits trEq) localVars'
      return $ trEq { trEqLocalVars = (trEqLocalVars trEq) ++ localVars''
                    , trEqStateVars = (trEqStateVars trEq) ++ stateVars }
@@ -200,40 +162,47 @@ extractDataDef (S.DataDef sigs vars eqs) =
 -- | Translates an equation inside a state. This may
 -- produce a flow to be executed in that state and one
 -- that has to be pushed to all other states.
-trEquation :: S.Equation -> TrackUsedNodes (TrEquation (Maybe L.Flow, Maybe L.Flow))
+trEquation :: S.Equation -> TrackUsedNodes (TrEquation (Maybe L.Flow, Map L.SimpIdent L.Expr))
 trEquation (S.SimpleEquation lhsIds expr) =
-  fmap (Just &&& const Nothing) <$> trSimpleEquation lhsIds expr
+  fmap (Just &&& const Map.empty) <$> trSimpleEquation lhsIds expr
 trEquation (S.AssertEquation S.Assume _name expr) =
-  lift $ trExpr' expr >>= \pc -> return $ TrEquation (Nothing, Nothing) [] [] Map.empty [] [pc]
+  lift $ trExpr' expr >>= \pc -> return $ TrEquation (Nothing, Map.empty) [] [] Map.empty [] [pc]
 trEquation (S.AssertEquation S.Guarantee _name expr) = $notImplemented
 trEquation (S.EmitEquation body) = $notImplemented
 trEquation (S.StateEquation (S.StateMachine name sts) ret returnsAll) =
   do autom <- trStateEquation sts ret returnsAll
-     liftM (fmap $ Just *** Just) $ mkSubAutomatonNode name autom
+     liftM (fmap $ Just *** id) $ mkSubAutomatonNode name autom
 trEquation (S.ClockedEquation name block ret returnsAll) = $notImplemented
 
 -- | Creates a node which contains the given automaton together with a connecting
--- flow for the current state and a default flow to be placed in all parallel states.
+-- flow for the current state and default expressions.
 mkSubAutomatonNode :: (MonadReader Environment m, MonadVarGen m, MonadError String m) =>
-                      Maybe String -> TrEquation L.Automaton -> m (TrEquation (L.Flow, L.Flow))
+                      Maybe String -> TrEquation (L.Automaton, L.Flow) -> m (TrEquation (L.Flow, Map L.SimpIdent L.Expr))
 mkSubAutomatonNode n eq =
   do name <- case n of
        Nothing -> liftM fromString $ newVar "SubAutomaton"
        Just n' -> return $ fromString n'
-     let (deps, written) = getAutomDeps $ trEqRhs eq
+     let (autom, condFlow) = trEqRhs eq
+         (automDeps, automWritten) = getAutomDeps autom
+         (condDeps, _condWritten) = getFlowDeps condFlow
+         localVars = trEqLocalVars eq
+         stateVars = trEqStateVars eq
+         nodeInternal = Set.fromList . map L.varIdent $ localVars ++ stateVars
+         deps = (automDeps `mappend` condDeps) \\ nodeInternal
+         written = automWritten \\ nodeInternal
      scope <- askScope
      inp <- mkInputs scope deps
      outp <- mkOutputs scope written
      let automNode =
            L.Node inp outp
-           (L.Declarations (Map.fromList $ trEqSubAutom eq) (trEqLocalVars eq) (trEqStateVars eq))
-           (L.Flow [] []) []
-           (Map.singleton 0 $ trEqRhs eq)
+           (L.Declarations (Map.fromList $ trEqSubAutom eq) localVars stateVars)
+           condFlow []
+           (Map.singleton 0 autom)
            (trEqInits eq)
            (foldl (L.mkExpr2 L.And) (L.constAtExpr $ L.boolConst True) $ trEqPrecond eq)
      (connects, retVar) <- connectNode name inp outp
      return $
-       (baseEq (L.Flow connects [], defaultFlow retVar)) {
+       (baseEq (L.Flow connects [], defaultExpr retVar)) {
          trEqLocalVars = maybeToList retVar,
          trEqSubAutom = [(name, automNode)] }
   where
@@ -253,9 +222,9 @@ mkSubAutomatonNode n eq =
           retType = L.mkProductT (map L.varType outp)
       in do mkLocalAssigns (map L.varIdent outp) (Right (nodeName, params, retType))
 
-    defaultFlow :: Maybe L.Variable -> L.Flow
-    defaultFlow Nothing = L.Flow [] []
-    defaultFlow (Just v) = L.Flow [L.InstantExpr (L.varIdent v) (defaultValue $ L.varType v)] []
+    defaultExpr :: Maybe L.Variable -> Map L.SimpIdent L.Expr
+    defaultExpr Nothing = Map.empty
+    defaultExpr (Just v) = Map.singleton (L.varIdent v) (defaultValue $ L.varType v)
 
 defaultValue :: L.Type L.SimpIdent -> L.Expr
 defaultValue (L.GroundType L.BoolT) = L.constAtExpr $ L.boolConst False
@@ -266,7 +235,7 @@ defaultValue (L.GroundType (L.UInt n)) = L.constAtExpr . L.Fix $ L.UIntConst n 0
 defaultValue (L.EnumType _) = error "no default value for enums available atm"
 defaultValue (L.ProdType ts) = L.Fix . L.ProdCons . L.Prod $ map defaultValue ts
        
--- | FIXME: make Natural an instance of Typeable, Data and
+-- | TODO: make Natural an instance of Typeable, Data and
 -- with that everything in LAMA. Next generalise Expr to
 -- a view and with that be able to generalise getDeps and
 -- use everything from syb.
@@ -278,29 +247,32 @@ getAutomDeps a =
       edgeDeps = mconcat . map getEdgeDeps $ L.automEdges a
   in (locInp `mappend` edgeDeps, locOutp)
   where
-    getLocDeps :: L.Location -> (Set L.SimpIdent, Set L.SimpIdent)
-    getLocDeps (L.Location _ flow) = getFlowDeps flow
-    getEdgeDeps (L.Edge _ _ cond) = getDeps $ L.unfix cond
-    getFlowDeps (L.Flow defs trans) =
-      let (i1, o1) = unzip $ map getInstDefDeps defs
-          (i2, o2) = unzip $ map getTransDeps trans
-      in (mconcat *** mconcat) $ (i1 ++ i2, o1 ++ o2)
-    getInstDefDeps (L.InstantExpr x e) = (getDeps $ L.unfix e, Set.singleton x)
-    getInstDefDeps (L.NodeUsage x _ es) = (mconcat $ map (getDeps . L.unfix) es, Set.singleton x)
-    getTransDeps (L.StateTransition x e) = (getDeps $ L.unfix e, Set.singleton x)
+     getLocDeps :: L.Location -> (Set L.SimpIdent, Set L.SimpIdent)
+     getLocDeps (L.Location _ flow) = getFlowDeps flow
+     getEdgeDeps (L.Edge _ _ cond) = getDeps $ L.unfix cond
 
-    getDeps :: L.GExpr L.SimpIdent L.Constant L.Atom L.Expr -> Set L.SimpIdent
-    getDeps (L.AtExpr (L.AtomVar ident)) = Set.singleton ident
-    getDeps (L.AtExpr _) = Set.empty
-    getDeps (L.LogNot e) = getDeps $ L.unfix e
-    getDeps (L.Expr2 _ e1 e2) = (getDeps $ L.unfix e1) `mappend` (getDeps $ L.unfix e2)
-    getDeps (L.Ite c e1 e2) = (getDeps $ L.unfix c) `mappend` (getDeps $ L.unfix e1) `mappend` (getDeps $ L.unfix e2)
-    getDeps (L.ProdCons (L.Prod es)) = mconcat $ map (getDeps . L.unfix) es
-    getDeps (L.Match e pats) = (getDeps $ L.unfix e) `mappend` (mconcat $ map getDepsPattern pats)
-    getDeps (L.Project x _) = Set.singleton x
+getFlowDeps :: L.Flow -> (Set L.SimpIdent, Set L.SimpIdent)
+getFlowDeps (L.Flow defs trans) =
+  let (i1, o1) = unzip $ map getInstDefDeps defs
+      (i2, o2) = unzip $ map getTransDeps trans
+  in (mconcat *** mconcat) $ (i1 ++ i2, o1 ++ o2)
+  where
+     getInstDefDeps (L.InstantExpr x e) = (getDeps $ L.unfix e, Set.singleton x)
+     getInstDefDeps (L.NodeUsage x _ es) = (mconcat $ map (getDeps . L.unfix) es, Set.singleton x)
+     getTransDeps (L.StateTransition x e) = (getDeps $ L.unfix e, Set.singleton x)
 
+getDeps :: L.GExpr L.SimpIdent L.Constant L.Atom L.Expr -> Set L.SimpIdent
+getDeps (L.AtExpr (L.AtomVar ident)) = Set.singleton ident
+getDeps (L.AtExpr _) = Set.empty
+getDeps (L.LogNot e) = getDeps $ L.unfix e
+getDeps (L.Expr2 _ e1 e2) = (getDeps $ L.unfix e1) `mappend` (getDeps $ L.unfix e2)
+getDeps (L.Ite c e1 e2) = (getDeps $ L.unfix c) `mappend` (getDeps $ L.unfix e1) `mappend` (getDeps $ L.unfix e2)
+getDeps (L.ProdCons (L.Prod es)) = mconcat $ map (getDeps . L.unfix) es
+getDeps (L.Match e pats) = (getDeps $ L.unfix e) `mappend` (mconcat $ map getDepsPattern pats)
+  where
     getDepsPattern :: L.Pattern -> Set L.SimpIdent
-    getDepsPattern (L.Pattern _ e) = (getDeps $ L.unfix e)
+    getDepsPattern (L.Pattern _ body) = (getDeps $ L.unfix body)
+getDeps (L.Project x _) = Set.singleton x
 
 -- | Returns the generated top level automaton and the nodes generated
 -- for the nested state machines.
@@ -311,13 +283,154 @@ getAutomDeps a =
 --        used in a "last 'x" construct. They are specified by a default behaviour (possibly
 --        given by the user).
 -- FIXME: support pre/last
-trStateEquation :: [S.State] -> [String] -> Bool -> TrackUsedNodes (TrEquation L.Automaton)
+trStateEquation :: [S.State] -> [String] -> Bool -> TrackUsedNodes (TrEquation (L.Automaton, L.Flow))
 trStateEquation sts ret returnsAll =
-  do (stGr, condFlow, condInits) <- buildStateGraph sts
-     mkAutomaton stGr
+  do (stGr, defaultExprs1) <- buildStateGraph sts
+     (stGr', condFlow, defaultExprs2) <- rewriteWeak stGr
+     let stGr'' = strongAfterWeak stGr'
+     autom <- mkAutomaton stGr'' (defaultExprs1 `mappend` defaultExprs2)
+     return $ fmap (,condFlow) autom
 
-mkAutomaton :: MonadError String m => StateGr -> m (TrEquation L.Automaton)
-mkAutomaton gr =
+-- | Rewrites a weak transition such that the condition
+-- is moved into a state transition and the new condition
+-- just checks the corresponding variable.
+-- This ensures that the condition is checked in the next state.
+rewriteWeak :: MonadVarGen m => StateGr
+               -> m (StateGr, L.Flow, Map L.SimpIdent L.Expr)
+rewriteWeak = (uncurry $ foldlM go)
+              . ((, L.Flow [] [], Map.empty) &&& Gr.nodes)
+  where
+    go (gr, L.Flow [] ts, defaultExprs) currNode =
+      do let (Just c, gr') = Gr.match currNode gr
+         (c', ts', defaultExprs') <- rewriteWeaks c
+         return (c' & gr', L.Flow [] (ts' ++ ts),
+                 defaultExprs `mappend` defaultExprs')
+    go (_, L.Flow _ _, _) _ = error "produced unexpectedly non-state flow"
+
+    rewriteWeaks :: MonadVarGen m => StateContext
+nn                    -> m (StateContext, [L.StateTransition], Map L.SimpIdent L.Expr)
+    rewriteWeaks c@(predSts, st, stData, succSts) =
+      let (weakSucc, strongSucc) = partition (\(eData, _) -> edgeType eData == Weak) succSts
+          strongPred = filter (\(eData, _) -> edgeType eData == Strong) predSts
+      in case weakSucc of
+        [] -> return (c, [], Map.empty)
+        _ -> do (activateWeak, stData', stateTrans, defaultExprs) <- createWeakActivation st stData strongPred
+                (weakSucc', conds, condVars, inits) <- liftM unzip4 $ mapM (rewriteWeak' activateWeak) weakSucc
+                let trEq'  = stTrEquation stData'
+                    trEq'' = trEq' { trEqStateVars = trEqStateVars trEq' ++ condVars
+                                   , trEqInits = trEqInits trEq' `mappend` (mconcat inits)
+                                   }
+                    stData'' = stData' { stTrEquation = trEq'' }
+                    succSts' = weakSucc' ++ strongSucc
+                return ((predSts, st, stData'', succSts'),
+                        stateTrans ++ conds, defaultExprs)
+
+    -- Creates a condition to activate weak transitions of a given state.
+    -- This may lead to the creation of a variable that is true iff
+    -- the state is active. The corresponding data flow is integrated
+    -- into the state but defaults and state transitions for this variable
+    -- are also created and given back.
+    createWeakActivation st stData strongPred =
+      case strongPred of
+        [] -> return (L.constAtExpr $ L.boolConst True, stData, [], Map.empty)
+        _ -> do let stN = L.identString $ stName stData
+                inSt <- liftM fromString . newVar $ "inState" ++ stN -- true if st is currently active
+                wasSt <- liftM fromString . newVar $ "wasState" ++ stN-- true if st was active in last cycle
+                let entryCond = mkEntryCond st wasSt strongPred
+                    inStFlow = L.Flow [L.InstantExpr inSt $ L.constAtExpr $ L.boolConst True] []
+                    wasStEq = L.StateTransition wasSt $ L.mkAtomVar inSt
+                    trEq = stTrEquation stData
+                    trEq' = trEq { trEqRhs = concatFlows (trEqRhs trEq) inStFlow
+                                 , trEqLocalVars = trEqLocalVars trEq ++ [L.Variable inSt L.boolT]
+                                 , trEqStateVars = trEqStateVars trEq ++ [L.Variable wasSt L.boolT]
+                                 , trEqInits = trEqInits trEq
+                                               `mappend` Map.singleton wasSt (L.mkConst . L.boolConst $ stInitial stData)
+                                 }
+                    stData' = stData { stTrEquation = trEq' }
+                return (entryCond, stData', [wasStEq],
+                        Map.singleton inSt (L.constAtExpr $ L.boolConst False))
+
+    -- Creates a condition which is true if a state has not been
+    -- entered this cycle through a strong transition.
+    -- That means that weak transitions going out of this state
+    -- can be taken.
+    mkEntryCond :: Node -> L.SimpIdent -> Adj EdgeData -> L.Expr
+    mkEntryCond st wasSt strongPred =
+      let (incoming, selfTrans) = partition (\(_, st') -> st' /= st) strongPred -- filter out self transitions
+          -- if any condition on an incoming transition is true
+          -- the system must already have been in /st/.
+          incomingTaken = case incoming of
+            [] -> L.constAtExpr $ L.boolConst True
+            _ -> let oneStrongActive =
+                       foldl1 (L.mkExpr2 L.Or)
+                       . map (edgeCondition . fst)
+                       $ incoming
+                 in L.mkExpr2 L.Implies oneStrongActive (L.mkAtomVar wasSt)
+
+          -- if any condition on a self transition is true
+          -- then the last state must not be /st/
+          selfTransTaken = case selfTrans of
+            [] -> L.constAtExpr $ L.boolConst True
+            _ -> let oneStrongActive =
+                       foldl1 (L.mkExpr2 L.Or)
+                       . map (edgeCondition . fst)
+                       $ selfTrans
+                 in L.mkExpr2 L.Implies oneStrongActive $ L.mkLogNot (L.mkAtomVar wasSt)
+
+      in L.mkExpr2 L.And incomingTaken selfTransTaken
+
+    rewriteWeak' activateWeak (eData, to) =
+      do c <- liftM fromString $ newVar "cond"
+         let cond = L.StateTransition c $ L.mkExpr2 L.And (edgeCondition eData) activateWeak
+         return ((eData { edgeCondition = L.mkAtomVar c }, to),
+                 cond, L.Variable c L.boolT, Map.singleton c (L.mkConst $ L.boolConst True))
+
+-- | Builds a transitive transition
+-- if there is a strong transition going out of the state into
+-- which a weak transition leads.
+-- s_1   -- c_1 -->o   s_2   o-- c_2 -->   s_3
+-- This means semantically that if at time n c_1 holds, the transition
+-- to s_2 is deferred to time n+1. But if then c_2 holds, the transition
+-- to s_3 is taken without activating s_2. So we build:
+-- s_1  o-- pre c_1 and not c_2  -->  s_2
+--  o                                  o
+--   \                                / c_2
+--    \-- pre c_1 and c_2 --> s_3 <--/
+--
+-- Here -->o stands for a weak and o--> stands for a strong transition
+-- with the annotation of the corresponding condition. pre c_1 should
+-- be initialised with false.
+-- Notice that we don't rewrite the transition condition as we expect
+-- that to be done in /rewriteWeak/.
+strongAfterWeak :: StateGr -> StateGr
+strongAfterWeak =
+  (uncurry Gr.insEdges) . (uncurry $ foldl go) . (([], ) &&& Gr.nodes)
+  where
+    go :: ([TrEdge], StateGr) -> Node -> ([TrEdge], StateGr)
+    go (es, gr) currNode =
+      let (Just c, gr') = Gr.match currNode gr
+          (c', es') = strongAfterWeak' c
+      in (es' ++ es, c' & gr')
+
+    strongAfterWeak' :: StateContext -> (StateContext, [TrEdge])
+    strongAfterWeak' (predSts, s2, stData, succSts) =
+      let (weakIns, strongIns) = partition (\(eData, _) -> edgeType eData == Weak) predSts
+          strongOuts = filter (\(eData, _) -> edgeType eData == Strong) succSts
+          (transEdges, weakIns') = mapAccumL (mkTransEdges strongOuts) [] weakIns
+      in ((weakIns' ++ strongIns, s2, stData, succSts), transEdges)
+
+    -- we are in node s2
+    mkTransEdges strongOuts transEdges (weakInData, s3) =
+      let weakInCond = edgeCondition weakInData
+          oneStrongActive = foldl1 (L.mkExpr2 L.Or) . map (edgeCondition . fst) $ strongOuts
+          weakInCond' = L.mkExpr2 L.And weakInCond (L.mkLogNot oneStrongActive)
+          transEdges' = map (\(ed, s1) -> (s1, s3, mapCondition (L.mkExpr2 L.And weakInCond) ed)) strongOuts
+      in (transEdges ++ transEdges', (weakInData { edgeCondition = weakInCond' }, s3))
+
+-- | Builds an automaton out of the given state graph.
+-- FIXME: respect priorities
+mkAutomaton :: MonadError String m => StateGr -> Map L.SimpIdent L.Expr -> m (TrEquation L.Automaton)
+mkAutomaton gr defaultExprs =
   let ns = labNodes gr
       (locs, inits, eq) =
         foldr (\l (ls, i, eq') ->
@@ -328,7 +441,7 @@ mkAutomaton gr =
       automEdges = map (mkEdge gr) grEdges
   in case getFirst inits of
     Nothing -> throwError "No initial state given"
-    Just i -> let autom = L.Automaton locs i automEdges
+    Just i -> let autom = L.Automaton locs i automEdges defaultExprs
               in return $ eq { trEqRhs = autom }
   where
     mkLocation :: TrLocation -> (L.Location, Maybe L.SimpIdent, TrEquation ())
@@ -341,9 +454,10 @@ mkAutomaton gr =
     mergeEq e1 e2 = foldlTrEq (const $ const ()) () [e1, e2]
 
     mkEdge :: StateGr -> LEdge EdgeData -> L.Edge
-    mkEdge gr (h, t, EdgeData { edgeCondition = cond
-                              , edgeType = eType
+    mkEdge g (h, t, EdgeData { edgeCondition = cond
                               , edgeActions = actions }) =
-      let (Just LocationData { stName = hName }) = lab gr h
-          (Just LocationData { stName = tName }) = lab gr t
-      in L.Edge hName tName cond
+      let (Just LocationData { stName = hName }) = lab g h
+          (Just LocationData { stName = tName }) = lab g t
+      in case actions of
+        Nothing -> L.Edge hName tName cond
+        Just _ -> $notImplemented

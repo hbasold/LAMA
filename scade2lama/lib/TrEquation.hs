@@ -22,9 +22,9 @@ baseEq x = TrEquation x [] [] Map.empty [] []
 
 data TrEqCont =
   SimpleEq L.Flow
-  | AutomatonEq L.Automaton [L.Variable]
-    -- ^ An automaton has a potential name, the automaton itself
-    -- and locally declared variables (in the states).
+  | AutomatonEq L.Automaton [L.Variable] L.Flow
+    -- ^ An automaton has additionally locally declared variables (in the states)
+    -- and a flow for the conditions of weak transitions.
   | NonExecutable -- ^ Content which does not produce any values (like preconditions)
   deriving Show
 
