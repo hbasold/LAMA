@@ -26,7 +26,7 @@ import Data.Generics.Aliases
 import Control.Monad (when, liftM)
 import Control.Monad.Trans.Class
 import Control.Applicative (Applicative(..), (<$>))
-import Control.Arrow ((&&&), (***), first, second)
+import Control.Arrow ((&&&), (***), second)
 import Control.Monad.Error (MonadError(..))
 import Control.Monad.Reader (MonadReader)
 import Control.Monad.State (gets)
@@ -176,14 +176,16 @@ trEquation (S.SimpleEquation lhsIds expr) =
                        . catMaybes
                        . map (\x -> fmap (x,) $ Map.lookup x defaultExprs)
                        $ validLhsIds
-     lift . defaultsUsed $ Map.keysSet lhsDefaults
+         hasDefault = Map.keysSet lhsDefaults
+     lift $ defaultsUsed hasDefault
 
      -- get last expressions for the variables on the lhs
      -- if they are available
      lastInitExprs <- gets lastInits
-     let lhsLastInitExprs = catMaybes
+     let canHaveLast = filter (not . (flip Set.member hasDefault)) validLhsIds
+         lhsLastInitExprs = catMaybes
                             . map (\x -> fmap (x,) $ Map.lookup x lastInitExprs)
-                            $ validLhsIds
+                            $ canHaveLast
      (lastExprs, lastStateVars, lastStateTrans, lastStateInits) <- liftM unzip4 $ mapM mkLast lhsLastInitExprs
      lift . lastInitsUsed . Set.fromList . map fst $ lhsLastInitExprs
 
