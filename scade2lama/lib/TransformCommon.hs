@@ -6,7 +6,7 @@ module TransformCommon (
   updateVarName, declareNode, checkNode,
   trVarDecl, trVarDecls, separateVars, trConstDecl, mkLocalAssigns,
   trTypeExpr,
-  EquationRhs(..), trExpr, trExpr', trConstExpr
+  EquationRhs(..), trExpr, trExpr', trConstExpr, trConstant
   ) where
 
 import Development.Placeholders
@@ -95,7 +95,7 @@ trTypeDecl = $notImplemented
 
 trConstDecl :: MonadError String m => S.ConstDecl -> m (L.SimpIdent, L.Constant)
 trConstDecl (S.ConstDecl _interfaceStatus constName _type (Just expr)) =
-  do c <- trConst expr
+  do c <- trConstant expr
      return (fromString constName, c)
 trConstDecl _ = $notImplemented
 
@@ -197,14 +197,14 @@ trOpApply (S.PrefixOp (S.PrefixPath p)) es =
 trOpApply _ _ = $notImplemented
 
 trConstExpr :: (MonadError String m) => S.Expr -> m L.ConstExpr
-trConstExpr = liftM L.mkConst . trConst
+trConstExpr = liftM L.mkConst . trConstant
 
-trConst :: (MonadError String m) => S.Expr -> m L.Constant
-trConst (S.ConstIntExpr c) = return $ L.mkIntConst c
-trConst (S.ConstBoolExpr c) = return $ L.boolConst c
-trConst (S.ConstFloatExpr c) = return $ L.mkRealConst $ approxRational c 0.01
-trConst (S.ConstPolyIntExpr i s) = $notImplemented
-trConst e = throwError $ show e ++ " is not a constant."
+trConstant :: (MonadError String m) => S.Expr -> m L.Constant
+trConstant (S.ConstIntExpr c) = return $ L.mkIntConst c
+trConstant (S.ConstBoolExpr c) = return $ L.boolConst c
+trConstant (S.ConstFloatExpr c) = return $ L.mkRealConst $ approxRational c 0.01
+trConstant (S.ConstPolyIntExpr i s) = $notImplemented
+trConstant e = throwError $ show e ++ " is not a constant."
 
 tryConst :: (MonadError String m, Applicative m) => S.Expr -> m (Either L.ConstExpr L.Expr)
 tryConst e = (liftM Left $ trConstExpr e) `catchError` (const . liftM Right $ trExpr' e)
