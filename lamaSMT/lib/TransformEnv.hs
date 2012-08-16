@@ -92,10 +92,10 @@ lookupEnumConsAnn x = gets enumConsAnn >>= lookupErr ("Unknown enum constructor 
 
 localVarEnv :: (VarEnv i -> VarEnv i) -> DeclM i a -> DeclM i a
 localVarEnv f m =
-  do curr <- get
+  do curr <- gets varEnv
      modifyVarEnv f
      r <- m
-     put curr
+     modifyVarEnv (const curr)
      return r
 
 nextAutomatonIndex :: MonadState (Env i) m => m Integer
