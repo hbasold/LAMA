@@ -20,7 +20,7 @@ Executable lamai
   Build-Depends: base, containers, mtl, bytestring, natural-numbers,
     transformers, pretty, array, fgl, graphviz, text, filepath, placeholders, language-lama
   Hs-Source-Dirs: . lib
-  GHC-Options: -Wall -O2 -rtsopts
+  GHC-Options: -Wall -O2
   other-modules:
     Lang.LAMA.Interpret
   Main-Is: Main.hs
