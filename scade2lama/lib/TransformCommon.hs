@@ -28,7 +28,7 @@ import Control.Monad (liftM)
 import Control.Monad.Trans.Class
 import Control.Monad.State (MonadState(..), gets, modify)
 import Control.Monad.Error (MonadError(..))
-import Control.Arrow ((***), (&&&), first, second)
+import Control.Arrow ((&&&), second)
 import Control.Applicative (Applicative(..), (<$>))
 
 import qualified Language.Scade.Syntax as S
@@ -53,25 +53,16 @@ updateVarName :: (BS.ByteString -> BS.ByteString) -> L.Variable -> L.Variable
 updateVarName f (L.Variable (L.SimpIdent x) t) = L.Variable (L.SimpIdent $ f x) t
 
 checkNode :: S.Path -> TransM (L.SimpIdent, L.Type L.SimpIdent)
-checkNode (S.Path p) =
-  let pkgName = init p
-      n = last p
-      n' = fromString n
-  in tryFrom askGlobalPkg pkgName n n' `catchError` (const $ tryFrom askCurrentPkg pkgName n n')
+checkNode = getUserOperator $ \o ->
+  do let n = fromString $ S.userOpName o
+     nodeTranslated <- packageHasNode n
+     if nodeTranslated
+       then (n,) . nodeRetType <$> lookupNode n
+       else return (n, opRetType o)
   where
-    tryFrom asker pkgName n n' =
-      asker >>= \startPkg ->
-      (localPkg $ const startPkg)
-      . openPackage pkgName $
-      do nodeTranslated <- packageHasNode n'
-         if nodeTranslated
-           then (n',) . nodeRetType <$> lookupNode n'
-           else (n',) . opRetType <$> lookupOperator n
-
     lookupNode nName = gets nodes >>= lookupErr ("Unknown node " ++ L.identPretty nName) nName
     nodeRetType = L.mkProductT . map L.varType . L.nodeOutputs
 
-    lookupOperator op = fmap pkgUserOps askCurrentPkg >>= lookupErr ("Unknown operator " ++ op) op
     opRetType (S.UserOpDecl { S.userOpReturns = rets }) = L.mkProductT . concat $ map unrollTypes rets
       where
         unrollTypes (S.VarDecl { S.varNames = vars, S.varType = t }) =

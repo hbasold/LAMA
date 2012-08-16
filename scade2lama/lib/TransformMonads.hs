@@ -7,11 +7,13 @@ import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.String (fromString)
 
-import Control.Monad (liftM)
+import Control.Monad (liftM, MonadPlus(..))
+import Control.Monad.Trans.Class
 import Control.Monad.State (MonadState(..), StateT(..), gets, modify)
 import Control.Monad.Error (MonadError(..), ErrorT(..))
 import Control.Monad.Reader (MonadReader(..), ReaderT(..))
 import Control.Monad.Writer (MonadWriter(..), WriterT(..))
+import Control.Monad.Trans.Maybe (MaybeT(..))
 import Control.Arrow ((&&&), first, second)
 
 import qualified Language.Scade.Syntax as S
@@ -121,6 +123,31 @@ openPackage (p:ps) m =
 -- | Checks if there is a node with the given name in the current package
 packageHasNode :: MonadState Decls m => L.SimpIdent -> m Bool
 packageHasNode x = gets nodes >>= return . Map.member x
+
+-- | Gets the definition for a user defined Operator.
+-- Looks first in the global then in the current scope.
+getUserOperator :: (MonadReader Environment m, MonadState Decls m, MonadError String m)
+                   => (S.Declaration -> m a) -> S.Path -> m a
+getUserOperator f (S.Path p) =
+  let pkgName = init p
+      n = last p
+  in do r <- runMaybeT $
+             (tryFrom askGlobalPkg f pkgName n)
+             `mplus` (tryFrom askCurrentPkg f pkgName n)
+        case r of
+          Nothing -> throwError $ "Unknown operator " ++ n
+          Just res -> return res
+  where
+    tryFrom :: (MonadReader Environment m, MonadState Decls m, MonadError String m)
+               => m Package -> (S.Declaration -> m a) -> [String] -> String -> MaybeT m a
+    tryFrom asker g pkgName n =
+      lift asker >>= \startPkg ->
+      (localPkg $ const startPkg)
+      . openPackage pkgName $
+      do pkg <- liftM pkgUserOps askCurrentPkg
+         case Map.lookup n pkg of
+           Nothing -> mzero
+           Just o -> lift $ g o
 
 addDefaults :: Map L.SimpIdent L.Expr -> TransM ()
 addDefaults defs = modify $ \decls ->
