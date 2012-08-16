@@ -62,16 +62,18 @@ trOpDecl (S.UserOpDecl {
              , S.userOpContent = content }) =
   do inputs <- liftM concat . (liftM $ map (\(x,_,_) -> x)) $ mapM trVarDecl params -- inputs have no default/last
      (outputs, outpDefault, outpLastInit) <- trVarDecls returns
-     addDefaults $ Map.fromList outpDefault
-     addLastInits $ Map.fromList outpLastInit
-     node <- mkNode inputs outputs content
+     node <- mkNode inputs outputs
+             (Map.fromList outpDefault) (Map.fromList outpLastInit)
+             content
      declareNode (fromString name) node
   where
-    mkNode :: [L.Variable] -> [L.Variable] -> S.DataDef -> TransM L.Node
-    mkNode inp outp (S.DataDef { S.dataSignals = sigs, S.dataLocals = locals, S.dataEquations = equations }) = do
+    mkNode :: [L.Variable] -> [L.Variable]
+              -> Map L.SimpIdent L.Expr -> Map L.SimpIdent (Either L.ConstExpr L.Expr)
+              -> S.DataDef -> TransM L.Node
+    mkNode inp outp outpDefault outpLastInit (S.DataDef { S.dataSignals = sigs
+                                                        , S.dataLocals = locals
+                                                        , S.dataEquations = equations }) = do
       (localVars, localsDefault, localsInit) <- trVarDecls locals
-      addDefaults $ Map.fromList localsDefault
-      addLastInits $ Map.fromList localsInit
       let -- create new output variables (x -> x_out) ...
           outp' = map (updateVarName $ flip BS.append $ BS.pack "_out") outp
           -- use old output variables as local variables ...
@@ -82,18 +84,14 @@ trOpDecl (S.UserOpDecl {
                        [] $ zip outp outp'
       (eqs, usedNodes) <-
         liftM (first extract)
-        . localScope (const $ Scope (mkVarMap inp) (mkVarMap outp) (mkVarMap localVars))
+        . localScope (const $ Scope (mkVarMap inp) (mkVarMap outp) (mkVarMap localVars)
+                      (Map.fromList localsDefault `mappend` outpDefault)
+                      (Map.fromList localsInit `mappend` outpLastInit))
         . runWriterT
         $ mapM trEquation equations
       let (flow, automata) = trEqRhs eqs
           (localVars'', stateVars) = separateVars (trEqAsState eqs) localVars'
           precondition = foldl (L.mkExpr2 L.And) (L.constAtExpr $ L.boolConst True) (trEqPrecond eqs)
-
-      -- check if defaults and last inits have been used up
-      remainingDefaults <- gets defaults
-      remainingLastInits <- gets lastInits
-      when (not (Map.null remainingDefaults)) (throwError $ "Unused defaults: " ++ show remainingDefaults)
-      when (not (Map.null remainingLastInits)) (throwError $ "Unused lasts: " ++ show remainingLastInits)
 
       -- FIXME: respect multiple points of usages!
       subNodes <- Map.fromList <$> mapM getNode (Set.toList usedNodes)

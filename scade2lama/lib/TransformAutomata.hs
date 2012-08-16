@@ -29,7 +29,7 @@ import Control.Applicative (Applicative(..), (<$>))
 import Control.Arrow ((&&&), (***), second)
 import Control.Monad.Error (MonadError(..))
 import Control.Monad.Reader (MonadReader)
-import Control.Monad.State (gets)
+
 
 import qualified Language.Scade.Syntax as S
 import qualified Lang.LAMA.Structure.SimpIdentUntyped as L
@@ -169,45 +169,66 @@ trEquation :: S.Equation -> TrackUsedNodes (TrEquation (Maybe L.Flow, (Map L.Sim
 trEquation (S.SimpleEquation lhsIds expr) =
   do let validLhsIds = getValidIds lhsIds
 
-     -- get default equations for all variables on the lhs
-     -- if they are available
-     defaultExprs <- gets defaults
-     let lhsDefaults = Map.fromList
-                       . catMaybes
-                       . map (\x -> fmap (x,) $ Map.lookup x defaultExprs)
-                       $ validLhsIds
-         hasDefault = Map.keysSet lhsDefaults
-     lift $ defaultsUsed hasDefault
-
-     -- get last expressions for the variables on the lhs
-     -- if they are available
-     lastInitExprs <- gets lastInits
-     let canHaveLast = filter (not . (flip Set.member hasDefault)) validLhsIds
-         lhsLastInitExprs = catMaybes
-                            . map (\x -> fmap (x,) $ Map.lookup x lastInitExprs)
-                            $ canHaveLast
-     (lastExprs, lastStateVars, lastStateTrans, lastStateInits) <- liftM unzip4 $ mapM mkLast lhsLastInitExprs
-     lift . lastInitsUsed . Set.fromList . map fst $ lhsLastInitExprs
+     lhsDefaults <- getDefaults validLhsIds
+     let hasDefault = Map.keysSet lhsDefaults
+     (lastExprs, lastStateVars, lastStateTrans, lastStateInits) <- getLasts hasDefault validLhsIds
 
      -- Translate the equation
      eq <- trSimpleEquation lhsIds expr
 
      -- Put everything into the equation
-     let lhsDefaults' = lhsDefaults `mappend` (Map.fromList lastExprs)
+     let lhsDefaults' = lhsDefaults `mappend` lastExprs
      let eq' = eq { trEqStateVars = trEqStateVars eq ++ lastStateVars
-                  , trEqInits = trEqInits eq `mappend` (Map.fromList lastStateInits) }
+                  , trEqInits = trEqInits eq `mappend` lastStateInits }
      return $ fmap (Just &&& const (lhsDefaults', Just $ L.Flow [] lastStateTrans)) eq'
   where
     getValidIds = foldr (\x xs -> case x of
                             S.Named x' -> (fromString x') : xs
                             S.Bottom -> xs) []
 
+trEquation (S.AssertEquation S.Assume _name expr) =
+  lift $ trExpr' expr >>= \pc -> return $ (baseEq $ (Nothing, (Map.empty, Nothing))) { trEqPrecond = [pc] }
+trEquation (S.AssertEquation S.Guarantee _name expr) = $notImplemented
+trEquation (S.EmitEquation body) = $notImplemented
+trEquation (S.StateEquation (S.StateMachine name sts) ret returnsAll) =
+  do autom <- trStateEquation sts ret returnsAll
+     liftM (fmap $ Just *** (id &&& const Nothing)) $ mkSubAutomatonNode name autom
+trEquation (S.ClockedEquation name block ret returnsAll) = $notImplemented
+
+-- | Get default equations for all variables on the lhs
+-- if they are available
+getDefaults :: MonadReader Environment m => [L.SimpIdent] -> m (Map L.SimpIdent L.Expr)
+getDefaults xs =
+  do defaultExprs <- liftM scopeDefaults $ askScope
+     return
+       . Map.fromList
+       . catMaybes
+       . map (\x -> fmap (x,) $ Map.lookup x defaultExprs)
+       $ xs
+
+-- | Get last expressions for the variables on the lhs
+-- if they are available and are not shadowe by a default
+-- expression.
+getLasts :: (MonadReader Environment m, MonadVarGen m, MonadError String m) =>
+            Set L.SimpIdent -> [L.SimpIdent]
+            -> m (Map L.SimpIdent L.Expr, [L.Variable], [L.StateTransition], Map L.SimpIdent L.ConstExpr)
+getLasts hasDefault xs =
+  do lastInitExprs <- liftM scopeLastInits $ askScope
+     let canHaveLast = filter (not . (flip Set.member hasDefault)) xs
+         lhsLastInitExprs = catMaybes
+                            . map (\x -> fmap (x,) $ Map.lookup x lastInitExprs)
+                            $ canHaveLast
+     liftM (\(defs, vs, trans, inits) -> (Map.fromList defs, vs, trans, Map.fromList inits))
+       . liftM unzip4
+       $ mapM mkLast lhsLastInitExprs
+  where
     -- Creates a variable and a flow which transports the value of
     -- a given variable x to the next cycle. This is then used to
     -- generate a default expression which represents the semantics of
     -- partially defined variables.
-    mkLast :: (L.SimpIdent, Either L.ConstExpr L.Expr)
-              -> TrackUsedNodes ((L.SimpIdent, L.Expr), L.Variable, L.StateTransition, (L.SimpIdent, L.ConstExpr))
+    mkLast :: (MonadReader Environment m, MonadVarGen m, MonadError String m) =>
+              (L.SimpIdent, Either L.ConstExpr L.Expr)
+              -> m ((L.SimpIdent, L.Expr), L.Variable, L.StateTransition, (L.SimpIdent, L.ConstExpr))
     mkLast (x, initExpr) =
       do x_1 <- liftM fromString . newVar . (++ "_last") $ L.identString x
          t <- lookupWritable x
@@ -218,15 +239,6 @@ trEquation (S.SimpleEquation lhsIds expr) =
            Right _ -> throwError $ "Non constant last currently non supported"
          let transInit = (x_1, initConst)
          return ((x, L.mkAtomVar x_1), x_1Var, trans, transInit)
-
-trEquation (S.AssertEquation S.Assume _name expr) =
-  lift $ trExpr' expr >>= \pc -> return $ (baseEq $ (Nothing, (Map.empty, Nothing))) { trEqPrecond = [pc] }
-trEquation (S.AssertEquation S.Guarantee _name expr) = $notImplemented
-trEquation (S.EmitEquation body) = $notImplemented
-trEquation (S.StateEquation (S.StateMachine name sts) ret returnsAll) =
-  do autom <- trStateEquation sts ret returnsAll
-     liftM (fmap $ Just *** (id &&& const Nothing)) $ mkSubAutomatonNode name autom
-trEquation (S.ClockedEquation name block ret returnsAll) = $notImplemented
 
 -- | Creates a node which contains the given automaton together with a connecting
 -- flow for the current state and default expressions.
@@ -255,9 +267,19 @@ mkSubAutomatonNode n eq =
            (trEqInits eq)
            (foldl (L.mkExpr2 L.And) (L.constAtExpr $ L.boolConst True) $ trEqPrecond eq)
      (connects, retVar) <- connectNode name inp outp
+
+     -- consider defaults and lasts for the written variables of the
+     -- subautomaton.
+     outpDefaults <- getDefaults $ Set.toList written
+     let hasDefault = Map.keysSet outpDefaults
+     (lastExprs, lastStateVars, lastStateTrans, lastStateInits) <- getLasts hasDefault $ Set.toList written
+     let outpDefaults' = outpDefaults `mappend` lastExprs
+
      return $
-       (baseEq (L.Flow connects [], defaultExpr retVar)) {
+       (baseEq (L.Flow connects lastStateTrans, defaultExpr retVar `mappend` outpDefaults')) {
          trEqLocalVars = maybeToList retVar,
+         trEqStateVars = lastStateVars,
+         trEqInits = lastStateInits,
          trEqSubAutom = [(name, automNode)] }
   where
     mkVars :: MonadError String m =>

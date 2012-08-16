@@ -39,16 +39,12 @@ data Decls = Decls {
      types :: Map TypeAlias (Either Type L.EnumDef),
      -- | Maps an identifier to the declared nodes in the current package
      nodes :: Map L.SimpIdent L.Node,
-     -- | Default expressions for variables
-     defaults :: Map L.SimpIdent L.Expr,
-     -- | Initial values for variables used in last expressions
-     lastInits :: Map L.SimpIdent (Either L.ConstExpr L.Expr),
      -- | Subpackages
      packages :: Map L.SimpIdent Decls
   } deriving Show
 
 emptyDecls :: Decls
-emptyDecls = Decls Map.empty Map.empty Map.empty Map.empty Map.empty
+emptyDecls = Decls Map.empty Map.empty Map.empty
 
 data ScadePackages = ScadePackages
                      { global :: Package
@@ -59,10 +55,14 @@ data Scope = Scope
              { scopeInputs :: Map L.SimpIdent (L.Type L.SimpIdent)
              , scopeOutputs :: Map L.SimpIdent (L.Type L.SimpIdent)
              , scopeLocals :: Map L.SimpIdent (L.Type L.SimpIdent)
+               -- | Default expressions for variables
+             , scopeDefaults :: Map L.SimpIdent L.Expr
+               -- | Initial values for variables used in last expressions
+             , scopeLastInits :: Map L.SimpIdent (Either L.ConstExpr L.Expr)
              } deriving Show
 
 emptyScope :: Scope
-emptyScope = Scope Map.empty Map.empty Map.empty
+emptyScope = Scope Map.empty Map.empty Map.empty Map.empty Map.empty
 
 type Environment = (ScadePackages, Scope)
 type EnvM = ReaderT Environment VarGen
@@ -158,23 +158,6 @@ getUserOperator f (S.Path p) =
          case Map.lookup n pkg of
            Nothing -> mzero
            Just o -> lift $ g o
-
-addDefaults :: Map L.SimpIdent L.Expr -> TransM ()
-addDefaults defs = modify $ \decls ->
-  decls { defaults = defaults decls `Map.union` defs }
-
-defaultsUsed :: Set L.SimpIdent -> TransM ()
-defaultsUsed used = modify $ \decls ->
-  decls { defaults = (defaults decls) \\ (fromSet (const ()) used) }
-
-addLastInits :: Map L.SimpIdent (Either L.ConstExpr L.Expr) -> TransM ()
-addLastInits inits = modify $ \decls ->
-  decls { lastInits = lastInits decls `Map.union` inits }
-
-lastInitsUsed :: Set L.SimpIdent -> TransM ()
-lastInitsUsed used = modify $ \decls ->
-  decls { lastInits = (lastInits decls) \\ (fromSet (const ()) used) }
-
 
 -- | Extends TransM by a writer which tracks used nodes
 type TrackUsedNodes = WriterT (Set S.Path) TransM
