@@ -30,7 +30,7 @@ insNodeWith f ln@(n, l1) g = case match n g of
 
 -- | Inserts a node only if does not already exist
 insNode' :: DynGraph gr => LNode a -> gr a b -> gr a b
-insNode' = insNodeWith (const id)
+insNode' ln@(n, _) g = if not (gelem n g) then insNode ln g else g
 
 insMapNode' :: (Ord a, DynGraph gr) => NodeMap a -> a -> gr a b -> (gr a b, NodeMap a, LNode a)
 insMapNode' m a g =
@@ -67,7 +67,10 @@ insEdgeWith f le@(h, t, l1) g =
 
 -- | Inserts an edge only if it does not already exist
 insEdge' :: DynGraph gr => LEdge b -> gr a b -> gr a b
-insEdge' = insEdgeWith (const id)
+insEdge' le@(h, t, _) g =
+  let s = suc g h
+      exists = any (t ==) s
+  in if exists then g else insEdge le g
 
 insMapEdge' :: (Ord a, DynGraph gr) => NodeMap a -> (a, a, b) -> gr a b -> gr a b
 insMapEdge' m e g =
