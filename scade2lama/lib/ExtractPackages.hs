@@ -1,19 +1,34 @@
-module ExtractPackages (Package(..), PackageMap, extractPackages) where
+{-# LANGUAGE DeriveDataTypeable #-}
+module ExtractPackages (Package(..), PackageMap, extractPackages, prettyPackage) where
 
 import qualified Data.Map as Map
 import Data.Map (Map)
+import Data.Typeable
+import Data.Data
+
+import Text.PrettyPrint
+
 import Control.Monad.State as ST
 
 import Language.Scade.Syntax as S
+import Language.Scade.Pretty as S
 
 data Package = Package
                { pkgTypes :: [TypeDecl]
                , pkgSubPackages :: PackageMap
                , pkgUserOps :: Map String Declaration
                , pkgConsts :: [ConstDecl]
-               } deriving Show
+               } deriving (Show, Typeable, Data)
 
 type PackageMap = Map String Package
+
+prettyPackage :: Package -> Doc
+prettyPackage = prettyScade . mkDecls
+  where
+    mkDecls p =
+      let pkgDecls = map (\(n, p) -> PackageDecl Nothing n (mkDecls p)) . Map.toList $ pkgSubPackages p
+          opDecls = Map.elems $ pkgUserOps p
+      in [TypeBlock $ pkgTypes p, ConstBlock $ pkgConsts p] ++ opDecls ++ pkgDecls
 
 emptyPackage :: Package
 emptyPackage = Package [] Map.empty Map.empty []

@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TemplateHaskell #-}
 {- Rewrites the program stucture s.t. an operator
   is only applied outside of any expression.
   
@@ -17,32 +19,75 @@
 
 module RewriteOperatorApp where
 
+import Development.Placeholders
+
+import qualified Data.Map as Map
 import Data.Data
 import Data.Generics.Schemes (everywhereM)
 import Data.Generics.Aliases (mkM)
+import Prelude hiding (mapM)
+import Data.Traversable (mapM)
 
 import Control.Monad (liftM)
 import Control.Monad.State (StateT(..), modify)
+import Control.Monad.Reader (MonadReader(..), ReaderT(..))
+import Control.Monad.Error (MonadError(..))
 
 import Language.Scade.Syntax as S
 
 import VarGen
+import ExtractPackages
+import TransformMonads
 
-rewrite :: MonadVarGen m => [Declaration] -> m [Declaration]
-rewrite = everywhereM (mkM rewriteDataDef)
+rewrite :: (MonadError String m, MonadVarGen m) => Package -> m Package
+rewrite ps = (flip runReaderT $ ScadePackages ps ps) $ rewritePackage ps
+
+type RewrT = ReaderT ScadePackages
+type LocalRewrT m = StateT ([Equation], [VarDecl]) (RewrT m)
+
+getOpType :: MonadError String m => Path -> LocalRewrT m TypeExpr
+getOpType (Path p) =
+  let o = last p
+      p' = init p
+  in do ps <- ask
+        pkg <- case findPackage (global ps) p' of
+          Nothing -> case findPackage (current ps) p' of
+            Nothing -> throwError $ "Unknow package " ++ show p'
+            Just pkg' -> return pkg'
+          Just pkg' -> return pkg'
+        op <- lookupErr ("Unknown operator " ++ o) o $ pkgUserOps pkg
+        case userOpReturns op of
+          [VarDecl [_] t _ _] -> return t
+          _ -> $notImplemented
+
+findPackage :: Package -> [String] -> Maybe Package
+findPackage curr [] = Just curr
+findPackage curr (p:ps) =
+  case Map.lookup p $ pkgSubPackages curr of
+    Nothing -> Nothing
+    Just next -> findPackage next ps
+
+rewritePackage :: (MonadError String m, MonadVarGen m) => Package -> RewrT m Package
+rewritePackage p = local (\sps -> sps { current = p }) $
+  do subP' <- mapM rewritePackage $ pkgSubPackages p
+     userOps' <- mapM rewriteUserOp $ pkgUserOps p
+     return $ p { pkgSubPackages = subP', pkgUserOps = userOps' }
+
+rewriteUserOp :: (MonadError String m, MonadVarGen m) => Declaration -> RewrT m Declaration
+rewriteUserOp d =
+  do def' <- everywhereM (mkM rewriteDataDef) $ userOpContent d
+     return $ d { userOpContent = def' }
 
 -- | DataDef is the only place where we can put data flow, so
 -- we start here.
-rewriteDataDef :: MonadVarGen m => DataDef -> m DataDef
+rewriteDataDef :: (MonadError String m, MonadVarGen m) => DataDef -> RewrT m DataDef
 rewriteDataDef def =
   do (eqs', (extraEqs, extraVars)) <-
        (flip runStateT ([], [])) $ mapM rewriteEquation $ dataEquations def
      return $ def { dataLocals = dataLocals def ++ extraVars
                   , dataEquations = eqs' ++ extraEqs }
 
-type RewrT = StateT ([Equation], [VarDecl])
-
-rewriteEquation :: MonadVarGen m => Equation -> RewrT m Equation
+rewriteEquation :: (MonadError String m, MonadVarGen m) => Equation -> LocalRewrT m Equation
 rewriteEquation (SimpleEquation lhs expr) = liftM (SimpleEquation lhs) $ rewriteExprTop expr
 rewriteEquation (AssertEquation assertType assertName expr) =
   liftM (AssertEquation assertType assertName) $ rewriteExprAll expr
@@ -53,28 +98,29 @@ rewriteEquation (StateEquation sm returns retAll) =
 rewriteEquation eq = return eq
 
 -- | Avoid unrolling on top level
-rewriteExprTop :: MonadVarGen m => Expr -> RewrT m Expr
+rewriteExprTop :: (MonadError String m, MonadVarGen m) => Expr -> LocalRewrT m Expr
 rewriteExprTop (ApplyExpr op es) = liftM (ApplyExpr op) $ rewriteExprAll es
 rewriteExprTop e = rewriteExprAll e
 
-rewriteExpr :: MonadVarGen m => Expr -> RewrT m Expr
-rewriteExpr app@(ApplyExpr _ _) =
+rewriteExpr :: (MonadError String m, MonadVarGen m) => Expr -> LocalRewrT m Expr
+rewriteExpr app@(ApplyExpr (PrefixOp (PrefixPath p)) _) =
   do appRes <- newVar "opresult"
-     -- FIXME: we need the type of the operator here
-     modify $ \(eqs, vs) -> ((SimpleEquation [Named appRes] app) : eqs, vs)
+     t <- getOpType p
+     modify $ \(eqs, vs) -> ((SimpleEquation [Named appRes] app) : eqs,
+                             (VarDecl [VarId appRes False False] t Nothing Nothing) : vs)
      return . IdExpr $ Path [appRes]
 rewriteExpr e = return e
 
-rewriteExprAll :: (MonadVarGen m, Data a) => a -> RewrT m a
+rewriteExprAll :: (MonadError String m, MonadVarGen m, Data a) => a -> LocalRewrT m a
 rewriteExprAll = everywhereM $ mkM rewriteExpr
 
-rewriteStateMachine :: MonadVarGen m => StateMachine -> RewrT m StateMachine
+rewriteStateMachine :: (MonadError String m, MonadVarGen m) => StateMachine -> LocalRewrT m StateMachine
 rewriteStateMachine (StateMachine smName states) =
   liftM (StateMachine smName) $ mapM rewriteState states
 
 -- | Only rewrites transitions. The flow is already handled
 -- earlier.
-rewriteState :: MonadVarGen m => State -> RewrT m State
+rewriteState :: (MonadError String m, MonadVarGen m) => State -> LocalRewrT m State
 rewriteState s =
   do unless' <- mapM rewriteTransition $ stateUnless s
      until' <- mapM rewriteTransition $ stateUntil s
@@ -82,11 +128,11 @@ rewriteState s =
                 , stateUntil = until' }
 
 -- | Fixme: pull out from ActionEmission and ConditionalFork
-rewriteTransition :: MonadVarGen m => Transition -> RewrT m Transition
+rewriteTransition :: (MonadError String m, MonadVarGen m) => Transition -> LocalRewrT m Transition
 rewriteTransition (Transition cond actions fork) =
   do cond' <- rewriteExprAll cond
      fork' <- rewriteFork fork
      return $ Transition cond' actions fork'
 
-rewriteFork :: MonadVarGen m => Fork -> RewrT m Fork
+rewriteFork :: MonadVarGen m => Fork -> LocalRewrT m Fork
 rewriteFork f = return f

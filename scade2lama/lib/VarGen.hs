@@ -1,7 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
-module VarGen (VarGenT, VarGen, evalVarGenT, evalVarGen, MonadVarGen(..)) where
+module VarGen (VarGenT, VarGen, evalVarGenT, evalVarGen, runInVarGenT, MonadVarGen(..)) where
 
 import Control.Monad.State
 import Data.Functor.Identity
@@ -14,7 +14,7 @@ import Control.Monad.Error (ErrorT, Error)
 import Data.Monoid
 
 newtype VarGenT m a = VarGenT { runVarGenT :: StateT Int m a }
-                    deriving (Functor, Monad, MonadTrans, Applicative)
+                    deriving (Functor, Monad, MonadTrans, Applicative, MonadIO, MonadPlus)
 type VarGen = VarGenT Identity
 
 evalVarGenT :: Monad m => VarGenT m a -> Int -> m a
@@ -22,6 +22,13 @@ evalVarGenT = evalStateT . runVarGenT
 
 evalVarGen :: VarGen a -> Int -> a
 evalVarGen m = runIdentity . (evalVarGenT m)
+
+runInVarGenT :: Monad m => VarGen a -> VarGenT m a
+runInVarGenT a =
+  do i <- VarGenT $ get
+     let (x, i') = (flip runState i) $ runVarGenT a
+     VarGenT $ put i'
+     return x
 
 class Monad m => MonadVarGen m where
   newVar :: String -> m String

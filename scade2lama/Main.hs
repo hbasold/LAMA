@@ -9,16 +9,17 @@ import System.Environment (getArgs)
 import System.Console.GetOpt
 import System.Exit (exitSuccess)
 
+import Control.Monad.Trans.Class
 import Control.Monad.Reader (ReaderT(..))
 import Control.Monad.Error (MonadError(..), ErrorT(..))
 import Control.Monad.Trans.Maybe
 import Control.Monad (when, MonadPlus(..), (<=<))
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class
 
 import Language.Scade.Lexer (alexScanTokens)
 import Language.Scade.Parser (scade)
 import Language.Scade.Syntax
-import Language.Scade.Pretty (prettyScade)
+
 import Text.PrettyPrint (render)
 
 import Options
@@ -30,6 +31,7 @@ import qualified RewriteClockedEquation as Clocked
 import qualified RewriteOperatorApp as OpApp
 import qualified UnrollTemporal as Unroll
 import qualified UnrollFby as Fby
+import ExtractPackages
 import Transform
 import Lang.LAMA.Pretty
 
@@ -109,29 +111,33 @@ runFile :: Options -> FilePath -> IO (Maybe String)
 runFile opts f = readFile f >>= runMaybeT . run opts f
 
 run :: Options -> FilePath -> String -> MaybeT IO String
-run opts f inp = do
-  s <- checkScadeError $ scade $ alexScanTokens inp
+run opts f inp = (flip evalVarGenT 0) $ do
+  s <- lift $ checkScadeError $ scade $ alexScanTokens inp
   liftIO $ when (optDumpScade opts) (putStrLn $ show s)
-  r <- checkErr "Rewrite error:" $ (flip evalVarGen 0) $ (flip runReaderT opts) $ (runErrorT $ rewrite s)
-  liftIO $ when (optDumpRewrite opts) (putStrLn $ render $ prettyScade r)
-  l <- checkErr "Tranform error:" $ transform (optTopNode opts) r
+  r <- checkErr "Rewrite error:" =<< (runInVarGenT $ (flip runReaderT opts) $ runErrorT $ rewrite s)
+  let ps = extractPackages r
+  ps' <- checkErr "Rewrite error:" =<< (runInVarGenT $ runErrorT $ rewrite2 ps)
+  liftIO $ when (optDumpRewrite opts) (putStrLn $ render $ prettyPackage ps')
+  l <- checkErr "Tranform error:" $ transform (optTopNode opts) ps'
   liftIO $ when (optDumpLama opts) (putStrLn $ show l)
   return $ prettyLama l
 
 checkScadeError :: [Declaration] -> MaybeT IO [Declaration]
 checkScadeError = return
 
-checkErr :: String -> Either String a -> MaybeT IO a
+checkErr :: (MonadPlus m, MonadIO m) => String -> Either String a -> m a
 checkErr prefix (Left err) = (liftIO . hPutStrLn stderr $ prefix ++ " " ++ err) >> mzero
 checkErr _ (Right x) = return x
 
 rewrite :: [Declaration] -> ErrorT String (ReaderT Options VarGen) [Declaration]
 rewrite = -- Temporal.rewrite
           -- <=<
-          OpApp.rewrite
-          <=< Unroll.rewrite
+          Unroll.rewrite
           <=< Fby.rewrite
           <=< Inline.rewrite -- for now: after clock equation rewrite because that produces states
           <=< Clocked.rewrite
           <=< return . FlattenList.rewrite
           <=< return . Times.rewrite
+
+rewrite2 :: Package -> ErrorT String VarGen Package
+rewrite2 = OpApp.rewrite

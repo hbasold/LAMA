@@ -113,10 +113,9 @@ trOpDecl _ = undefined
 mkPath :: String -> S.Path
 mkPath = S.Path . splitOn "::"
 
-transform :: String -> [S.Declaration] -> Either String L.Program
-transform topNode ds =
-  let ds' = extractPackages ds
-  in case runTransM (getNode $ mkPath $ topNode) ds' of
+transform :: String -> Package -> Either String L.Program
+transform topNode ps =
+  case runTransM (getNode $ mkPath $ topNode) ps of
     Left e -> Left e
     Right ((topNodeName, n), decls) ->
       do (flowLocals, flowStates, flowInit, topFlow) <- mkFreeFlow (topNodeName, n)
