@@ -6,6 +6,7 @@ module TransformSimple (trSimpleEquation) where
 import Development.Placeholders
 
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import Data.String (fromString)
 import Data.Maybe (maybeToList)
 
@@ -30,16 +31,18 @@ trSimpleEquation lhsIds expr = do
     LocalExpr (expr', stateInit) -> case stateInit of
       -- Simple expression, no initialisation -> only do pattern matching
       Nothing -> mkLocalAssigns ids (Left expr') >>= \(a, v) ->
-        return $ TrEquation (L.Flow a []) (maybeToList v)  [] Map.empty [] []
+        return $ (baseEq $ L.Flow a []) { trEqLocalVars = (maybeToList v) }
       -- If we get a non-state expression with an initialisation, we
       -- introduce a stream that is true only in the first step and
       -- use that to derive the initialisation.
       Just i ->
         do (expr'', initVar, initFlow, stateInits) <- mkInit i expr'
            (a, v) <- mkLocalAssigns ids (Left expr'')
-           return $ TrEquation (concatFlows (L.Flow a []) initFlow)
-             (maybeToList v) [initVar]
-             stateInits [] []
+           return $
+             (baseEq $ concatFlows (L.Flow a []) initFlow) {
+               trEqLocalVars = (maybeToList v)
+               , trEqStateVars = [initVar]
+               , trEqInits = stateInits }
     StateExpr (expr', stateInit) -> case ids of
       [Nothing] -> $notImplemented
       [Just x] ->
@@ -48,16 +51,22 @@ trSimpleEquation lhsIds expr = do
         -- * constant initialisation -> we use the system of LAMA
         -- * non-constant init -> we generate a guarded expression
         case stateInit of
-          Nothing -> return $ baseEq (L.Flow [] [L.StateTransition x expr'])
-          Just (Left i) -> return $ TrEquation (L.Flow [] [L.StateTransition x expr']) [] [] (Map.singleton x i) [] []
+          Nothing -> return $ (baseEq $ L.Flow [] [L.StateTransition x expr']) { trEqAsState = Set.singleton x }
+          Just (Left i) -> return $
+                           (baseEq $ L.Flow [] [L.StateTransition x expr']) {
+                             trEqInits = Map.singleton x i
+                             , trEqAsState = Set.singleton x }
           Just (Right ie) ->
             do (expr'', initVar, initFlow, stateInits) <- mkInit ie expr'
-               return $ TrEquation (concatFlows (L.Flow [] [L.StateTransition x expr'']) initFlow)
-                 [] [initVar] stateInits [] []
+               return $
+                 (baseEq $ (L.Flow [] [L.StateTransition x expr'']) `concatFlows` initFlow) {
+                   trEqStateVars = [initVar]
+                   , trEqInits = stateInits
+                   , trEqAsState = Set.singleton x }
       _ -> throwError $ "Cannot pattern match in state equation"
     NodeExpr rhs ->
       mkLocalAssigns ids (Right rhs) >>= \(a, v) ->
-      return $ TrEquation (L.Flow a []) (maybeToList v) [] Map.empty [] []
+      return $ (baseEq $ L.Flow a []) { trEqLocalVars = maybeToList v }
   where
     -- If we get a non-state expression with an initialisation, we
     -- introduce a stream that is true only in the first step and

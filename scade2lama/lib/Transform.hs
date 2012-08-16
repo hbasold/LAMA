@@ -102,7 +102,7 @@ trOpDecl (S.UserOpDecl {
         . runWriterT
         $ mapM trEquation equations
       let (flow, automata) = trEqRhs eqs
-          (localVars'', stateVars) = separateVars (trEqInits eqs) localVars'
+          (localVars'', stateVars) = separateVars (trEqAsState eqs) localVars'
           precondition = foldl (L.mkExpr2 L.And) (L.constAtExpr $ L.boolConst True) (trEqPrecond eqs)
       -- FIXME: respect multiple points of usages!
       subNodes <- Map.fromList <$> mapM getNode (Set.toList usedNodes)
@@ -173,7 +173,7 @@ trEquation :: S.Equation -> TrackUsedNodes (TrEquation TrEqCont)
 trEquation (S.SimpleEquation lhsIds expr) =
   fmap SimpleEq <$> trSimpleEquation lhsIds expr
 trEquation (S.AssertEquation S.Assume _name expr) =
-  lift $ trExpr' expr >>= \pc -> return $ TrEquation NonExecutable [] [] Map.empty [] [pc]
+  lift $ trExpr' expr >>= \pc ->  return $ (baseEq NonExecutable) { trEqPrecond = [pc] }
 trEquation (S.AssertEquation S.Guarantee _name expr) = $notImplemented
 trEquation (S.EmitEquation body) = $notImplemented
 trEquation (S.StateEquation (S.StateMachine _name sts) ret returnsAll) =

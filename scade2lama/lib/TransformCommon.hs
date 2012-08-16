@@ -14,6 +14,7 @@ import Development.Placeholders
 import Prelude hiding (mapM, sequence)
 
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 import Data.String (fromString)
 import Data.List (intercalate)
 import Data.Ratio
@@ -95,10 +96,10 @@ trVarDecls decls =
   do (vs, defs, is) <- liftM unzip3 $ mapM trVarDecl decls
      return (concat vs, concat defs, concat is)
 
-separateVars :: L.StateInit -> [L.Variable] -> ([L.Variable], [L.Variable])
-separateVars i =
+separateVars :: Set.Set L.SimpIdent -> [L.Variable] -> ([L.Variable], [L.Variable])
+separateVars asState =
   foldr (\v (ls, sts) ->
-          if (L.varIdent v `Map.member` i)
+          if (L.varIdent v `Set.member` asState)
           then (ls, v : sts) else (v : ls, sts))
   ([], [])
 

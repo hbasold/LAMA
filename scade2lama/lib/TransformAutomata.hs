@@ -144,7 +144,7 @@ extractDataDef (S.DataDef sigs vars eqs) =
                             (maybe gf1 (concatFlows gf1) gf2,
                              default1 `mappend` default2))
                 (L.Flow [] [], Map.empty) trEqs
-         (localVars'', stateVars) = separateVars (trEqInits trEq) localVars'
+         (localVars'', stateVars) = separateVars (trEqAsState trEq) localVars'
      return $ trEq { trEqLocalVars = (trEqLocalVars trEq) ++ localVars''
                    , trEqStateVars = (trEqStateVars trEq) ++ stateVars }
   where
@@ -160,13 +160,13 @@ extractDataDef (S.DataDef sigs vars eqs) =
     renameVar r v = L.Variable (fromString . r . L.identString $ L.varIdent v) (L.varType v)
 
 -- | Translates an equation inside a state. This may
--- produce a flow to be executed in that state and one
--- that has to be pushed to all other states.
+-- produce a flow to be executed in that state and
+-- a set of default values.
 trEquation :: S.Equation -> TrackUsedNodes (TrEquation (Maybe L.Flow, Map L.SimpIdent L.Expr))
 trEquation (S.SimpleEquation lhsIds expr) =
   fmap (Just &&& const Map.empty) <$> trSimpleEquation lhsIds expr
 trEquation (S.AssertEquation S.Assume _name expr) =
-  lift $ trExpr' expr >>= \pc -> return $ TrEquation (Nothing, Map.empty) [] [] Map.empty [] [pc]
+  lift $ trExpr' expr >>= \pc -> return $ (baseEq $ (Nothing, Map.empty)) { trEqPrecond = [pc] }
 trEquation (S.AssertEquation S.Guarantee _name expr) = $notImplemented
 trEquation (S.EmitEquation body) = $notImplemented
 trEquation (S.StateEquation (S.StateMachine name sts) ret returnsAll) =
