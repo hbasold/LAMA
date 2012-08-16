@@ -8,8 +8,9 @@ import Data.Monoid
 import qualified Lang.LAMA.Identifier as L
 import qualified Lang.LAMA.Structure.SimpIdentUntyped as L
 
--- An equation has a content and set of local and state variables
--- together with the initialisation of the state variables.
+-- | Represents the result of a translation of an equation.
+-- In consists what has been produced as immediate rhs and
+-- what has to be put into or changed in the surrounding scope.
 data TrEquation a = TrEquation
                     { trEqRhs :: a -- ^ Translated rhs of an equation
                     , trEqLocalVars :: [L.Variable] -- ^ Local variables to be declared

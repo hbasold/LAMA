@@ -24,7 +24,7 @@ import Control.Monad.State (gets)
 import Control.Arrow (first)
 import Control.Applicative ((<$>))
 import Control.Monad.Writer (WriterT(..))
-import Control.Monad.Error (MonadError)
+import Control.Monad.Error (MonadError(..))
 
 import qualified Language.Scade.Syntax as S
 import qualified Lang.LAMA.Structure.SimpIdentUntyped as L
@@ -88,6 +88,13 @@ trOpDecl (S.UserOpDecl {
       let (flow, automata) = trEqRhs eqs
           (localVars'', stateVars) = separateVars (trEqAsState eqs) localVars'
           precondition = foldl (L.mkExpr2 L.And) (L.constAtExpr $ L.boolConst True) (trEqPrecond eqs)
+
+      -- check if defaults and last inits have been used up
+      remainingDefaults <- gets defaults
+      remainingLastInits <- gets lastInits
+      when (not (Map.null remainingDefaults)) (throwError $ "Unused defaults: " ++ show remainingDefaults)
+      when (not (Map.null remainingLastInits)) (throwError $ "Unused lasts: " ++ show remainingLastInits)
+
       -- FIXME: respect multiple points of usages!
       subNodes <- Map.fromList <$> mapM getNode (Set.toList usedNodes)
       return $ L.Node inp outp'

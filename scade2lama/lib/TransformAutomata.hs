@@ -17,7 +17,7 @@ import Data.Tuple (swap)
 import Data.Foldable (foldlM)
 import Data.Traversable (mapAccumL)
 import Data.Monoid
-import Data.Maybe (maybeToList)
+import Data.Maybe (maybeToList, catMaybes)
 import Data.List (partition, unzip4)
 
 import Data.Generics.Schemes
@@ -29,6 +29,7 @@ import Control.Applicative (Applicative(..), (<$>))
 import Control.Arrow ((&&&), (***), first, second)
 import Control.Monad.Error (MonadError(..))
 import Control.Monad.Reader (MonadReader)
+import Control.Monad.State (gets)
 
 import qualified Language.Scade.Syntax as S
 import qualified Lang.LAMA.Structure.SimpIdentUntyped as L
@@ -74,28 +75,28 @@ type StateGr = Gr LocationData EdgeData
 -- and a "resume" transition the second. Implicit self transitions are
 -- "resume" transitions. For an initial state the initialisation copy
 -- is the new initial state.
-buildStateGraph :: [S.State] -> TrackUsedNodes (StateGr, Map L.SimpIdent L.Expr)
+buildStateGraph :: [S.State] -> TrackUsedNodes (StateGr, Map L.SimpIdent L.Expr, L.Flow)
 buildStateGraph sts =
-  do (locs, defaultFlows) <- liftM unzip . extractLocations $ zip [0..] sts
+  do (locs, (defaultFlows, globalFlow)) <- extractLocations $ zip [0..] sts
      let nodeMap = Map.fromList $ map (swap . second stName) locs
      es <- lift $ extractEdges nodeMap sts
-     return (mkGraph locs es, mconcat defaultFlows)
+     return (mkGraph locs es, defaultFlows, globalFlow)
 
 -- | Extracts all locations from the given states together with a default
--- flow to be placed in every other location.
-extractLocations :: [(Node, S.State)] -> TrackUsedNodes [(TrLocation, Map L.SimpIdent L.Expr)]
-extractLocations = mapM extractLocation
+-- flow and a flow which has to placed in the surrounding scope.
+extractLocations :: [(Node, S.State)] -> TrackUsedNodes ([TrLocation], (Map L.SimpIdent L.Expr, L.Flow))
+extractLocations = liftM (second ((mconcat *** mconcat) . unzip) . unzip) . mapM extractLocation
 
-extractLocation :: (Node, S.State) -> TrackUsedNodes (TrLocation, Map L.SimpIdent L.Expr)
+extractLocation :: (Node, S.State) -> TrackUsedNodes (TrLocation, (Map L.SimpIdent L.Expr, L.Flow))
 extractLocation (n, s) =
   do eq <- extractDataDef (S.stateData s)
      let flow = fmap fst eq
-         defaultFlow = snd $ trEqRhs eq
+         (defaultFlow, surroundingFlow) = snd $ trEqRhs eq
      return ((n, LocationData
                 (fromString $ S.stateName s)
                 (S.stateInitial s) (S.stateFinal s)
                 flow),
-             defaultFlow)
+             (defaultFlow, surroundingFlow))
 
 -- | Extracts the edges from a given set of Scade states. This may result in
 -- an additional data flow to be placed outside of the automaton which
@@ -127,7 +128,7 @@ extractEdges stateNodeMap sts =
 -- generated node.
 -- Gives back the flow to be placed in the current state and
 -- default expressions.
-extractDataDef :: S.DataDef -> TrackUsedNodes (TrEquation (L.Flow, Map L.SimpIdent L.Expr))
+extractDataDef :: S.DataDef -> TrackUsedNodes (TrEquation (L.Flow, (Map L.SimpIdent L.Expr, L.Flow)))
 extractDataDef (S.DataDef sigs vars eqs) =
   do (localVars, localsDefault, localsInit) <- lift $ trVarDecls vars
      -- Fixme: we ignore last and default in states for now
@@ -140,10 +141,11 @@ extractDataDef (S.DataDef sigs vars eqs) =
          eqs' = everywhere (mkT $ rename varMap) eqs
      trEqs <- localScope (\sc -> sc { scopeLocals = scopeLocals sc `mappend` (mkVarMap localVars) })
               $ mapM trEquation eqs'
-     let trEq = foldlTrEq (\(gf1, default1) (gf2, default2) ->
-                            (maybe gf1 (concatFlows gf1) gf2,
-                             default1 `mappend` default2))
-                (L.Flow [] [], Map.empty) trEqs
+     let trEq = foldlTrEq (\(stateFlow, (default1, globalFlow)) (stateFlow2, (default2, globalFlow2)) ->
+                            (maybe stateFlow (mappend stateFlow) stateFlow2,
+                             (default1 `mappend` default2,
+                              maybe globalFlow (mappend globalFlow) globalFlow2)))
+                (mempty, (Map.empty, mempty)) trEqs
          (localVars'', stateVars) = separateVars (trEqAsState trEq) localVars'
      return $ trEq { trEqLocalVars = (trEqLocalVars trEq) ++ localVars''
                    , trEqStateVars = (trEqStateVars trEq) ++ stateVars }
@@ -160,18 +162,68 @@ extractDataDef (S.DataDef sigs vars eqs) =
     renameVar r v = L.Variable (fromString . r . L.identString $ L.varIdent v) (L.varType v)
 
 -- | Translates an equation inside a state. This may
--- produce a flow to be executed in that state and
--- a set of default values.
-trEquation :: S.Equation -> TrackUsedNodes (TrEquation (Maybe L.Flow, Map L.SimpIdent L.Expr))
+-- produce a flow to be executed in that state,
+-- a set of default values and a flow which has to
+-- be put in the surrounding scope.
+trEquation :: S.Equation -> TrackUsedNodes (TrEquation (Maybe L.Flow, (Map L.SimpIdent L.Expr, Maybe L.Flow)))
 trEquation (S.SimpleEquation lhsIds expr) =
-  fmap (Just &&& const Map.empty) <$> trSimpleEquation lhsIds expr
+  do let validLhsIds = getValidIds lhsIds
+
+     -- get default equations for all variables on the lhs
+     -- if they are available
+     defaultExprs <- gets defaults
+     let lhsDefaults = Map.fromList
+                       . catMaybes
+                       . map (\x -> fmap (x,) $ Map.lookup x defaultExprs)
+                       $ validLhsIds
+     lift . defaultsUsed $ Map.keysSet lhsDefaults
+
+     -- get last expressions for the variables on the lhs
+     -- if they are available
+     lastInitExprs <- gets lastInits
+     let lhsLastInitExprs = catMaybes
+                            . map (\x -> fmap (x,) $ Map.lookup x lastInitExprs)
+                            $ validLhsIds
+     (lastExprs, lastStateVars, lastStateTrans, lastStateInits) <- liftM unzip4 $ mapM mkLast lhsLastInitExprs
+     lift . lastInitsUsed . Set.fromList . map fst $ lhsLastInitExprs
+
+     -- Translate the equation
+     eq <- trSimpleEquation lhsIds expr
+
+     -- Put everything into the equation
+     let lhsDefaults' = lhsDefaults `mappend` (Map.fromList lastExprs)
+     let eq' = eq { trEqStateVars = trEqStateVars eq ++ lastStateVars
+                  , trEqInits = trEqInits eq `mappend` (Map.fromList lastStateInits) }
+     return $ fmap (Just &&& const (lhsDefaults', Just $ L.Flow [] lastStateTrans)) eq'
+  where
+    getValidIds = foldr (\x xs -> case x of
+                            S.Named x' -> (fromString x') : xs
+                            S.Bottom -> xs) []
+
+    -- Creates a variable and a flow which transports the value of
+    -- a given variable x to the next cycle. This is then used to
+    -- generate a default expression which represents the semantics of
+    -- partially defined variables.
+    mkLast :: (L.SimpIdent, Either L.ConstExpr L.Expr)
+              -> TrackUsedNodes ((L.SimpIdent, L.Expr), L.Variable, L.StateTransition, (L.SimpIdent, L.ConstExpr))
+    mkLast (x, initExpr) =
+      do x_1 <- liftM fromString . newVar . (++ "_last") $ L.identString x
+         t <- lookupWritable x
+         let x_1Var = L.Variable x_1 t
+             trans = L.StateTransition x_1 $ L.mkAtomVar x
+         initConst <- case initExpr of
+           Left c -> return c
+           Right _ -> throwError $ "Non constant last currently non supported"
+         let transInit = (x_1, initConst)
+         return ((x, L.mkAtomVar x_1), x_1Var, trans, transInit)
+
 trEquation (S.AssertEquation S.Assume _name expr) =
-  lift $ trExpr' expr >>= \pc -> return $ (baseEq $ (Nothing, Map.empty)) { trEqPrecond = [pc] }
+  lift $ trExpr' expr >>= \pc -> return $ (baseEq $ (Nothing, (Map.empty, Nothing))) { trEqPrecond = [pc] }
 trEquation (S.AssertEquation S.Guarantee _name expr) = $notImplemented
 trEquation (S.EmitEquation body) = $notImplemented
 trEquation (S.StateEquation (S.StateMachine name sts) ret returnsAll) =
   do autom <- trStateEquation sts ret returnsAll
-     liftM (fmap $ Just *** id) $ mkSubAutomatonNode name autom
+     liftM (fmap $ Just *** (id &&& const Nothing)) $ mkSubAutomatonNode name autom
 trEquation (S.ClockedEquation name block ret returnsAll) = $notImplemented
 
 -- | Creates a node which contains the given automaton together with a connecting
@@ -285,11 +337,11 @@ getDeps (L.Project x _) = Set.singleton x
 -- FIXME: support pre/last
 trStateEquation :: [S.State] -> [String] -> Bool -> TrackUsedNodes (TrEquation (L.Automaton, L.Flow))
 trStateEquation sts ret returnsAll =
-  do (stGr, defaultExprs1) <- buildStateGraph sts
+  do (stGr, defaultExprs1, globalFlow) <- buildStateGraph sts
      (stGr', condFlow, defaultExprs2) <- rewriteWeak stGr
      let stGr'' = strongAfterWeak stGr'
      autom <- mkAutomaton stGr'' (defaultExprs1 `mappend` defaultExprs2)
-     return $ fmap (,condFlow) autom
+     return $ fmap (,globalFlow `mappend` condFlow) autom
 
 -- | Rewrites a weak transition such that the condition
 -- is moved into a state transition and the new condition

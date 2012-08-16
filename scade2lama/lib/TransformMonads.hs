@@ -4,7 +4,7 @@ module TransformMonads where
 import qualified  Data.Set as Set
 import Data.Set (Set)
 import qualified Data.Map as Map
-import Data.Map (Map)
+import Data.Map (Map, (\\))
 import Data.String (fromString)
 
 import Control.Monad (liftM, MonadPlus(..))
@@ -23,6 +23,9 @@ import qualified Lang.LAMA.Types as L
 
 import VarGen
 import ExtractPackages as Extract
+
+fromSet :: Ord k => (k -> a) -> Set k -> Map k a
+fromSet f = Map.fromList . map (id &&& f) . Set.toList
 
 lookupErr :: (MonadError e m, Ord k) => e -> k -> Map k v -> m v
 lookupErr err k m = case Map.lookup k m of
@@ -86,6 +89,14 @@ askScope = reader snd
 
 localScope :: (MonadReader Environment m) => (Scope -> Scope) -> m a -> m a
 localScope = local . second
+
+lookupWritable :: (MonadReader Environment m, MonadError String m)
+                  => L.SimpIdent -> m (L.Type L.SimpIdent)
+lookupWritable x =
+  do sc <- askScope
+     case Map.lookup x $ scopeOutputs sc of
+       Nothing -> lookupErr ("Unknown variable" ++ L.identPretty x) x $ scopeLocals sc
+       Just t -> return t
 
 mkVarMap :: [L.Variable] -> Map L.SimpIdent (L.Type L.SimpIdent)
 mkVarMap = Map.fromList . map (L.varIdent &&& L.varType)
@@ -152,9 +163,18 @@ addDefaults :: Map L.SimpIdent L.Expr -> TransM ()
 addDefaults defs = modify $ \decls ->
   decls { defaults = defaults decls `Map.union` defs }
 
+defaultsUsed :: Set L.SimpIdent -> TransM ()
+defaultsUsed used = modify $ \decls ->
+  decls { defaults = (defaults decls) \\ (fromSet (const ()) used) }
+
 addLastInits :: Map L.SimpIdent (Either L.ConstExpr L.Expr) -> TransM ()
 addLastInits inits = modify $ \decls ->
   decls { lastInits = lastInits decls `Map.union` inits }
+
+lastInitsUsed :: Set L.SimpIdent -> TransM ()
+lastInitsUsed used = modify $ \decls ->
+  decls { lastInits = (lastInits decls) \\ (fromSet (const ()) used) }
+
 
 -- | Extends TransM by a writer which tracks used nodes
 type TrackUsedNodes = WriterT (Set S.Path) TransM
