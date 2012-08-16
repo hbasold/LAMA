@@ -10,7 +10,7 @@ Library
   Build-Depends: base, containers, mtl, bytestring, natural-numbers,
     transformers, pretty, array, fgl, text, filepath, placeholders
   Hs-Source-Dirs: . lib
-  GHC-Options: -Wall
+  GHC-Options: -Wall -O2
   exposed-modules:
     Data.Graph.Inductive.GenShow
     Lang.LAMA.Identifier

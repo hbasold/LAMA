@@ -1,21 +1,26 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 module Data.Graph.Inductive.NodeMapSupport (
-  module Data.Graph.Inductive.NodeMap,
-  NodeMapM, insNodeWith, insNode', insMapNode', insMapNodes',
+  Gr.NodeMap,
+  NodeMapM, runNodeMapM, insNodeWith, insNode', insMapNode', insMapNodes',
   insMapNodeM', insMapNodesM',
   insEdgeWith, insEdge', insMapEdge', insMapEdgeM'
 ) where
 
-import Data.Graph.Inductive.NodeMap hiding (NodeMapM)
+import Data.Graph.Inductive.NodeMap as Gr hiding (NodeMapM)
 import Data.Graph.Inductive.Graph
-import Control.Monad.State.Lazy
+import Control.Monad.State.Strict
 import Data.Foldable (find)
 
 -- | We redefine 'Data.Graph.Inductive.NodeMap.NodeMapM' here, because
 --    the original type alias does not allow leaving the monadic return type
 --    unbound.
 type NodeMapM a b gr = State (NodeMap a, gr a b)
+
+-- | Run a construction; return the value of the computation, the modified
+-- 'NodeMap', and the modified 'Graph'.
+runNodeMapM :: (DynGraph g, Ord a) => g a b -> NodeMapM a b g r -> (r, (NodeMap a, g a b))
+runNodeMapM g m = runState m (fromGraph g, g)
 
 -- | Insert a node into a graph. If it already exists updates the label with f new_label old_label.
 insNodeWith :: DynGraph gr => (a -> a -> a) -> LNode a -> gr a b -> gr a b
@@ -30,7 +35,7 @@ insNode' = insNodeWith (const id)
 insMapNode' :: (Ord a, DynGraph gr) => NodeMap a -> a -> gr a b -> (gr a b, NodeMap a, LNode a)
 insMapNode' m a g =
     let (n, m') = mkNode m a
-    in (insNode' n g, m', n)
+    in (insNode' n $! g, m', n)
 
 insMapNodes' :: (Ord a, DynGraph gr) => NodeMap a -> [a] -> gr a b -> (gr a b, NodeMap a, [LNode a])
 insMapNodes' m as g =
@@ -67,7 +72,7 @@ insEdge' = insEdgeWith (const id)
 insMapEdge' :: (Ord a, DynGraph gr) => NodeMap a -> (a, a, b) -> gr a b -> gr a b
 insMapEdge' m e g =
   let (Just e') = mkEdge m e
-  in insEdge' e' g
+  in insEdge' e' $! g
 
 insMapEdgeM' :: (Ord a, DynGraph gr, MonadState (NodeMap a, gr a b) m) => (a, a, b) -> m ()
 insMapEdgeM' e = modify $ \(m, g) -> (m, insMapEdge' m e g)

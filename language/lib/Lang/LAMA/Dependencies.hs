@@ -271,7 +271,7 @@ mkDepsProgram p = do
   nodeDeps <- mkDepsMapNodes consts (declsNode $ progDecls p)
 
   let vars = (declsVarMap $ progDecls p) `Map.union` (fmap (const Constant) consts)
-  let (mes, (vs, progFlowDeps)) = G.run G.empty $ runReaderT (runErrorT $ mkDepsNodeParts (progFlow p) [] []) vars
+  let (mes, (vs, progFlowDeps)) = G.runNodeMapM G.empty $ runReaderT (runErrorT $ mkDepsNodeParts (progFlow p) [] []) vars
   es <- mes
   dagProgDeps <- checkCycles progFlowDeps
   return $ InterProgDeps nodeDeps dagProgDeps vs es
@@ -282,7 +282,7 @@ mkDepsNode consts node = do
 
   let vars = varMap node `Map.union` (fmap (const Constant) consts)
   let (mes, (vs, deps)) =
-        G.run G.empty
+        G.runNodeMapM G.empty
         . (flip runReaderT vars)
         $ runErrorT
         $ mkDepsNodeParts (nodeFlow node) (nodeOutputDefs node) (Map.toList $ nodeAutomata node)
