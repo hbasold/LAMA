@@ -160,7 +160,7 @@ getUserOperator f (S.Path p) =
            Just o -> lift $ g o
 
 -- | Extends TransM by a writer which tracks used nodes
-type TrackUsedNodes = WriterT (Set S.Path) TransM
+type TrackUsedNodes = WriterT (Map L.SimpIdent S.Path) TransM
 
-tellNode :: MonadWriter (Set S.Path) m => S.Path -> m ()
-tellNode = tell . Set.singleton
+tellNode :: MonadWriter (Map L.SimpIdent S.Path) m => L.SimpIdent -> S.Path -> m ()
+tellNode x = tell . Map.singleton x

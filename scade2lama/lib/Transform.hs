@@ -10,7 +10,6 @@ import Prelude hiding (mapM)
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.String (fromString)
-import qualified  Data.Set as Set
 import qualified Data.ByteString.Char8 as BS
 import Data.List.Split (splitOn)
 import Data.Maybe (maybeToList)
@@ -93,8 +92,7 @@ trOpDecl (S.UserOpDecl {
           (localVars'', stateVars) = separateVars (trEqAsState eqs) localVars'
           precondition = foldl (L.mkExpr2 L.And) (L.constAtExpr $ L.boolConst True) (trEqPrecond eqs)
 
-      -- FIXME: respect multiple points of usages!
-      subNodes <- Map.fromList <$> mapM getNode (Set.toList usedNodes)
+      subNodes <- mapM (liftM snd . getNode) usedNodes
       return $ L.Node inp outp'
         (L.Declarations (subNodes `Map.union` (Map.fromList $ trEqSubAutom eqs))
          (localVars'' ++ trEqLocalVars eqs) (stateVars ++ trEqStateVars eqs))

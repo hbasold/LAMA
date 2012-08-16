@@ -38,6 +38,7 @@ import qualified Lang.LAMA.Identifier as L
 import qualified Lang.LAMA.Types as L
 
 import TransformMonads
+import VarGen
 
 declareNode :: (MonadState Decls m) => L.SimpIdent -> L.Node -> m ()
 declareNode x n = modify (\d -> d { nodes = Map.insert x n $ nodes d })
@@ -193,7 +194,10 @@ trExpr' e = error $ "trExpr: should have been resolved in preprocessing: " ++ sh
 
 trOpApply :: S.Operator -> [L.Expr] -> TrackUsedNodes (L.SimpIdent, [L.Expr], L.Type L.SimpIdent)
 trOpApply (S.PrefixOp (S.PrefixPath p)) es =
-          lift (checkNode p) >>= \(x, t) -> return (x, es, t) <* tellNode p
+  do (x, t) <- lift $ checkNode p
+     x' <- liftM fromString . newVar $ L.identString x
+     tellNode x' p
+     return (x', es, t)
 trOpApply _ _ = $notImplemented
 
 trConstExpr :: (MonadError String m) => S.Expr -> m L.ConstExpr
