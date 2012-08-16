@@ -298,7 +298,7 @@ trStateEquation sts ret returnsAll =
 rewriteWeak :: MonadVarGen m => StateGr
                -> m (StateGr, L.Flow, Map L.SimpIdent L.Expr)
 rewriteWeak = (uncurry $ foldlM go)
-              . ((, L.Flow [] [], Map.empty) &&& Gr.nodes)
+              . ((, mempty, Map.empty) &&& Gr.nodes)
   where
     go (gr, L.Flow [] ts, defaultExprs) currNode =
       do let (Just c, gr') = Gr.match currNode gr
@@ -340,7 +340,7 @@ rewriteWeak = (uncurry $ foldlM go)
                     inStFlow = L.Flow [L.InstantExpr inSt $ L.constAtExpr $ L.boolConst True] []
                     wasStEq = L.StateTransition wasSt $ L.mkAtomVar inSt
                     trEq = stTrEquation stData
-                    trEq' = trEq { trEqRhs = concatFlows (trEqRhs trEq) inStFlow
+                    trEq' = trEq { trEqRhs = (trEqRhs trEq) `mappend` inStFlow
                                  , trEqLocalVars = trEqLocalVars trEq ++ [L.Variable inSt L.boolT]
                                  , trEqStateVars = trEqStateVars trEq ++ [L.Variable wasSt L.boolT]
                                  , trEqInits = trEqInits trEq

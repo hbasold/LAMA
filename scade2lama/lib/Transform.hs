@@ -100,14 +100,14 @@ trOpDecl (S.UserOpDecl {
     extract = foldlTrEq mergeEq (L.Flow [] [], Map.empty)
       where
         mergeEq (f1, a1) (SimpleEq f2) =
-          (concatFlows f1 f2, a1)
+          (f1 `mappend` f2, a1)
         -- we don't care if variables have been declared inside a state,
         -- we declare them outside nevertheless.
         mergeEq (f1, a1) (AutomatonEq a2 _ condFlow) =
           let a = if Map.null a1
                   then Map.singleton 0 a2
                   else Map.insert ((fst $ Map.findMin a1) + 1) a2 a1
-          in (concatFlows f1 condFlow, a)
+          in (f1 `mappend` condFlow, a)
         mergeEq r NonExecutable = r
 
 trOpDecl _ = undefined

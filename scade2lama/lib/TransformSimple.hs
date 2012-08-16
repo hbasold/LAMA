@@ -9,6 +9,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.String (fromString)
 import Data.Maybe (maybeToList)
+import Data.Monoid
 
 import Control.Monad (liftM)
 import Control.Monad.Error (MonadError(..))
@@ -39,7 +40,7 @@ trSimpleEquation lhsIds expr = do
         do (expr'', initVar, initFlow, stateInits) <- mkInit i expr'
            (a, v) <- mkLocalAssigns ids (Left expr'')
            return $
-             (baseEq $ concatFlows (L.Flow a []) initFlow) {
+             (baseEq $ (L.Flow a []) `mappend` initFlow) {
                trEqLocalVars = (maybeToList v)
                , trEqStateVars = [initVar]
                , trEqInits = stateInits }
@@ -59,7 +60,7 @@ trSimpleEquation lhsIds expr = do
           Just (Right ie) ->
             do (expr'', initVar, initFlow, stateInits) <- mkInit ie expr'
                return $
-                 (baseEq $ (L.Flow [] [L.StateTransition x expr'']) `concatFlows` initFlow) {
+                 (baseEq $ (L.Flow [] [L.StateTransition x expr'']) `mappend` initFlow) {
                    trEqStateVars = [initVar]
                    , trEqInits = stateInits
                    , trEqAsState = Set.singleton x }

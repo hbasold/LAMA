@@ -27,6 +27,7 @@ module Lang.LAMA.Structure (
 import Data.Natural
 import Data.Map
 import Data.Typeable
+import Data.Monoid
 
 import Lang.LAMA.Identifier
 import Data.String (IsString(..))
@@ -201,4 +202,6 @@ instance (Ident i, Show const) => ShowFunctor (GAtom i const) where
 instance (Ident i, Show const, Show atom) => ShowFunctor (GExpr i const atom) where
   showF = show
 
-
+instance Monoid (GFlow i expr) where
+  mempty = Flow [] []
+  mappend (Flow d1 s1) (Flow d2 s2) = Flow (d1 ++ d2) (s1 ++ s2)

@@ -3,7 +3,7 @@
 {-# LANGUAGE TupleSections #-}
 
 module TransformCommon (
-  concatFlows, updateVarName, declareNode, checkNode,
+  updateVarName, declareNode, checkNode,
   trVarDecl, trVarDecls, separateVars, trConstDecl, mkLocalAssigns,
   trTypeExpr,
   EquationRhs(..), trExpr, trExpr', trConstExpr
@@ -38,9 +38,6 @@ import qualified Lang.LAMA.Identifier as L
 import qualified Lang.LAMA.Types as L
 
 import TransformMonads
-
-concatFlows :: L.Flow -> L.Flow -> L.Flow
-concatFlows (L.Flow d1 s1) (L.Flow d2 s2) = L.Flow (d1 ++ d2) (s1 ++ s2)
 
 declareNode :: (MonadState Decls m) => L.SimpIdent -> L.Node -> m ()
 declareNode x n = modify (\d -> d { nodes = Map.insert x n $ nodes d })
