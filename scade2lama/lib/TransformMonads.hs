@@ -41,12 +41,11 @@ data Decls = Decls {
      -- | Initial values for variables used in last expressions
      lastInits :: Map L.SimpIdent (Either L.ConstExpr L.Expr),
      -- | Subpackages
-     packages :: Map L.SimpIdent Decls,
-     constants :: [S.ConstDecl]
+     packages :: Map L.SimpIdent Decls
   } deriving Show
 
 emptyDecls :: Decls
-emptyDecls = Decls Map.empty Map.empty Map.empty Map.empty Map.empty []
+emptyDecls = Decls Map.empty Map.empty Map.empty Map.empty Map.empty
 
 data ScadePackages = ScadePackages
                      { global :: Package

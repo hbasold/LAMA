@@ -15,6 +15,7 @@ import qualified Data.ByteString.Char8 as BS
 import Data.List.Split (splitOn)
 import Data.Maybe (maybeToList)
 import Data.Traversable (mapM)
+import Data.Monoid
 
 import Control.Monad.Trans.Class
 import Control.Monad (when, liftM)
@@ -23,6 +24,7 @@ import Control.Monad.State (gets)
 import Control.Arrow (first)
 import Control.Applicative ((<$>))
 import Control.Monad.Writer (WriterT(..))
+import Control.Monad.Error (MonadError)
 
 import qualified Language.Scade.Syntax as S
 import qualified Lang.LAMA.Structure.SimpIdentUntyped as L
@@ -118,9 +120,10 @@ transform topNode ps =
   case runTransM (getNode $ mkPath $ topNode) ps of
     Left e -> Left e
     Right ((topNodeName, n), decls) ->
-      do (flowLocals, flowStates, flowInit, topFlow) <- mkFreeFlow (topNodeName, n)
+      do constants <- gatherConstants ps
+         (flowLocals, flowStates, flowInit, topFlow) <- mkFreeFlow (topNodeName, n)
          return $ L.Program
-           (mkEnumDefs $ types decls) (mkConstDefs $ constants decls)
+           (mkEnumDefs $ types decls) constants
            (L.Declarations (Map.singleton topNodeName n) flowLocals flowStates)
            topFlow flowInit
            (L.constAtExpr $ L.boolConst True) (L.constAtExpr $ L.boolConst True)
@@ -139,9 +142,15 @@ transform topNode ps =
     
     mkEnumDefs :: Map L.SimpIdent (Either Type L.EnumDef) -> Map TypeAlias L.EnumDef
     mkEnumDefs = Map.fromAscList . foldr (\(x, t) tds -> either (const tds) (\td -> (x,td):tds) t) [] . Map.toAscList
-    
-    mkConstDefs :: [S.ConstDecl] -> Map L.SimpIdent L.Constant
-    mkConstDefs = Map.fromList . map trConstDecl
+
+    gatherConstants :: MonadError String m => Package -> m (Map L.SimpIdent L.Constant)
+    gatherConstants p =
+      do pConsts <- mkConstDefs $ pkgConsts p
+         subConsts <- liftM mconcat . mapM gatherConstants . Map.elems $ pkgSubPackages p
+         return $ pConsts `mappend` subConsts
+
+    mkConstDefs :: MonadError String m => [S.ConstDecl] -> m (Map L.SimpIdent L.Constant)
+    mkConstDefs = liftM Map.fromList . mapM trConstDecl
 
 -- | Gives back either a set of definitions which is
 -- a single assignment in case the given equation is a

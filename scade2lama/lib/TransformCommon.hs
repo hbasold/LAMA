@@ -37,7 +37,6 @@ import qualified Lang.LAMA.Structure.SimpIdentUntyped as L
 import qualified Lang.LAMA.Identifier as L
 import qualified Lang.LAMA.Types as L
 
-import ExtractPackages as Extract
 import TransformMonads
 
 concatFlows :: L.Flow -> L.Flow -> L.Flow
@@ -97,8 +96,11 @@ separateVars asState =
 trTypeDecl :: S.TypeDecl -> (TypeAlias, Either Type L.EnumDef)
 trTypeDecl = $notImplemented
 
-trConstDecl :: S.ConstDecl -> (L.SimpIdent, L.Constant)
-trConstDecl = $notImplemented
+trConstDecl :: MonadError String m => S.ConstDecl -> m (L.SimpIdent, L.Constant)
+trConstDecl (S.ConstDecl _interfaceStatus constName _type (Just expr)) =
+  do c <- trConst expr
+     return (fromString constName, c)
+trConstDecl _ = $notImplemented
 
 trVarId :: S.VarId -> L.SimpIdent
 trVarId (S.VarId x clock probe) = fromString x
@@ -197,12 +199,15 @@ trOpApply (S.PrefixOp (S.PrefixPath p)) es =
           lift (checkNode p) >>= \(x, t) -> return (x, es, t) <* tellNode p
 trOpApply _ _ = $notImplemented
 
-trConstExpr :: (MonadError String m, Applicative m) =>  S.Expr -> m L.ConstExpr
-trConstExpr (S.ConstIntExpr c) = L.mkConst <$> pure (L.mkIntConst c)
-trConstExpr (S.ConstBoolExpr c) = L.mkConst <$> pure (L.boolConst c)
-trConstExpr (S.ConstFloatExpr c) = L.mkConst <$> pure (L.mkRealConst $ approxRational c 0.01)
-trConstExpr (S.ConstPolyIntExpr i s) = $notImplemented
-trConstExpr e = throwError $ show e ++ " is not a constant."
+trConstExpr :: (MonadError String m) => S.Expr -> m L.ConstExpr
+trConstExpr = liftM L.mkConst . trConst
+
+trConst :: (MonadError String m) => S.Expr -> m L.Constant
+trConst (S.ConstIntExpr c) = return $ L.mkIntConst c
+trConst (S.ConstBoolExpr c) = return $ L.boolConst c
+trConst (S.ConstFloatExpr c) = return $ L.mkRealConst $ approxRational c 0.01
+trConst (S.ConstPolyIntExpr i s) = $notImplemented
+trConst e = throwError $ show e ++ " is not a constant."
 
 tryConst :: (MonadError String m, Applicative m) => S.Expr -> m (Either L.ConstExpr L.Expr)
 tryConst e = (liftM Left $ trConstExpr e) `catchError` (const . liftM Right $ trExpr' e)
