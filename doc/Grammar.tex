@@ -53,11 +53,10 @@ The reserved words used in LAMA are the following: \\
 {\reserved{let}} &{\reserved{local}} &{\reserved{location}} \\
 {\reserved{match}} &{\reserved{mod}} &{\reserved{node}} \\
 {\reserved{nodes}} &{\reserved{not}} &{\reserved{or}} \\
-{\reserved{output}} &{\reserved{project}} &{\reserved{real}} \\
-{\reserved{returns}} &{\reserved{sint}} &{\reserved{state}} \\
-{\reserved{tel}} &{\reserved{transition}} &{\reserved{true}} \\
-{\reserved{typedef}} &{\reserved{uint}} &{\reserved{use}} \\
-{\reserved{xor}} & & \\
+{\reserved{project}} &{\reserved{real}} &{\reserved{returns}} \\
+{\reserved{sint}} &{\reserved{state}} &{\reserved{tel}} \\
+{\reserved{transition}} &{\reserved{true}} &{\reserved{typedef}} \\
+{\reserved{uint}} &{\reserved{use}} &{\reserved{xor}} \\
 \end{tabular}\\
 
 The symbols used in LAMA are the following: \\
@@ -219,7 +218,6 @@ All other symbols are terminals.\\
                                 & & {\terminal{let}} \\
                                 & & \hspace{5pt} {\nonterminal{Declarations}} \\
                                 & & \hspace{5pt} {\nonterminal{Flow}} \\
-                                & & \hspace{5pt} {\nonterminal{Outputs}} \\
                                 & & \hspace{5pt} {\nonterminal{ControlStructure}} \\
                                 & & \hspace{5pt} {\nonterminal{Initial}} \\
                                 & & \hspace{5pt} {\nonterminal{Assertion}} \\
@@ -267,11 +265,6 @@ All other symbols are terminals.\\
 \begin{tabular}{lll}
 {\nonterminal{Transitions}} & {\arrow}  &{\emptyP} \\
  & {\delimit}  &{\terminal{transition}} {\nonterminal{ListTransition}}  \\
-\end{tabular}\\
-
-\begin{tabular}{lll}
-{\nonterminal{Outputs}} & {\arrow}  &{\emptyP} \\
- & {\delimit}  &{\terminal{output}} {\nonterminal{ListInstantDefinition}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
