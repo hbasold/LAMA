@@ -142,7 +142,6 @@
                 <context id="keywords" style-ref="keyword" class="keyword">
                     <keyword>typedef</keyword>
                     <keyword>enum</keyword>
-                    <keyword>record</keyword>
                     <keyword>constants</keyword>
                     <keyword>node</keyword>
                     <keyword>returns</keyword>
@@ -173,6 +172,7 @@
                     <keyword>location</keyword>
                     <keyword>edge</keyword>
                     <keyword>output</keyword>
+                    <keyword>default</keyword>
                 </context>
 
                 <context id="step-var" style-ref="step-var">
@@ -183,7 +183,6 @@
                     <keyword>bool</keyword>
                     <keyword>int</keyword>
                     <keyword>real</keyword>
-                    <keyword>clock</keyword>
                     <keyword>sint</keyword>
                     <keyword>uint</keyword>
                 </context>
@@ -201,6 +200,7 @@
                   <keyword>\-</keyword>
                   <keyword>\*</keyword>
                   <keyword>/</keyword>
+                  <keyword>#</keyword>
                 </context>
 
                 <!-- C99 booleans -->
