@@ -11,7 +11,7 @@
 \maketitle
 
 \newcommand{\emptyP}{\mbox{$\epsilon$}}
-\newcommand{\terminal}[1]{\mbox{{\texttt {#1}}}}
+\newcommand{\terminal}[1]{\mbox{{\textbf{\texttt {#1}}}}}
 \newcommand{\nonterminal}[1]{\mbox{$\langle \mbox{{\sl #1 }} \! \rangle$}}
 \newcommand{\arrow}{\mbox{::=}}
 \newcommand{\delimit}{\mbox{$|$}}
@@ -31,10 +31,10 @@ Integer literals \nonterminal{Int}\ are nonempty sequences of digits.
 
 
 Identifier literals are recognized by the regular expression
-\({\nonterminal{letter}} ({\nonterminal{letter}} \mid {\nonterminal{digit}} \mid \mbox{`\_'})*\)
+\(({\nonterminal{letter}} \mid \mbox{`\_'}) ({\nonterminal{letter}} \mid {\nonterminal{digit}} \mid \mbox{`\_'})*\)
 
 StateId literals are recognized by the regular expression
-\({\nonterminal{letter}} ({\nonterminal{letter}} \mid {\nonterminal{digit}} \mid \mbox{`\_'})* \mbox{`''}\)
+\(({\nonterminal{letter}} \mid \mbox{`\_'}) ({\nonterminal{letter}} \mid {\nonterminal{digit}} \mid \mbox{`\_'})* \mbox{`''}\)
 
 
 \subsection*{Reserved words and symbols}
@@ -43,8 +43,8 @@ The set of reserved words is the set of terminals appearing in the grammar. Thos
 The reserved words used in LAMA are the following: \\
 
 \begin{tabular}{lll}
-{\reserved{and}} &{\reserved{array}} &{\reserved{assertion}} \\
-{\reserved{automaton}} &{\reserved{bool}} &{\reserved{constants}} \\
+{\reserved{and}} &{\reserved{assertion}} &{\reserved{automaton}} \\
+{\reserved{bool}} &{\reserved{constants}} &{\reserved{default}} \\
 {\reserved{definition}} &{\reserved{div}} &{\reserved{edge}} \\
 {\reserved{enum}} &{\reserved{false}} &{\reserved{initial}} \\
 {\reserved{int}} &{\reserved{invariant}} &{\reserved{ite}} \\
@@ -55,7 +55,7 @@ The reserved words used in LAMA are the following: \\
 {\reserved{real}} &{\reserved{returns}} &{\reserved{sint}} \\
 {\reserved{state}} &{\reserved{tel}} &{\reserved{transition}} \\
 {\reserved{true}} &{\reserved{typedef}} &{\reserved{uint}} \\
-{\reserved{update}} &{\reserved{use}} &{\reserved{xor}} \\
+{\reserved{use}} &{\reserved{xor}} & \\
 \end{tabular}\\
 
 The symbols used in LAMA are the following: \\
@@ -66,8 +66,9 @@ The symbols used in LAMA are the following: \\
 {\symb{*}} &{\symb{[}} &{\symb{]}} \\
 {\symb{(}} &{\symb{{$-$}}} &{\symb{)}} \\
 {\symb{/}} &{\symb{:}} &{\symb{.}} \\
-{\symb{{$=$}{$>$}}} &{\symb{{$<$}}} &{\symb{{$>$}}} \\
-{\symb{{$<$}{$=$}}} &{\symb{{$>$}{$=$}}} &{\symb{{$+$}}} \\
+{\symb{\_}} &{\symb{{$=$}{$>$}}} &{\symb{{$<$}}} \\
+{\symb{{$>$}}} &{\symb{{$<$}{$=$}}} &{\symb{{$>$}{$=$}}} \\
+{\symb{{$+$}}} & & \\
 \end{tabular}\\
 
 \subsection*{Comments}
@@ -160,13 +161,13 @@ All other symbols are terminals.\\
 \end{tabular}\\
 
 \begin{tabular}{lll}
-{\nonterminal{Assertion}} & {\arrow}  &{\emptyP} \\
- & {\delimit}  &{\terminal{assertion}} {\nonterminal{Expr}} {\terminal{;}}  \\
+{\nonterminal{Initial}} & {\arrow}  &{\emptyP} \\
+ & {\delimit}  &{\terminal{initial}} {\nonterminal{ListStateInit}} {\terminal{;}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
-{\nonterminal{Initial}} & {\arrow}  &{\emptyP} \\
- & {\delimit}  &{\terminal{initial}} {\nonterminal{ListStateInit}} {\terminal{;}}  \\
+{\nonterminal{Assertion}} & {\arrow}  &{\emptyP} \\
+ & {\delimit}  &{\terminal{assertion}} {\nonterminal{Expr}} {\terminal{;}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
@@ -214,6 +215,7 @@ All other symbols are terminals.\\
                                 & & \hspace{5pt} {\nonterminal{Outputs}} \\
                                 & & \hspace{5pt} {\nonterminal{ControlStructure}} \\
                                 & & \hspace{5pt} {\nonterminal{Initial}} \\
+                                & & \hspace{5pt} {\nonterminal{Assertion}} \\
                                 & & {\terminal{tel}}  \\
 \end{tabular}\\
 
@@ -276,12 +278,8 @@ All other symbols are terminals.\\
 \end{tabular}\\
 
 \begin{tabular}{lll}
-{\nonterminal{InstantDefinition}} & {\arrow}  &{\nonterminal{Identifier}} {\terminal{{$=$}}} {\nonterminal{Instant}}  \\
-\end{tabular}\\
-
-\begin{tabular}{lll}
-{\nonterminal{Instant}} & {\arrow}  &{\nonterminal{Expr}}  \\
- & {\delimit}  &{\terminal{(}} {\terminal{use}} {\nonterminal{Identifier}} {\nonterminal{ListExpr}} {\terminal{)}}  \\
+{\nonterminal{InstantDefinition}} & {\arrow}  &{\nonterminal{Identifier}} {\terminal{{$=$}}} {\nonterminal{Expr}}  \\
+ & {\delimit}  &{\nonterminal{Identifier}} {\terminal{{$=$}}} {\terminal{(}} {\terminal{use}} {\nonterminal{Identifier}} {\nonterminal{ListExpr}} {\terminal{)}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
@@ -293,7 +291,7 @@ All other symbols are terminals.\\
 \end{tabular}\\
 
 \begin{tabular}{lll}
-{\nonterminal{Automaton}} & {\arrow}  &{\terminal{automaton}} {\terminal{let}} {\nonterminal{ListLocation}} {\nonterminal{InitialLocation}} {\nonterminal{ListEdge}} {\terminal{tel}}  \\
+{\nonterminal{Automaton}} & {\arrow}  &{\terminal{automaton}} {\terminal{let}} {\nonterminal{ListLocation}} {\nonterminal{InitialLocation}} {\nonterminal{ListEdge}} {\nonterminal{Defaults}} {\terminal{tel}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
@@ -324,6 +322,20 @@ All other symbols are terminals.\\
 \end{tabular}\\
 
 \begin{tabular}{lll}
+{\nonterminal{Defaults}} & {\arrow}  &{\emptyP} \\
+ & {\delimit}  &{\terminal{default}} {\nonterminal{ListDefault}} {\terminal{;}}  \\
+\end{tabular}\\
+
+\begin{tabular}{lll}
+{\nonterminal{ListDefault}} & {\arrow}  &{\nonterminal{Default}}  \\
+ & {\delimit}  &{\nonterminal{Default}} {\terminal{,}} {\nonterminal{ListDefault}}  \\
+\end{tabular}\\
+
+\begin{tabular}{lll}
+{\nonterminal{Default}} & {\arrow}  &{\nonterminal{Identifier}} {\terminal{{$=$}}} {\nonterminal{Expr}}  \\
+\end{tabular}\\
+
+\begin{tabular}{lll}
 {\nonterminal{Atom}} & {\arrow}  &{\nonterminal{Constant}}  \\
  & {\delimit}  &{\nonterminal{Identifier}}  \\
 \end{tabular}\\
@@ -334,10 +346,8 @@ All other symbols are terminals.\\
  & {\delimit}  &{\terminal{(}} {\nonterminal{BinOp}} {\nonterminal{Expr}} {\nonterminal{Expr}} {\terminal{)}}  \\
  & {\delimit}  &{\terminal{(}} {\nonterminal{TernOp}} {\nonterminal{Expr}} {\nonterminal{Expr}} {\nonterminal{Expr}} {\terminal{)}}  \\
  & {\delimit}  &{\terminal{(}} {\terminal{prod}} {\nonterminal{ListExpr}} {\terminal{)}}  \\
- & {\delimit}  &{\terminal{(}} {\terminal{match}} {\nonterminal{Expr}} {\terminal{\{}} {\nonterminal{ListPattern}} {\terminal{\}}} {\terminal{)}}  \\
- & {\delimit}  &{\terminal{(}} {\terminal{array}} {\nonterminal{ListExpr}} {\terminal{)}}  \\
  & {\delimit}  &{\terminal{(}} {\terminal{project}} {\nonterminal{Identifier}} {\nonterminal{Natural}} {\terminal{)}}  \\
- & {\delimit}  &{\terminal{(}} {\terminal{update}} {\nonterminal{Identifier}} {\nonterminal{Natural}} {\nonterminal{Expr}} {\terminal{)}}  \\
+ & {\delimit}  &{\terminal{(}} {\terminal{match}} {\nonterminal{Expr}} {\terminal{\{}} {\nonterminal{ListPattern}} {\terminal{\}}} {\terminal{)}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
@@ -356,7 +366,7 @@ All other symbols are terminals.\\
 
 \begin{tabular}{lll}
 {\nonterminal{PatHead}} & {\arrow}  &{\nonterminal{EnumConstr}}  \\
- & {\delimit}  &{\terminal{(}} {\terminal{prod}} {\nonterminal{List2Id}} {\terminal{)}}  \\
+ & {\delimit}  &{\terminal{\_}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
