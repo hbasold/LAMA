@@ -299,7 +299,7 @@ mkDepsNodeParts :: Ident i => Flow i -> [(Int, Automaton i)] -> DepGraphM i (Ins
 mkDepsNodeParts f a = do
   e1 <- mkDepsFlow GlobalMode f
   e3s <- mapM mkDepsAutomaton a
-  return $ Map.unions e3s
+  return $ Map.unions e3s `Map.union` e1
 
 -- | Calculates the dependencies of the definitions
 --    and the state changes and gives back a map
