@@ -195,22 +195,17 @@ All other symbols are terminals.\\
 \end{tabular}\\
 
 \begin{tabular}{lll}
-{\nonterminal{ListIdentifier}} & {\arrow}  &{\nonterminal{Identifier}}  \\
- & {\delimit}  &{\nonterminal{Identifier}} {\terminal{,}} {\nonterminal{ListIdentifier}}  \\
+{\nonterminal{TypedVar}} & {\arrow}  &{\nonterminal{Identifier}} {\terminal{:}} {\nonterminal{Type}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
-{\nonterminal{TypedVars}} & {\arrow}  &{\nonterminal{ListIdentifier}} {\terminal{:}} {\nonterminal{Type}}  \\
-\end{tabular}\\
-
-\begin{tabular}{lll}
-{\nonterminal{ListTypedVars}} & {\arrow}  &{\nonterminal{TypedVars}}  \\
- & {\delimit}  &{\nonterminal{TypedVars}} {\terminal{;}} {\nonterminal{ListTypedVars}}  \\
+{\nonterminal{ListTypedVar}} & {\arrow}  &{\nonterminal{TypedVar}}  \\
+ & {\delimit}  &{\nonterminal{TypedVar}} {\terminal{,}} {\nonterminal{ListTypedVar}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
 {\nonterminal{MaybeTypedVars}} & {\arrow}  &{\emptyP} \\
- & {\delimit}  &{\nonterminal{ListTypedVars}}  \\
+ & {\delimit}  &{\nonterminal{ListTypedVar}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
@@ -234,8 +229,8 @@ All other symbols are terminals.\\
 \end{tabular}\\
 
 \begin{tabular}{lll}
-{\nonterminal{VarDecls}} & {\arrow}  &{\nonterminal{TypedVars}} {\terminal{;}}  \\
- & {\delimit}  &{\nonterminal{TypedVars}} {\terminal{;}} {\nonterminal{VarDecls}}  \\
+{\nonterminal{VarDecls}} & {\arrow}  &{\nonterminal{TypedVar}} {\terminal{;}}  \\
+ & {\delimit}  &{\nonterminal{TypedVar}} {\terminal{;}} {\nonterminal{VarDecls}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
