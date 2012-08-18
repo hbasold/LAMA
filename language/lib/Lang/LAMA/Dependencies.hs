@@ -265,6 +265,17 @@ checkCycles g = case mkDAG g of
     depList :: Ident i => Gr (InterIdentCtx i) () -> [G.Node] -> String
     depList h = intercalate " -> " . map (maybe "" id . fmap (\(v, u, m) -> show u ++ " in " ++ show m ++ " " ++ identPretty v) . G.lab h)
 
+-- | Checks if a given list of variables is fully defined
+checkDefined :: Ident i => InterDepDAG i -> [i] -> DepMonad ()
+checkDefined g = mapM_ (check g)
+  where
+    check gr x =
+      do if gany (\(_, _, (v, u, m), _) -> v == x) gr
+           then return ()
+           else throwError $ identPretty x ++ " not defined."
+
+    gany p = ufold (\c r -> if not r then p c else r) False
+
 mkDepsProgram :: Ident i => Program i -> DepMonad (InterProgDeps i)
 mkDepsProgram p = do
   let consts = progConstantDefinitions p
@@ -288,6 +299,7 @@ mkDepsNode consts node = do
         $ mkDepsNodeParts (nodeFlow node) (Map.toList $ nodeAutomata node)
   es <- mes
   dagDeps <- checkCycles deps
+  checkDefined dagDeps (map varIdent $ nodeOutputs node)
   return $ InterNodeDeps subDeps dagDeps vs es
 
 mkDepsMapNodes :: Ident i => Map i (Constant i) -> Map i (Node i) -> DepMonad (Map i (InterNodeDeps i))
