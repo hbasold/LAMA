@@ -214,8 +214,8 @@ All other symbols are terminals.\\
 \end{tabular}\\
 
 \begin{tabular}{lll}
-{\nonterminal{Node}} & {\arrow}   & {\terminal{node}} {\nonterminal{Identifier}} {\terminal{(}} {\nonterminal{MaybeTypedVars}} {\terminal{)}} {\terminal{returns}} {\terminal{(}} {\nonterminal{ListTypedVars}} {\terminal{)}} {\terminal{;}} \\
-                                & & {\terminal{let}} \\
+{\nonterminal{Node}} & {\arrow}   & {\terminal{node}} {\nonterminal{Identifier}} {\terminal{(}} {\nonterminal{MaybeTypedVars}} {\terminal{)}} \\
+                                & & {\terminal{returns}} {\terminal{(}} {\nonterminal{ListTypedVars}} {\terminal{)}} {\terminal{let}} \\
                                 & & \hspace{5pt} {\nonterminal{Declarations}} \\
                                 & & \hspace{5pt} {\nonterminal{Flow}} \\
                                 & & \hspace{5pt} {\nonterminal{ControlStructure}} \\
@@ -291,7 +291,12 @@ All other symbols are terminals.\\
 \end{tabular}\\
 
 \begin{tabular}{lll}
-{\nonterminal{Automaton}} & {\arrow}  &{\terminal{automaton}} {\terminal{let}} {\nonterminal{ListLocation}} {\nonterminal{InitialLocation}} {\nonterminal{ListEdge}} {\nonterminal{Defaults}} {\terminal{tel}}  \\
+{\nonterminal{Automaton}} & {\arrow}  & {\terminal{automaton}} {\terminal{let}} \\
+                                    & & \hspace{5pt} {\nonterminal{ListLocation}} \\
+                                    & & \hspace{5pt} {\nonterminal{InitialLocation}} \\
+                                    & & \hspace{5pt} {\nonterminal{ListEdge}} \\
+                                    & & \hspace{5pt} {\nonterminal{Defaults}} \\
+                                    & & {\terminal{tel}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
