@@ -7,10 +7,9 @@ nodes
       s_1 : bool;
     definition
       s = (ite s_1 (not off) on);
+      so = s;
     transition
       s_1' = s;
-    output
-      so = s;
     initial s_1 = false;
   tel
 local on, off, s : bool;

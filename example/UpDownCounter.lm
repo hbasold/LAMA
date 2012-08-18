@@ -13,10 +13,10 @@ nodes
       x_ : int;
     state
       x : int;
+    definition
+      xo = x_;
     transition
       x' = x_;
-    output
-      xo = x_;
 
     automaton let
       location A let

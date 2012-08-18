@@ -22,10 +22,10 @@ node TempTest (a, b : int) returns (x : int);
     state c_1, b_1 : int;
     definition
       c = (+ a b_1);
+      x = c_1;
     transition
       c_1' = c;
       b_1' = b;
-    output x = c_1;
     initial
       b_1 = 0, c_1 = 0;
   tel

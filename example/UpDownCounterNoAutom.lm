@@ -8,11 +8,10 @@ nodes
       up : bool;
     definition
       s_ = (ite up (+ s 1) (- s 1)) ;
+      x = s_;
     transition
       s' = s_;
       up' = (ite up (< s_ 10) (= s_ 0));
-    output
-      x = s_;
     initial s = (- 1), up = true;
   tel
 local x : int;
