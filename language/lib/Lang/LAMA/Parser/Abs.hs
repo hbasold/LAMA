@@ -26,7 +26,7 @@ data Type =
    GroundType BaseType
  | TypeId Identifier
  | ArrayType BaseType Natural
- | ProdType Type Type
+ | ProdType [Type]
   deriving (Eq,Ord,Show)
 
 data BaseType =

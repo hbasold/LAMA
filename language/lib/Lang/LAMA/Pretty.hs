@@ -53,9 +53,7 @@ trIntegerConst v = if v < 0 then Abs.NegativeInt $ abs v else Abs.NonNegativeInt
 trType :: Ident i => Type i -> Abs.Type
 trType (GroundType bt) = Abs.GroundType $ trBaseType bt
 trType (EnumType x) = Abs.TypeId $ trIdent x
-trType (ProdType [t1, t2]) = Abs.ProdType (trType t1) (trType t2)
-trType (ProdType (t:ts)) = Abs.ProdType (trType t) (trType $ ProdType ts)
-trType (ProdType _) = undefined
+trType (ProdType ts) = Abs.ProdType $ map trType ts
 
 trBaseType :: BaseType -> Abs.BaseType
 trBaseType BoolT = Abs.BoolT

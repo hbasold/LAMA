@@ -123,8 +123,11 @@ instance Print Type where
    GroundType basetype -> prPrec i 0 (concatD [prt 0 basetype])
    TypeId identifier -> prPrec i 0 (concatD [prt 0 identifier])
    ArrayType basetype natural -> prPrec i 0 (concatD [prt 0 basetype , doc (showString "^") , prt 0 natural])
-   ProdType type'0 type' -> prPrec i 0 (concatD [prt 0 type'0 , doc (showString "*") , prt 0 type'])
+   ProdType types -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "#") , prt 0 types , doc (showString ")")])
 
+  prtList es = case es of
+   [x] -> (concatD [prt 0 x])
+   x:xs -> (concatD [prt 0 x , prt 0 xs])
 
 instance Print BaseType where
   prt i e = case e of
@@ -357,7 +360,7 @@ instance Print Expr where
    Expr1 unop expr -> prPrec i 0 (concatD [doc (showString "(") , prt 0 unop , prt 0 expr , doc (showString ")")])
    Expr2 binop expr0 expr -> prPrec i 0 (concatD [doc (showString "(") , prt 0 binop , prt 0 expr0 , prt 0 expr , doc (showString ")")])
    Expr3 ternop expr0 expr1 expr -> prPrec i 0 (concatD [doc (showString "(") , prt 0 ternop , prt 0 expr0 , prt 0 expr1 , prt 0 expr , doc (showString ")")])
-   Prod exprs -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "prod") , prt 0 exprs , doc (showString ")")])
+   Prod exprs -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "#") , prt 0 exprs , doc (showString ")")])
    Project identifier natural -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "project") , prt 0 identifier , prt 0 natural , doc (showString ")")])
    Match expr patterns -> prPrec i 0 (concatD [doc (showString "(") , doc (showString "match") , prt 0 expr , doc (showString "{") , prt 0 patterns , doc (showString "}") , doc (showString ")")])
 

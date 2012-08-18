@@ -11,8 +11,7 @@ prettyType (GroundType t) = prettyBaseType t
 prettyType (EnumType x) = text $ identString x
 prettyType (ProdType ts) = case ts of
   [] -> text "1"
-  [t] -> prettyType t
-  (t':ts') -> foldr (\t doc -> doc <> text " * " <> prettyType t) (prettyType t') ts'
+  _ -> parens $ text "#" <+> hsep (map prettyType ts)
 
 prettyBaseType :: BaseType -> Doc
 prettyBaseType BoolT = text "bool"

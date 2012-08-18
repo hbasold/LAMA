@@ -26,7 +26,8 @@ separator nonempty EnumConstr "," ;
 GroundType. Type ::= BaseType ;
 TypeId. Type ::= Identifier ;
 ArrayType. Type ::= BaseType "^" Natural ;
-ProdType. Type ::= Type "*" Type ;
+ProdType. Type ::= "(" "#" [Type] ")" ;
+separator nonempty Type "" ;
 
 BoolT. BaseType ::= "bool" ;
 IntT. BaseType ::= "int" ;
@@ -145,11 +146,11 @@ AtExpr. Expr ::= Atom ;
 Expr1. Expr ::= "(" UnOp Expr ")" ;
 Expr2. Expr ::= "(" BinOp Expr Expr ")" ;
 Expr3. Expr ::= "(" TernOp Expr Expr Expr ")" ;
-Prod. Expr ::= "(" "prod" [Expr] ")" ;
+Prod. Expr ::= "(" "#" [Expr] ")" ;
 Project. Expr ::= "(" "project" Identifier Natural ")" ;
 Match. Expr ::= "(" "match" Expr "{" [Pattern] "}" ")" ;
 separator Expr "" ;
--- TODO: [Expr] in prod and array should not be empty
+-- TODO: [Expr] in product should not be empty
 
 separator nonempty Pattern "," ;
 Pattern. Pattern ::= PatHead "." Expr ;

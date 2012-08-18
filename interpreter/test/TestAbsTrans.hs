@@ -67,8 +67,8 @@ typesSrc :: BL.ByteString
 typesSrc = BL.pack $ unlines [
   "typedef",
   "  enum e = { e1, e2 };",
-  "nodes node main() returns (x : e * int * real * int^5); let tel",
-  "local x : e * int * real * int^5;",
+  "nodes node main() returns (x : (# e int (# int real) int^5) ); let tel",
+  "local x : (# e int (# int real) int^5);",
   "definition x = (use main);" ]
 
 expectedTypes :: Program PosIdent
@@ -81,13 +81,13 @@ expectedTypes =
     progDecls = Declarations {
       declsNode = Map.fromList [(ident "main", Node {
         nodeInputs = [],
-        nodeOutputs = [Variable x (ProdType [EnumType e, intT, realT, int5])],
+        nodeOutputs = [Variable x (ProdType [EnumType e, intT, ProdType [intT, realT], int5])],
         nodeDecls = Declarations Map.empty [] [],
         nodeFlow = Flow {flowDefinitions = [], flowTransitions = []},
-        nodeOutputDefs = [], nodeAutomata = Map.fromList [], nodeInitial = fromList []
+        nodeOutputDefs = [], nodeAutomata = Map.fromList [], nodeInitial = fromList [], nodeAssertion = trueE
       })],
       declsState = [],
-      declsLocal = [Variable x (ProdType [EnumType e, intT, realT, int5])]
+      declsLocal = [Variable x (ProdType [EnumType e, intT, ProdType [intT, realT], int5])]
     },
     progFlow = Flow [NodeUsage x main []] [],
     progAssertion = trueE, progInitial = fromList [], progInvariant = trueE
@@ -132,7 +132,7 @@ expectedConstants =
           InstantExpr x $ constAtExpr $ mkTyped (SIntConst 32 (-5)) (GroundType (SInt 32)),
           InstantExpr y $ constAtExpr $ mkTyped (UIntConst 16 1322) (GroundType (UInt 16))
         ],
-        nodeAutomata = Map.fromList [], nodeInitial = fromList []
+        nodeAutomata = Map.fromList [], nodeInitial = fromList [], nodeAssertion = trueE
       })],
       declsState = [],
       declsLocal = []
@@ -195,7 +195,8 @@ expectedSwitch =
         },
         nodeOutputDefs = [InstantExpr so $ (varExpr s_ boolT)],
         nodeAutomata = Map.fromList [],
-        nodeInitial = fromList [(s,(mkTyped (Const false) boolT))]
+        nodeInitial = fromList [(s,(mkTyped (Const false) boolT))],
+        nodeAssertion = trueE
       })],
       declsState = [],
       declsLocal = [Variable on boolT, Variable off boolT, Variable so boolT]
@@ -288,9 +289,11 @@ expectedUpDownCounter =
             Edge sB sA (eqE (varExpr x intT) (intE 0)),
             Edge sA sA (notE (eqE (varExpr x intT) (intE 10))),
             Edge sB sB (notE (eqE (varExpr x intT) (intE 0)))
-          ]
+          ],
+          automDefaults = Map.empty
         })],
-        nodeInitial = fromList [(x, intConstE (-1))]
+        nodeInitial = fromList [(x, intConstE (-1))],
+        nodeAssertion = trueE
       })],
       declsState = [],
       declsLocal = [Variable xo intT]      

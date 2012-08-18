@@ -16,52 +16,52 @@ import qualified Data.ByteString.Lazy.Char8 as BS
 %tokentype { Token }
 
 %token 
- '(' { PT _ (TS _ 1) }
- ')' { PT _ (TS _ 2) }
- '*' { PT _ (TS _ 3) }
- '+' { PT _ (TS _ 4) }
- ',' { PT _ (TS _ 5) }
- '-' { PT _ (TS _ 6) }
- '.' { PT _ (TS _ 7) }
- '/' { PT _ (TS _ 8) }
- ':' { PT _ (TS _ 9) }
- ';' { PT _ (TS _ 10) }
- '<' { PT _ (TS _ 11) }
- '<=' { PT _ (TS _ 12) }
- '=' { PT _ (TS _ 13) }
- '=>' { PT _ (TS _ 14) }
- '>' { PT _ (TS _ 15) }
- '>=' { PT _ (TS _ 16) }
- '[' { PT _ (TS _ 17) }
- ']' { PT _ (TS _ 18) }
- '^' { PT _ (TS _ 19) }
- '_' { PT _ (TS _ 20) }
- 'and' { PT _ (TS _ 21) }
- 'assertion' { PT _ (TS _ 22) }
- 'automaton' { PT _ (TS _ 23) }
- 'bool' { PT _ (TS _ 24) }
- 'constants' { PT _ (TS _ 25) }
- 'default' { PT _ (TS _ 26) }
- 'definition' { PT _ (TS _ 27) }
- 'div' { PT _ (TS _ 28) }
- 'edge' { PT _ (TS _ 29) }
- 'enum' { PT _ (TS _ 30) }
- 'false' { PT _ (TS _ 31) }
- 'initial' { PT _ (TS _ 32) }
- 'int' { PT _ (TS _ 33) }
- 'invariant' { PT _ (TS _ 34) }
- 'ite' { PT _ (TS _ 35) }
- 'let' { PT _ (TS _ 36) }
- 'local' { PT _ (TS _ 37) }
- 'location' { PT _ (TS _ 38) }
- 'match' { PT _ (TS _ 39) }
- 'mod' { PT _ (TS _ 40) }
- 'node' { PT _ (TS _ 41) }
- 'nodes' { PT _ (TS _ 42) }
- 'not' { PT _ (TS _ 43) }
- 'or' { PT _ (TS _ 44) }
- 'output' { PT _ (TS _ 45) }
- 'prod' { PT _ (TS _ 46) }
+ '#' { PT _ (TS _ 1) }
+ '(' { PT _ (TS _ 2) }
+ ')' { PT _ (TS _ 3) }
+ '*' { PT _ (TS _ 4) }
+ '+' { PT _ (TS _ 5) }
+ ',' { PT _ (TS _ 6) }
+ '-' { PT _ (TS _ 7) }
+ '.' { PT _ (TS _ 8) }
+ '/' { PT _ (TS _ 9) }
+ ':' { PT _ (TS _ 10) }
+ ';' { PT _ (TS _ 11) }
+ '<' { PT _ (TS _ 12) }
+ '<=' { PT _ (TS _ 13) }
+ '=' { PT _ (TS _ 14) }
+ '=>' { PT _ (TS _ 15) }
+ '>' { PT _ (TS _ 16) }
+ '>=' { PT _ (TS _ 17) }
+ '[' { PT _ (TS _ 18) }
+ ']' { PT _ (TS _ 19) }
+ '^' { PT _ (TS _ 20) }
+ '_' { PT _ (TS _ 21) }
+ 'and' { PT _ (TS _ 22) }
+ 'assertion' { PT _ (TS _ 23) }
+ 'automaton' { PT _ (TS _ 24) }
+ 'bool' { PT _ (TS _ 25) }
+ 'constants' { PT _ (TS _ 26) }
+ 'default' { PT _ (TS _ 27) }
+ 'definition' { PT _ (TS _ 28) }
+ 'div' { PT _ (TS _ 29) }
+ 'edge' { PT _ (TS _ 30) }
+ 'enum' { PT _ (TS _ 31) }
+ 'false' { PT _ (TS _ 32) }
+ 'initial' { PT _ (TS _ 33) }
+ 'int' { PT _ (TS _ 34) }
+ 'invariant' { PT _ (TS _ 35) }
+ 'ite' { PT _ (TS _ 36) }
+ 'let' { PT _ (TS _ 37) }
+ 'local' { PT _ (TS _ 38) }
+ 'location' { PT _ (TS _ 39) }
+ 'match' { PT _ (TS _ 40) }
+ 'mod' { PT _ (TS _ 41) }
+ 'node' { PT _ (TS _ 42) }
+ 'nodes' { PT _ (TS _ 43) }
+ 'not' { PT _ (TS _ 44) }
+ 'or' { PT _ (TS _ 45) }
+ 'output' { PT _ (TS _ 46) }
  'project' { PT _ (TS _ 47) }
  'real' { PT _ (TS _ 48) }
  'returns' { PT _ (TS _ 49) }
@@ -120,7 +120,12 @@ Type :: { Type }
 Type : BaseType { GroundType $1 } 
   | Identifier { TypeId $1 }
   | BaseType '^' Natural { ArrayType $1 $3 }
-  | Type '*' Type { ProdType $1 $3 }
+  | '(' '#' ListType ')' { ProdType $3 }
+
+
+ListType :: { [Type] }
+ListType : Type { (:[]) $1 } 
+  | Type ListType { (:) $1 $2 }
 
 
 BaseType :: { BaseType }
@@ -344,7 +349,7 @@ Expr : Atom { AtExpr $1 }
   | '(' UnOp Expr ')' { Expr1 $2 $3 }
   | '(' BinOp Expr Expr ')' { Expr2 $2 $3 $4 }
   | '(' TernOp Expr Expr Expr ')' { Expr3 $2 $3 $4 $5 }
-  | '(' 'prod' ListExpr ')' { Prod (reverse $3) }
+  | '(' '#' ListExpr ')' { Prod (reverse $3) }
   | '(' 'project' Identifier Natural ')' { Project $3 $4 }
   | '(' 'match' Expr '{' ListPattern '}' ')' { Match $3 $5 }
 

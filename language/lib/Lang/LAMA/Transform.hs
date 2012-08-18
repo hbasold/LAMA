@@ -106,13 +106,6 @@ transEnumConstr x = case x of
   Abs.EnumConstr identifier  -> EnumCons <$> transIdentifier identifier
 
 
-transProdTypeList :: Abs.Type -> Abs.Type -> Result [Type PosIdent]
-transProdTypeList (Abs.ProdType t1 t2) (Abs.ProdType t3 t4) = (++) <$> transProdTypeList t1 t2 <*> transProdTypeList t3 t4
-transProdTypeList (Abs.ProdType t1 t2) t = (++) <$> transProdTypeList t1 t2 <*> ((:[]) <$> transType t)
-transProdTypeList t (Abs.ProdType t1 t2) = (++) <$> ((:[]) <$> transType t) <*> transProdTypeList t1 t2
-transProdTypeList t1 t2 = (\a b -> [a, b]) <$> transType t1 <*> transType t2
-
-
 transType :: Abs.Type -> Result (Type PosIdent)
 transType x = case x of
   Abs.GroundType basetype  -> fmap GroundType $ transBaseType basetype
@@ -121,7 +114,7 @@ transType x = case x of
     ProdType <$> (replicate
                   <$> fmap fromEnum (transNatural natural)
                   <*> fmap GroundType (transBaseType basetype))
-  Abs.ProdType t1 t2  -> ProdType <$> transProdTypeList t1 t2
+  Abs.ProdType ts  -> ProdType <$> mapM transType ts
 
 
 transBaseType :: Abs.BaseType -> Result BaseType
