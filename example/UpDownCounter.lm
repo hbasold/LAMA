@@ -1,8 +1,10 @@
--- Zählt periodisch von 0 bis 10 hoch und wieder runter
--- Beispiel stammt von http://www-verimag.imag.fr/Language-Design,112.html?artpage=7-8 .
--- Die Ursprüngliche Version stammt aus dem Paper über Mode-Automata
--- (http://www-verimag.imag.fr/~maraninx/spip.php?article102). Man beachte, dass hier
--- x mit -1 initialisiert wird. Dadurch ist xo am Anfang 0 und nicht 1 wie im Paper.
+-- Counts periodically up and down ranging from 0 to 10.
+-- The example can be found at
+-- http://www-verimag.imag.fr/Language-Design,112.html?artpage=7-8 .
+-- The original version can be found in the paper about mode automata
+-- (http://www-verimag.imag.fr/~maraninx/spip.php?article102).
+-- Notice that x is initialised with -1 instead of 0 here. With that
+-- xo is 0 at the beginning and not 1.
 
 nodes
   node UpDown () returns (xo : int);
