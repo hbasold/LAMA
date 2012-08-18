@@ -8,7 +8,7 @@ typedef
   enum States = {A, B};
 
 nodes
-  node UpDown () returns (xo : int);
+  node UpDown () returns (xo : int)
   let
     local
       x_ : int;

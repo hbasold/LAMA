@@ -16,7 +16,7 @@
 -- 4 4 5
 
 nodes
-node TempTest (a, b : int) returns (x : int);
+node TempTest (a, b : int) returns (x : int)
   let
     local c : int;
     state c_1, b_1 : int;

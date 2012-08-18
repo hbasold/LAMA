@@ -1,5 +1,5 @@
 nodes
-  node Switch(on, off: bool) returns (so: bool);
+  node Switch(on, off: bool) returns (so: bool)
   let
     local
       s : bool;

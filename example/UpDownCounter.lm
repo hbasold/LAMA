@@ -7,7 +7,7 @@
 -- xo is 0 at the beginning and not 1.
 
 nodes
-  node UpDown () returns (xo : int);
+  node UpDown () returns (xo : int)
   let
     local
       x_ : int;

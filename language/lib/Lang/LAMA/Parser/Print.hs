@@ -225,7 +225,7 @@ instance Print MaybeTypedVars where
 
 instance Print Node where
   prt i e = case e of
-   Node identifier maybetypedvars typedvarss declarations flow controlstructure initial assertion -> prPrec i 0 (concatD [doc (showString "node") , prt 0 identifier , doc (showString "(") , prt 0 maybetypedvars , doc (showString ")") , doc (showString "returns") , doc (showString "(") , prt 0 typedvarss , doc (showString ")") , doc (showString ";") , doc (showString "let") , prt 0 declarations , prt 0 flow , prt 0 controlstructure , prt 0 initial , prt 0 assertion , doc (showString "tel")])
+   Node identifier maybetypedvars typedvarss declarations flow controlstructure initial assertion -> prPrec i 0 (concatD [doc (showString "node") , prt 0 identifier , doc (showString "(") , prt 0 maybetypedvars , doc (showString ")") , doc (showString "returns") , doc (showString "(") , prt 0 typedvarss , doc (showString ")") , doc (showString "let") , prt 0 declarations , prt 0 flow , prt 0 controlstructure , prt 0 initial , prt 0 assertion , doc (showString "tel")])
 
   prtList es = case es of
    [x] -> (concatD [prt 0 x])

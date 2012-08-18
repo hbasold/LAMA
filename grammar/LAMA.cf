@@ -76,7 +76,7 @@ separator nonempty TypedVars ";" ;
 NoTypedVars. MaybeTypedVars ::= ;
 JustTypedVars. MaybeTypedVars ::= [TypedVars];
 
-Node. Node  ::= "node" Identifier "(" MaybeTypedVars ")" "returns" "(" [TypedVars] ")" ";"
+Node. Node  ::= "node" Identifier "(" MaybeTypedVars ")" "returns" "(" [TypedVars] ")"
                 "let"
                     Declarations
                     Flow

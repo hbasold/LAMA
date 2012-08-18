@@ -1,5 +1,5 @@
 nodes
-  node UpDown() returns (x : int);
+  node UpDown() returns (x : int)
   let
     local
       s_ : int;
