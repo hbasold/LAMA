@@ -89,6 +89,7 @@ trOpDecl (S.UserOpDecl {
         . runWriterT
         $ mapM trEquation equations
       let (flow, automata) = trEqRhs eqs
+          flow' = flow { L.flowDefinitions = L.flowDefinitions flow ++ outputDefs }
           (localVars'', stateVars) = separateVars (trEqAsState eqs) localVars'
           precondition = foldl (L.mkExpr2 L.And) (L.constAtExpr $ L.boolConst True) (trEqPrecond eqs)
 
@@ -96,8 +97,7 @@ trOpDecl (S.UserOpDecl {
       return $ L.Node inp outp'
         (L.Declarations (subNodes `Map.union` (Map.fromList $ trEqSubAutom eqs))
          (localVars'' ++ trEqLocalVars eqs) (stateVars ++ trEqStateVars eqs))
-        flow
-        outputDefs automata (trEqInits eqs) precondition
+        flow' automata (trEqInits eqs) precondition
 
     extract :: [TrEquation TrEqCont] -> TrEquation (L.Flow, Map Int L.Automaton)
     extract = foldlTrEq mergeEq (L.Flow [] [], Map.empty)

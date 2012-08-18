@@ -272,7 +272,7 @@ checkDeclarations (UT.Declarations nodes states locals) =
       (mapM checkVarDecl locals)
 
 checkNode :: Ident i => UT.Node i -> Result i (Node i)
-checkNode (Node inp outp decls flow outpDef automata initial assertion) = do
+checkNode (Node inp outp decls flow automata initial assertion) = do
   inp' <- mapM checkVarDecl inp
   outp' <- mapM checkVarDecl outp
   decls' <- checkDeclarations decls
@@ -281,7 +281,6 @@ checkNode (Node inp outp decls flow outpDef automata initial assertion) = do
     envAddDecls decls' $
       Node inp' outp' decls' <$>
         (checkFlow flow) <*>
-        (mapM checkInstantDef outpDef) <*>
         (mapM checkAutomaton automata) <*>
         (checkInitial initial) <*>
         (checkAssertion assertion)

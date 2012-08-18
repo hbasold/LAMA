@@ -101,7 +101,7 @@ data MaybeTypedVars =
   deriving (Eq,Ord,Show)
 
 data Node =
-   Node Identifier MaybeTypedVars [TypedVars] Declarations Flow Outputs ControlStructure Initial Assertion
+   Node Identifier MaybeTypedVars [TypedVars] Declarations Flow ControlStructure Initial Assertion
   deriving (Eq,Ord,Show)
 
 data Declarations =
@@ -140,11 +140,6 @@ data LocalDefinitions =
 data Transitions =
    NoTransitions
  | JustTransitions [Transition]
-  deriving (Eq,Ord,Show)
-
-data Outputs =
-   NoOutputs
- | JustOutputs [InstantDefinition]
   deriving (Eq,Ord,Show)
 
 data InstantDefinition =

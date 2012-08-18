@@ -166,13 +166,12 @@ declareNode active nName nDecl =
          let automNodes = mconcat . map getNodesInLocations . Map.elems $ nodeAutomata n
          (declDefs, undeclaredNodes) <- declareDecls activeCond automNodes $ nodeDecls n
          flowDefs <- declareFlow activeCond $ nodeFlow n
-         outDefs <- fmap concat . mapM (declareInstantDef activeCond) $ nodeOutputDefs n
          automDefs <- fmap concat . mapM (declareAutomaton activeCond undeclaredNodes) . Map.toList $ nodeAutomata n
          assertInits $ nodeInitial n
          precondDef <- declarePrecond activeCond $ nodeAssertion n
          varDefs <- gets varEnv
          return (NodeEnv ins outs varDefs,
-                 declDefs ++ flowDefs ++ outDefs ++ automDefs ++ [precondDef])
+                 declDefs ++ flowDefs ++ automDefs ++ [precondDef])
 
 -- | Extracts all nodes which are used inside some location.
 getNodesInLocations :: Ident i => Automaton i -> Set i

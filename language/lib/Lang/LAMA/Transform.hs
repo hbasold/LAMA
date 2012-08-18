@@ -230,14 +230,13 @@ transMaybeTypedVars x = case x of
 
 transNode :: Abs.Node -> Result (PosIdent, Node)
 transNode x = case x of
-  Abs.Node identifier maybetypedvars typedvarss declarations flow outputs controlstructure initial assertion ->
+  Abs.Node identifier maybetypedvars typedvarss declarations flow controlstructure initial assertion ->
     (,) <$> (transIdentifier identifier) <*>
       (Node <$>
         (transMaybeTypedVars maybetypedvars) <*>
         (fmap concat $ mapM transTypedVars typedvarss) <*>
         (transDeclarations declarations) <*>
         (transFlow flow) <*>
-        (transOutputs outputs) <*>
         (transControlStructure controlstructure) <*>
         (transInitial initial) <*>
         transAssertion assertion)
@@ -293,12 +292,6 @@ transTransitions :: Abs.Transitions -> Result [StateTransition]
 transTransitions x = case x of
   Abs.NoTransitions  -> return []
   Abs.JustTransitions transitions  -> mapM transTransition transitions
-
-
-transOutputs :: Abs.Outputs -> Result [InstantDefinition]
-transOutputs x = case x of
-  Abs.NoOutputs  -> return []
-  Abs.JustOutputs instantdefinitions  -> mapM transInstantDefinition instantdefinitions
 
 
 transInstantDefinition :: Abs.InstantDefinition -> Result InstantDefinition

@@ -262,7 +262,7 @@ mkSubAutomatonNode n eq =
      let automNode =
            L.Node inp outp
            (L.Declarations (Map.fromList $ trEqSubAutom eq) localVars stateVars)
-           condFlow []
+           condFlow
            (Map.singleton 0 autom)
            (trEqInits eq)
            (foldl (L.mkExpr2 L.And) (L.constAtExpr $ L.boolConst True) $ trEqPrecond eq)

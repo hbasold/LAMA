@@ -114,11 +114,10 @@ trNode (x, n) =
       outp = map trTypedVars $ nodeOutputs n
       decls = trDecls $ nodeDecls n
       flow = trFlow $ nodeFlow n
-      outpDefs = trOutputs $ nodeOutputDefs n
       autom = trControlStructure $ nodeAutomata n
       init = trInitial $ nodeInitial n
       assertion = trAssertion $ nodeAssertion n
-  in Abs.Node (trIdent x) inp outp decls flow outpDefs autom init assertion
+  in Abs.Node (trIdent x) inp outp decls flow autom init assertion
 
 trFlow :: Ident i => Flow i -> Abs.Flow
 trFlow f = Abs.Flow (trLocalDefinitions $ flowDefinitions f) (trTransitions $ flowTransitions f)
@@ -131,9 +130,6 @@ trTransitions = mapDefault Abs.NoTransitions (Abs.JustTransitions . map trTransi
 
 trTransition :: Ident i => StateTransition i -> Abs.Transition
 trTransition (StateTransition x e) = Abs.Transition (trStateId x) (trExpr e)
-
-trOutputs :: Ident i => [InstantDefinition i] -> Abs.Outputs
-trOutputs = mapDefault Abs.NoOutputs (Abs.JustOutputs . map trInstantDefinition)
 
 trInstantDefinition :: Ident i => InstantDefinition i -> Abs.InstantDefinition
 trInstantDefinition (InstantExpr x e) =

@@ -271,7 +271,7 @@ mkDepsProgram p = do
   nodeDeps <- mkDepsMapNodes consts (declsNode $ progDecls p)
 
   let vars = (declsVarMap $ progDecls p) `Map.union` (fmap (const Constant) consts)
-  let (mes, (vs, progFlowDeps)) = G.runNodeMapM G.empty $ runReaderT (runErrorT $ mkDepsNodeParts (progFlow p) [] []) vars
+  let (mes, (vs, progFlowDeps)) = G.runNodeMapM G.empty $ runReaderT (runErrorT $ mkDepsNodeParts (progFlow p) []) vars
   es <- mes
   dagProgDeps <- checkCycles progFlowDeps
   return $ InterProgDeps nodeDeps dagProgDeps vs es
@@ -285,7 +285,7 @@ mkDepsNode consts node = do
         G.runNodeMapM G.empty
         . (flip runReaderT vars)
         $ runErrorT
-        $ mkDepsNodeParts (nodeFlow node) (nodeOutputDefs node) (Map.toList $ nodeAutomata node)
+        $ mkDepsNodeParts (nodeFlow node) (Map.toList $ nodeAutomata node)
   es <- mes
   dagDeps <- checkCycles deps
   return $ InterNodeDeps subDeps dagDeps vs es
@@ -295,12 +295,11 @@ mkDepsMapNodes consts = mapM (mkDepsNode consts)
 
 type DepGraphM i = ErrorT String (ReaderT (VarMap i) (NodeMapM (InterIdentCtx i) () Gr))
 
-mkDepsNodeParts :: Ident i => Flow i -> [InstantDefinition i] -> [(Int, Automaton i)] -> DepGraphM i (InstantMap i)
-mkDepsNodeParts f o a = do
+mkDepsNodeParts :: Ident i => Flow i -> [(Int, Automaton i)] -> DepGraphM i (InstantMap i)
+mkDepsNodeParts f a = do
   e1 <- mkDepsFlow GlobalMode f
-  e2 <- foldlM (mkDepsInstant GlobalMode) e1 o
   e3s <- mapM mkDepsAutomaton a
-  return $ foldl Map.union e2 e3s
+  return $ Map.unions e3s
 
 -- | Calculates the dependencies of the definitions
 --    and the state changes and gives back a map

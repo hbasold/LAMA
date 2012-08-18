@@ -76,7 +76,6 @@ data GNode i expr cexpr = Node {
     nodeOutputs     :: [GVariable i],
     nodeDecls       :: GDeclarations i expr cexpr,
     nodeFlow        :: GFlow i expr,
-    nodeOutputDefs  :: [GInstantDefinition i expr],
     nodeAutomata    :: Map Int (GAutomaton i expr),
     nodeInitial     :: GStateInit i cexpr,
     nodeAssertion   :: expr

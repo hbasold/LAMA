@@ -61,21 +61,20 @@ import qualified Data.ByteString.Lazy.Char8 as BS
  'nodes' { PT _ (TS _ 43) }
  'not' { PT _ (TS _ 44) }
  'or' { PT _ (TS _ 45) }
- 'output' { PT _ (TS _ 46) }
- 'project' { PT _ (TS _ 47) }
- 'real' { PT _ (TS _ 48) }
- 'returns' { PT _ (TS _ 49) }
- 'sint' { PT _ (TS _ 50) }
- 'state' { PT _ (TS _ 51) }
- 'tel' { PT _ (TS _ 52) }
- 'transition' { PT _ (TS _ 53) }
- 'true' { PT _ (TS _ 54) }
- 'typedef' { PT _ (TS _ 55) }
- 'uint' { PT _ (TS _ 56) }
- 'use' { PT _ (TS _ 57) }
- 'xor' { PT _ (TS _ 58) }
- '{' { PT _ (TS _ 59) }
- '}' { PT _ (TS _ 60) }
+ 'project' { PT _ (TS _ 46) }
+ 'real' { PT _ (TS _ 47) }
+ 'returns' { PT _ (TS _ 48) }
+ 'sint' { PT _ (TS _ 49) }
+ 'state' { PT _ (TS _ 50) }
+ 'tel' { PT _ (TS _ 51) }
+ 'transition' { PT _ (TS _ 52) }
+ 'true' { PT _ (TS _ 53) }
+ 'typedef' { PT _ (TS _ 54) }
+ 'uint' { PT _ (TS _ 55) }
+ 'use' { PT _ (TS _ 56) }
+ 'xor' { PT _ (TS _ 57) }
+ '{' { PT _ (TS _ 58) }
+ '}' { PT _ (TS _ 59) }
 
 L_integ  { PT _ (TI $$) }
 L_Identifier { PT _ (T_Identifier _) }
@@ -220,7 +219,7 @@ MaybeTypedVars : {- empty -} { NoTypedVars }
 
 
 Node :: { Node }
-Node : 'node' Identifier '(' MaybeTypedVars ')' 'returns' '(' ListTypedVars ')' ';' 'let' Declarations Flow Outputs ControlStructure Initial Assertion 'tel' { Node $2 $4 $8 $12 $13 $14 $15 $16 $17 } 
+Node : 'node' Identifier '(' MaybeTypedVars ')' 'returns' '(' ListTypedVars ')' ';' 'let' Declarations Flow ControlStructure Initial Assertion 'tel' { Node $2 $4 $8 $12 $13 $14 $15 $16 } 
 
 
 ListNode :: { [Node] }
@@ -264,11 +263,6 @@ LocalDefinitions : {- empty -} { NoLocalDefinitons }
 Transitions :: { Transitions }
 Transitions : {- empty -} { NoTransitions } 
   | 'transition' ListTransition { JustTransitions $2 }
-
-
-Outputs :: { Outputs }
-Outputs : {- empty -} { NoOutputs } 
-  | 'output' ListInstantDefinition { JustOutputs $2 }
 
 
 ListInstantDefinition :: { [InstantDefinition] }

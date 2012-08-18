@@ -84,7 +84,7 @@ expectedTypes =
         nodeOutputs = [Variable x (ProdType [EnumType e, intT, ProdType [intT, realT], int5])],
         nodeDecls = Declarations Map.empty [] [],
         nodeFlow = Flow {flowDefinitions = [], flowTransitions = []},
-        nodeOutputDefs = [], nodeAutomata = Map.fromList [], nodeInitial = fromList [], nodeAssertion = trueE
+        nodeAutomata = Map.fromList [], nodeInitial = fromList [], nodeAssertion = trueE
       })],
       declsState = [],
       declsLocal = [Variable x (ProdType [EnumType e, intT, ProdType [intT, realT], int5])]
@@ -109,7 +109,7 @@ constantsSrc :: BL.ByteString
 constantsSrc = BL.pack $ unlines [
   "nodes",
   "  node main() returns (x : sint[32]; y : uint[16]); let",
-  "    output",
+  "    definition",
   "      x = sint[32]((- 5));",
   "      y = uint[16](1322);",
   "tel" ]
@@ -127,11 +127,10 @@ expectedConstants =
           Variable y (GroundType (UInt 16))
         ],
         nodeDecls = Declarations Map.empty [] [],
-        nodeFlow = Flow [] [],
-        nodeOutputDefs = [
+        nodeFlow = Flow [
           InstantExpr x $ constAtExpr $ mkTyped (SIntConst 32 (-5)) (GroundType (SInt 32)),
           InstantExpr y $ constAtExpr $ mkTyped (UIntConst 16 1322) (GroundType (UInt 16))
-        ],
+        ] [],
         nodeAutomata = Map.fromList [], nodeInitial = fromList [], nodeAssertion = trueE
       })],
       declsState = [],
@@ -160,10 +159,9 @@ switch = BL.pack $ unlines [
     "    s : bool;",
     "  definition",
     "    s_ = (ite s (not off) on);",
+    "    so = s_;",
     "  transition",
     "    s' = s_;",
-    "  output",
-    "    so = s_;",
     "  initial s = false;",
     "tel",
     "local on, off, so : bool;",
@@ -189,11 +187,11 @@ expectedSwitch =
               ite (varExpr s boolT)
                   (notE (varExpr off boolT))
                   (varExpr on boolT)
-            )
+            ),
+            InstantExpr so $ (varExpr s_ boolT)
           ],
           flowTransitions = [StateTransition s (varExpr s_ boolT)]
         },
-        nodeOutputDefs = [InstantExpr so $ (varExpr s_ boolT)],
         nodeAutomata = Map.fromList [],
         nodeInitial = fromList [(s,(mkTyped (Const false) boolT))],
         nodeAssertion = trueE
@@ -229,10 +227,10 @@ upDownCounter = BL.pack $ unlines [
   "      x_ : int;",
   "    state",
   "      x : int;",
+  "    definition",
+  "      xo = x_;",
   "    transition",
   "      x' = x_;",
-  "    output",
-  "      xo = x_;",
   "    ",
   "    automaton let",
  "       location A let",
@@ -268,10 +266,9 @@ expectedUpDownCounter =
           declsLocal = [Variable x_ intT]
         },
         nodeFlow = Flow {
-          flowDefinitions = [],
+          flowDefinitions = [InstantExpr xo $ (varExpr x_ intT)],
           flowTransitions = [StateTransition x (varExpr x_ intT)]
         },
-        nodeOutputDefs = [InstantExpr xo $ (varExpr x_ intT)],
         nodeAutomata = Map.fromList [ (0, Automaton {
           automLocations = [
             Location sA (Flow {

@@ -80,7 +80,6 @@ Node. Node  ::= "node" Identifier "(" MaybeTypedVars ")" "returns" "(" [TypedVar
                 "let"
                     Declarations
                     Flow
-                    Outputs
                     ControlStructure
                     Initial
                     Assertion
@@ -104,9 +103,6 @@ NoLocalDefinitons. LocalDefinitions    ::= ;
 JustLocalDefinitons. LocalDefinitions    ::= "definition" [InstantDefinition] ;
 NoTransitions. Transitions    ::= ;
 JustTransitions. Transitions    ::= "transition" [Transition] ;
-
-NoOutputs. Outputs    ::= ;
-JustOutputs. Outputs    ::= "output" [InstantDefinition] ;
 
 terminator nonempty InstantDefinition ";" ;
 terminator nonempty Transition ";" ;
