@@ -5,7 +5,7 @@ constants
   n = 5;
   l = 4;
 nodes
-  node Write1 (a : int^5; i, x : int) returns (b : int^5) let
+  node Write1 (a : int^5, i : int, x : int) returns (b : int^5) let
     definition b =
       (ite (= i 0) (# x (project a 1) (project a 2) (project a 3) (project a 4))
       (ite (= i 1) (# (project a 0) x (project a 2) (project a 3) (project a 4))
@@ -15,7 +15,7 @@ nodes
         a )))));
   tel
 
-  node Write2 (a : int^5; i, x : int) returns (b : int^5) let
+  node Write2 (a : int^5, i : int, x : int) returns (b : int^5) let
     definition b =
       (ite (= i 0) (# x (project a 1) (project a 2) (project a 3) (project a 4))
       (ite (= i 1) (# (project a 0) x (project a 2) (project a 3) (project a 4))
@@ -25,7 +25,7 @@ nodes
         a )))));
   tel
   
-  node Read1 (a : int^5; i : int) returns (x : int) let
+  node Read1 (a : int^5, i : int) returns (x : int) let
     definition x =
       (ite (= i 0) (project a 0)
       (ite (= i 1) (project a 1)
@@ -35,7 +35,7 @@ nodes
         6346 )))));
   tel
 
-  node Read2 (a : int^5; i : int) returns (x : int) let
+  node Read2 (a : int^5, i : int) returns (x : int) let
     definition x =
       (ite (= i 0) (project a 0)
       (ite (= i 1) (project a 1)
@@ -45,9 +45,9 @@ nodes
         6346 )))));
   tel
 local
-  i, i1 : int;
-  ai, ai1 : int;
-  a, a1, a2 : int^5;
+  i : int; i1 : int;
+  ai : int; ai1 : int;
+  a : int^5; a1 : int^5; a2 : int^5;
   s_ : (# E1 int int^5);
 state s : (# E1 int int^5);
 definition

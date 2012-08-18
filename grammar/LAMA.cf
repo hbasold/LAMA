@@ -69,14 +69,13 @@ StateInit. StateInit ::= Identifier "=" ConstExpr ;
 ConstExpr. ConstExpr ::= Expr ;
 
 ------
-separator nonempty Identifier "," ;
-TypedVars. TypedVars ::= [Identifier] ":" Type ;
-separator nonempty TypedVars ";" ;
+TypedVar. TypedVar ::= Identifier ":" Type ;
+separator nonempty TypedVar "," ;
 
 NoTypedVars. MaybeTypedVars ::= ;
-JustTypedVars. MaybeTypedVars ::= [TypedVars];
+JustTypedVars. MaybeTypedVars ::= [TypedVar] ;
 
-Node. Node  ::= "node" Identifier "(" MaybeTypedVars ")" "returns" "(" [TypedVars] ")"
+Node. Node  ::= "node" Identifier "(" MaybeTypedVars ")" "returns" "(" [TypedVar] ")"
                 "let"
                     Declarations
                     Flow
@@ -87,8 +86,8 @@ Node. Node  ::= "node" Identifier "(" MaybeTypedVars ")" "returns" "(" [TypedVar
 
 separator nonempty Node "" ;
 Declarations. Declarations ::= NodeDecls LocalDecls StateDecls ;
-SingleDecl. VarDecls ::= TypedVars ";" ;
-ConsDecl. VarDecls ::= TypedVars ";" VarDecls ;
+SingleDecl. VarDecls ::= TypedVar ";" ;
+ConsDecl. VarDecls ::= TypedVar ";" VarDecls ;
 NoNodes. NodeDecls     ::= ;
 JustNodeDecls. NodeDecls     ::= "nodes" [Node] ;
 NoLocals. LocalDecls    ::= ;

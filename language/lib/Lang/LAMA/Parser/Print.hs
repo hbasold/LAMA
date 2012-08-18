@@ -81,9 +81,6 @@ instance Print Double where
 
 instance Print Identifier where
   prt _ (Identifier (_,i)) = doc (showString (BS.unpack i))
-  prtList es = case es of
-   [x] -> (concatD [prt 0 x])
-   x:xs -> (concatD [prt 0 x , doc (showString ",") , prt 0 xs])
 
 
 instance Print StateId where
@@ -209,23 +206,23 @@ instance Print ConstExpr where
    ConstExpr expr -> prPrec i 0 (concatD [prt 0 expr])
 
 
-instance Print TypedVars where
+instance Print TypedVar where
   prt i e = case e of
-   TypedVars identifiers type' -> prPrec i 0 (concatD [prt 0 identifiers , doc (showString ":") , prt 0 type'])
+   TypedVar identifier type' -> prPrec i 0 (concatD [prt 0 identifier , doc (showString ":") , prt 0 type'])
 
   prtList es = case es of
    [x] -> (concatD [prt 0 x])
-   x:xs -> (concatD [prt 0 x , doc (showString ";") , prt 0 xs])
+   x:xs -> (concatD [prt 0 x , doc (showString ",") , prt 0 xs])
 
 instance Print MaybeTypedVars where
   prt i e = case e of
    NoTypedVars  -> prPrec i 0 (concatD [])
-   JustTypedVars typedvarss -> prPrec i 0 (concatD [prt 0 typedvarss])
+   JustTypedVars typedvars -> prPrec i 0 (concatD [prt 0 typedvars])
 
 
 instance Print Node where
   prt i e = case e of
-   Node identifier maybetypedvars typedvarss declarations flow controlstructure initial assertion -> prPrec i 0 (concatD [doc (showString "node") , prt 0 identifier , doc (showString "(") , prt 0 maybetypedvars , doc (showString ")") , doc (showString "returns") , doc (showString "(") , prt 0 typedvarss , doc (showString ")") , doc (showString "let") , prt 0 declarations , prt 0 flow , prt 0 controlstructure , prt 0 initial , prt 0 assertion , doc (showString "tel")])
+   Node identifier maybetypedvars typedvars declarations flow controlstructure initial assertion -> prPrec i 0 (concatD [doc (showString "node") , prt 0 identifier , doc (showString "(") , prt 0 maybetypedvars , doc (showString ")") , doc (showString "returns") , doc (showString "(") , prt 0 typedvars , doc (showString ")") , doc (showString "let") , prt 0 declarations , prt 0 flow , prt 0 controlstructure , prt 0 initial , prt 0 assertion , doc (showString "tel")])
 
   prtList es = case es of
    [x] -> (concatD [prt 0 x])
@@ -238,8 +235,8 @@ instance Print Declarations where
 
 instance Print VarDecls where
   prt i e = case e of
-   SingleDecl typedvars -> prPrec i 0 (concatD [prt 0 typedvars , doc (showString ";")])
-   ConsDecl typedvars vardecls -> prPrec i 0 (concatD [prt 0 typedvars , doc (showString ";") , prt 0 vardecls])
+   SingleDecl typedvar -> prPrec i 0 (concatD [prt 0 typedvar , doc (showString ";")])
+   ConsDecl typedvar vardecls -> prPrec i 0 (concatD [prt 0 typedvar , doc (showString ";") , prt 0 vardecls])
 
 
 instance Print NodeDecls where

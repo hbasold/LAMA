@@ -199,27 +199,22 @@ ConstExpr :: { ConstExpr }
 ConstExpr : Expr { ConstExpr $1 } 
 
 
-ListIdentifier :: { [Identifier] }
-ListIdentifier : Identifier { (:[]) $1 } 
-  | Identifier ',' ListIdentifier { (:) $1 $3 }
+TypedVar :: { TypedVar }
+TypedVar : Identifier ':' Type { TypedVar $1 $3 } 
 
 
-TypedVars :: { TypedVars }
-TypedVars : ListIdentifier ':' Type { TypedVars $1 $3 } 
-
-
-ListTypedVars :: { [TypedVars] }
-ListTypedVars : TypedVars { (:[]) $1 } 
-  | TypedVars ';' ListTypedVars { (:) $1 $3 }
+ListTypedVar :: { [TypedVar] }
+ListTypedVar : TypedVar { (:[]) $1 } 
+  | TypedVar ',' ListTypedVar { (:) $1 $3 }
 
 
 MaybeTypedVars :: { MaybeTypedVars }
 MaybeTypedVars : {- empty -} { NoTypedVars } 
-  | ListTypedVars { JustTypedVars $1 }
+  | ListTypedVar { JustTypedVars $1 }
 
 
 Node :: { Node }
-Node : 'node' Identifier '(' MaybeTypedVars ')' 'returns' '(' ListTypedVars ')' 'let' Declarations Flow ControlStructure Initial Assertion 'tel' { Node $2 $4 $8 $11 $12 $13 $14 $15 } 
+Node : 'node' Identifier '(' MaybeTypedVars ')' 'returns' '(' ListTypedVar ')' 'let' Declarations Flow ControlStructure Initial Assertion 'tel' { Node $2 $4 $8 $11 $12 $13 $14 $15 } 
 
 
 ListNode :: { [Node] }
@@ -232,8 +227,8 @@ Declarations : NodeDecls LocalDecls StateDecls { Declarations $1 $2 $3 }
 
 
 VarDecls :: { VarDecls }
-VarDecls : TypedVars ';' { SingleDecl $1 } 
-  | TypedVars ';' VarDecls { ConsDecl $1 $3 }
+VarDecls : TypedVar ';' { SingleDecl $1 } 
+  | TypedVar ';' VarDecls { ConsDecl $1 $3 }
 
 
 NodeDecls :: { NodeDecls }

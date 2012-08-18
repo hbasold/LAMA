@@ -16,10 +16,10 @@
 -- 4 4 5
 
 nodes
-node TempTest (a, b : int) returns (x : int)
+node TempTest (a :int, b : int) returns (x : int)
   let
     local c : int;
-    state c_1, b_1 : int;
+    state c_1 : int; b_1 : int;
     definition
       c = (+ a b_1);
       x = c_1;
@@ -29,5 +29,5 @@ node TempTest (a, b : int) returns (x : int)
     initial
       b_1 = 0, c_1 = 0;
   tel
-local a, b, x : int;
+local a : int; b : int; x : int;
 definition x = (use TempTest a b);

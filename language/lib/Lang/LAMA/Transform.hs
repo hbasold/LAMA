@@ -214,18 +214,16 @@ transConstExpr x = case x of
     evalConst _ = throwError $ "Not a constant expression: " ++ Abs.printTree x
 
 
-transTypedVars :: Abs.TypedVars -> Result [Variable]
-transTypedVars x = case x of
-  Abs.TypedVars identifiers t  -> do
-    t' <- transType t
-    let varCons = flip Variable $ t'
-    fmap (map varCons) $ mapM transIdentifier identifiers
+transTypedVar :: Abs.TypedVar -> Result Variable
+transTypedVar x = case x of
+  Abs.TypedVar identifier t  ->
+    Variable <$> transIdentifier identifier <*> transType t
 
 
 transMaybeTypedVars :: Abs.MaybeTypedVars -> Result [Variable]
 transMaybeTypedVars x = case x of
   Abs.NoTypedVars  -> return []
-  Abs.JustTypedVars typedvarss  -> fmap concat $ mapM transTypedVars typedvarss
+  Abs.JustTypedVars typedvarss  -> mapM transTypedVar typedvarss
 
 
 transNode :: Abs.Node -> Result (PosIdent, Node)
@@ -234,7 +232,7 @@ transNode x = case x of
     (,) <$> (transIdentifier identifier) <*>
       (Node <$>
         (transMaybeTypedVars maybetypedvars) <*>
-        (fmap concat $ mapM transTypedVars typedvarss) <*>
+        (mapM transTypedVar typedvarss) <*>
         (transDeclarations declarations) <*>
         (transFlow flow) <*>
         (transControlStructure controlstructure) <*>
@@ -251,11 +249,11 @@ transDeclarations x = case x of
 
 transVarDecls :: Abs.VarDecls -> Result [Variable]
 transVarDecls x = case x of
-  Abs.SingleDecl typedvars  -> transTypedVars typedvars
-  Abs.ConsDecl typedvars vardecls  -> do
-    vs <- transTypedVars typedvars
+  Abs.SingleDecl typedvar  -> (:[]) <$> transTypedVar typedvar
+  Abs.ConsDecl typedvar vardecls  -> do
+    vs <- transTypedVar typedvar
     vss <- transVarDecls vardecls
-    return $ vs ++ vss
+    return $ vs : vss
 
 
 transNodeDecls :: Abs.NodeDecls -> Result (Map PosIdent Node)

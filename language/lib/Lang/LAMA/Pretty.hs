@@ -102,8 +102,8 @@ trVarDecls [] = undefined
 trVarDecls [x] = Abs.SingleDecl $ trTypedVars x
 trVarDecls (x:xs) = Abs.ConsDecl (trTypedVars x) (trVarDecls xs)
 
-trTypedVars :: Ident i => Variable i -> Abs.TypedVars
-trTypedVars x = Abs.TypedVars [trIdent $ varIdent x] (trType $ varType x)
+trTypedVars :: Ident i => Variable i -> Abs.TypedVar
+trTypedVars (Variable x t) = Abs.TypedVar (trIdent x) (trType t)
 
 trMaybeTypedVars :: Ident i => [Variable i] -> Abs.MaybeTypedVars
 trMaybeTypedVars = mapDefault Abs.NoTypedVars (Abs.JustTypedVars . map trTypedVars)

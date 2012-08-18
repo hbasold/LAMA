@@ -91,17 +91,17 @@ data ConstExpr =
    ConstExpr Expr
   deriving (Eq,Ord,Show)
 
-data TypedVars =
-   TypedVars [Identifier] Type
+data TypedVar =
+   TypedVar Identifier Type
   deriving (Eq,Ord,Show)
 
 data MaybeTypedVars =
    NoTypedVars
- | JustTypedVars [TypedVars]
+ | JustTypedVars [TypedVar]
   deriving (Eq,Ord,Show)
 
 data Node =
-   Node Identifier MaybeTypedVars [TypedVars] Declarations Flow ControlStructure Initial Assertion
+   Node Identifier MaybeTypedVars [TypedVar] Declarations Flow ControlStructure Initial Assertion
   deriving (Eq,Ord,Show)
 
 data Declarations =
@@ -109,8 +109,8 @@ data Declarations =
   deriving (Eq,Ord,Show)
 
 data VarDecls =
-   SingleDecl TypedVars
- | ConsDecl TypedVars VarDecls
+   SingleDecl TypedVar
+ | ConsDecl TypedVar VarDecls
   deriving (Eq,Ord,Show)
 
 data NodeDecls =

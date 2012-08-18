@@ -1,5 +1,5 @@
 nodes
-  node Switch(on, off: bool) returns (so: bool)
+  node Switch(on : bool, off: bool) returns (so: bool)
   let
     local
       s : bool;
@@ -12,7 +12,7 @@ nodes
       s_1' = s;
     initial s_1 = false;
   tel
-local on, off, s : bool;
+local on : bool; off : bool; s : bool;
 state s_1 : bool;
 definition s = (use Switch on off);
 transition
