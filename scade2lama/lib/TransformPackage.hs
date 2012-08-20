@@ -1,7 +1,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TemplateHaskell, FlexibleContexts #-}
 
-module Transform (transform) where
+module TransformPackage (transformPackage) where
 
 import Development.Placeholders
 
@@ -118,8 +118,8 @@ trOpDecl _ = undefined
 mkPath :: String -> S.Path
 mkPath = S.Path . splitOn "::"
 
-transform :: String -> Package -> Either String L.Program
-transform topNode ps =
+transformPackage :: String -> Package -> Either String L.Program
+transformPackage topNode ps =
   case runTransM (getNode $ mkPath $ topNode) ps of
     Left e -> Left e
     Right ((topNodeName, n), decls) ->

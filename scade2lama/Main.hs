@@ -32,7 +32,7 @@ import qualified RewriteOperatorApp as OpApp
 import qualified UnrollTemporal as Unroll
 import qualified UnrollFby as Fby
 import ExtractPackages
-import Transform
+import TransformPackage
 import Lang.LAMA.Pretty
 
 resolveDebug :: Maybe String -> Options -> Options
@@ -118,7 +118,7 @@ run opts f inp = (flip evalVarGenT 0) $ do
   let ps = extractPackages r
   ps' <- checkErr "Rewrite error:" =<< (runInVarGenT $ runErrorT $ rewrite2 ps)
   liftIO $ when (optDumpRewrite opts) (putStrLn $ render $ prettyPackage ps')
-  l <- checkErr "Tranform error:" $ transform (optTopNode opts) ps'
+  l <- checkErr "Tranform error:" $ transformPackage (optTopNode opts) ps'
   liftIO $ when (optDumpLama opts) (putStrLn $ show l)
   return $ prettyLama l
 

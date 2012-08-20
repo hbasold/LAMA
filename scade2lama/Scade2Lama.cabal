@@ -18,5 +18,5 @@ Executable scade2lama
     RewriteOperatorApp
     RewriteTemporal
     UnrollTemporal
-    Transform
+    TransformPackage
   Main-Is: Main.hs
