@@ -21,27 +21,310 @@ Typisierung eines LAMA-Programms bestehend aus:
 Typdeklarationen ($T$), Konstantendeklarationen ($C$), Variablendeklarationen ($D$),
 Datenfluss ($F$), Anfangszustand ($I$), Assertion ($A$) und Invarianten ($P$).
 
+%<*typerules>
+
+\begin{figure}[h]
+
+%<*progrule>
 \begin{prooftree}
   \alwaysNoLine
-  \AxiomC{$\emptyset,\Delta_B \vdash T \therefore \Delta'$}
-  \UnaryInfC{$\Gamma = \Gamma_1 \cup \Gamma_2$}
-  \UnaryInfC{$\Gamma,\Delta \vdash F : \ty{ok}$}
-  \UnaryInfC{$\Gamma,\Delta \vdash A : \ty{ok}$}              \AxiomC{$\emptyset,\Delta \vdash C \therefore \Gamma_1$}
-                                                              \UnaryInfC{$\Delta = \Delta_B \cup \Delta'$}
-                                                              \UnaryInfC{$\Gamma,\Delta \vdash I : \ty{ok}$}
-                                                              \UnaryInfC{$\Gamma,\Delta \vdash P : \ty{ok}$}        \AxiomC{$\emptyset,\Delta \vdash D \therefore \Gamma_2$}
-                                                                                                                    \UnaryInfC{\phantom{$\Gamma,$}} % empty premisses
-                                                                                                                    \UnaryInfC{\phantom{$\Gamma,$}} % for vertical spacing
-                                                                                                                    \UnaryInfC{\phantom{$\emptyset,\Delta \vdash D \therefore \Gamma_2$}} % force correct line length
+  \AxiomC{$ \vdash T \therefore \Sigma$}
+  \UnaryInfC{$\Sigma,\Delta,\Gamma \vdash F : \ty{ok}$}
+  \UnaryInfC{$\Sigma,\Delta,\Gamma \vdash A : \ty{ok}$}
+
+    \AxiomC{$\Sigma \vdash C \therefore \Delta$}
+    \UnaryInfC{$\Sigma,\Delta,\Gamma \vdash I : \ty{ok}$}
+    \UnaryInfC{$\Sigma,\Delta,\Gamma \vdash P : \ty{ok}$}
+
+      \AxiomC{$\Sigma \vdash D \therefore \Gamma$}
+      \UnaryInfC{\phantom{$\Delta,$}} % empty premisses
+      \UnaryInfC{\phantom{$\emptyset,\Sigma \vdash D
+          \therefore \Delta_2$}} % force correct line length
+
   \alwaysSingleLine
   \RightLabel{(program)}
   \TrinaryInfC{$\vdash T \; C \; D \; F \; I \; A \; P : \ty{ok}$}
 \end{prooftree}
 
+%</progrule>
+
+%<*typedefrules>
+% typdef
+\begin{prooftree}
+\AxiomC{$\vdash T_1 \therefore \Sigma_1, \dots,
+  T_n \therefore \Sigma_n$}
+\RightLabel{(typedef)}
+\UnaryInfC{$\vdash \syn{typedef } T_1 \ldots T_n \syn{ ;}
+  \therefore \bigcup_{i=1}^n\Sigma_i$}  
+\end{prooftree}
+
+% enum
+\begin{prooftree}
+\AxiomC{}
+\RightLabel{(enum)}
+\UnaryInfC{$\vdash \syn{enum } x \syn{ = \{} c_1, \ldots, c_n  \syn{\}}
+  \therefore \{(x, \{\func{c_i}{\ast}{x}\})\}$}  
+\end{prooftree}
+
+%</typedefrules>
+
+% constants
+\begin{prooftree}
+\AxiomC{$\Sigma \vdash c_1 : A_1 \ldots c_n : A_n$}
+\RightLabel{(constants)}
+\UnaryInfC{$\Sigma \vdash \syn{constants }
+  x_1 \syn{ = } c_1 \syn{;} \ldots \; x_n \syn{ = } c_n \syn{;}
+  \therefore \{(x_1, A_1), \ldots, (x_n, A_n)\} $}
+\end{prooftree}
+
+% invariant
+\begin{prooftree}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash e : \ty{bool}$}
+\UnaryInfC{$\Sigma,\Delta,\Gamma \vdash
+  \syn{invariant } e \syn{ ;} : \ty{ok}$}
+\end{prooftree}
 
 
-\AxiomC{$\Gamma,\Delta \vdash P : \ty{bool}$}
-\UnaryInfC{$\Gamma,\Delta \vdash \syn{assertion } P \syn{ ;} : \ty{ok}$}
+\caption{Typisierung von LAMA-Programmen}
+\label{fig:lama_program_types}
+\end{figure}
+
+%%% declarations
+\begin{figure}[h]
+
+% declarations
+\begin{prooftree}
+\AxiomC{$\Sigma, \Delta \vdash N \therefore \Gamma_1$}
+\AxiomC{$\Sigma \vdash L \therefore \Gamma_2$}
+\AxiomC{$\Sigma \vdash S \therefore \Gamma_3$}
+\RightLabel{(declarations)}
+\TrinaryInfC{$\Sigma,\Delta \vdash N \; L \; S
+  \therefore \Gamma_1 \cup \Gamma_2 \cup \Gamma_3 $}
+\end{prooftree}
+
+% nodes
+\begin{prooftree}
+\AxiomC{$\Sigma, \Delta \vdash N_1 : A_1, \, \ldots, \, N_n : A_n$}
+\RightLabel{(nodes)}
+\UnaryInfC{$\Sigma, \Delta \vdash \syn{nodes } N_1 \ldots N_n
+  \therefore \{(N_1,A_1), \ldots, (N_n, A_n)\}$}  
+\end{prooftree}
+
+% local
+\begin{prooftree}
+\AxiomC{$A_1 = \Sigma(t_1), \, \ldots, \, A_n = \Sigma(t_n)$}
+\RightLabel{(local)}
+\UnaryInfC{$\Sigma \vdash \syn{local }
+  x_1 \syn{ : } t_1 \syn{;} \; \ldots \; x_n \syn{ : } t_n \syn{;}
+  \therefore \{(x_1,A_1), \ldots, (x_n, A_n)\}$}  
+\end{prooftree}
+
+% state
+\begin{prooftree}
+\AxiomC{$A_1 = \Sigma(t_1), \, \ldots, \, A_n = \Sigma(t_n)$}
+\RightLabel{(state)}
+\UnaryInfC{$\Sigma \vdash \syn{state }
+  x_1 \syn{ : } t_1 \syn{;} \; \ldots \; x_n \syn{ : } t_n \syn{;}
+  \therefore \{(x_1,A_1), \ldots, (x_n, A_n)\}$}  
+\end{prooftree}
+
+
+\caption{Typisierung von Deklarationen}
+\label{fig:lama_decls_types}
+\end{figure}
+
+
+%%% nodes
+\begin{figure}[h]
+
+% invariant
+\begin{prooftree}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash e : \ty{bool}$}
+\RightLabel{(invariant)}
+\UnaryInfC{$\Sigma,\Delta,\Gamma \vdash
+  \syn{invariant } e \syn{ ;} : \ty{ok}$}
+\end{prooftree}
+
+TODO
+  
+\caption{Typisierung von Knoten}
+\label{fig:lama_node_types}
+\end{figure}
+
+\begin{figure}[h]
+
+\begin{tabular}{ll}
+% equality
+\AxiomC{}
+\RightLabel{(eq)}
+\UnaryInfC{$\vdash
+  \syn{=} : \forall t : Type. \; t \rightarrow t \rightarrow bool$}
 \DisplayProof
+\quad &
+% relations
+\AxiomC{}
+\RightLabel{(rels)}
+\UnaryInfC{$\vdash
+  \boxempty : \forall t : Num. \; t \rightarrow t \rightarrow bool$}
+\DisplayProof \\
+& $\boxempty \in \{\syn{<}, \syn{<=}, \syn{>}, \syn{>=}\}$ \\
+\\
+
+% boolean functions
+% unary boolean
+\AxiomC{}
+\RightLabel{(unary-bool)}
+\UnaryInfC{$\vdash
+  \syn{not} : \ty{bool} \rightarrow \ty{bool}$}
+\DisplayProof
+&
+% binary boolean
+\AxiomC{}
+\RightLabel{(bin-bool)}
+\UnaryInfC{$\vdash
+  \boxempty : \ty{bool} \rightarrow \ty{bool}
+  \rightarrow \ty{bool}$}
+\DisplayProof \\
+& $\boxempty \in \{\syn{and}, \syn{or}, \syn{xor}, \syn{=>}\}$ \\
+\\
+% arithmetic
+%<*arith>
+% general arithmetic
+\AxiomC{}
+\RightLabel{(arith)}
+\UnaryInfC{$\vdash
+  \boxempty : \forall t : Num. \; t \rightarrow t \rightarrow t$}
+\DisplayProof
+%</arith>
+\quad &
+% integer arithmetic
+%<*intarith>
+\AxiomC{}
+\RightLabel{(int-arith)}
+\UnaryInfC{$\vdash
+  \boxempty : \ty{int} \rightarrow \ty{int} \rightarrow \ty{int}$}
+\DisplayProof
+%</intarith>
+\\
+$\boxempty \in \{\syn{+}, \syn{-}, \syn{*}\}$
+& $\boxempty \in \{\syn{div}, \syn{mod}\}$
+\end{tabular}
+
+\begin{prooftree}
+\AxiomC{}
+\RightLabel{(real-arith)}
+\UnaryInfC{$\vdash
+  \syn{/} : \ty{real} \rightarrow \ty{real} \rightarrow \ty{real}$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{}
+\RightLabel{(ite)}
+\UnaryInfC{$\vdash
+  \syn{ite} : \forall t : Type. \;
+  \ty{bool} \rightarrow t \rightarrow t \rightarrow t$}
+\end{prooftree}
+  
+\caption{Typisierung von Relationen und Operatoren}
+\label{fig:lama_rel_arith_types}
+\end{figure}
+
+%%% universes
+\begin{figure}[h]
+
+% universe instances
+\begin{tabular}{ll}
+\AxiomC{}
+\RightLabel{(num-univ)}
+\UnaryInfC{$\vdash T : Num$}
+\DisplayProof
+\quad &
+\AxiomC{}
+\RightLabel{(bool-univ)}
+\UnaryInfC{$\ty{bool} : Type$}
+\DisplayProof \\
+$T \in \{\ty{int}, \ty{real}, \ty{sint[n]}, \ty{uint[n]}\},
+n \in \N $ & \\
+\\
+\AxiomC{$x \in \Sigma$}
+\RightLabel{(enum-univ)}
+\UnaryInfC{$\Sigma \vdash \ty{x} : Type$}
+\DisplayProof
+\quad &
+\AxiomC{$T_1 : U_1 \, \ldots \, T_n : U_n$}
+\RightLabel{(prod-univ)}
+\UnaryInfC{$\vdash \ty{(\#} \; T_1 \, \ldots \, T_n \ty{)} : Type$}
+\DisplayProof
+\end{tabular}
+
+% universe generalisation
+%<*univgen>
+\begin{prooftree}
+\AxiomC{$\vdash T : Num$}
+\RightLabel{(universe-generalisation)}
+\UnaryInfC{$\vdash T : Type$}
+\end{prooftree}
+%</univgen>
+
+\caption{Typ-Universen}
+\label{fig:lama_type_universes}
+\end{figure}
+
+%%% quantifier elimination and function application
+\begin{figure}[h]
+
+% quantifier elimination
+%<*forallelim>
+\begin{prooftree}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash M : (\forall t : U. \; A)$}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash T : U$}
+\RightLabel{($\forall$-E)}
+\BinaryInfC{$\Sigma,\Delta,\Gamma \vdash M : A[T/t]$}  
+\end{prooftree}
+%</forallelim>
+
+% application
+%<*funapp>
+\begin{prooftree}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash M : A \rightarrow B$}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash N : B$}
+\RightLabel{(fun-app)}
+\BinaryInfC{$\Sigma,\Delta,\Gamma \vdash
+  \syn{(} M \; N \syn{)} : B$}
+\end{prooftree}
+%</funapp>
+
+\caption{Interne Quantoren- und Applikationsregeln}
+\label{fig:lama_quantifier_app}
+\end{figure}
+
+%%% product expressions
+\begin{figure}[h]
+
+% product introduction
+\begin{prooftree}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash
+  e_1 : A_1, \, \ldots \, , e_n : A_n$}
+\RightLabel{(\#-intro)}
+\UnaryInfC{$\Sigma,\Delta,\Gamma \vdash
+  \syn{(\# } e_1, \, \ldots \, , e_n \syn{)}
+  : \syn{(\# } A_1, \, \ldots \, , A_n \syn{)}$}
+\end{prooftree}
+
+% product elimination
+\begin{prooftree}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash
+  x : \syn{(\# } A_1, \, \ldots \, , A_n \syn{)}$}
+\RightLabel{(\#-elim)}
+\UnaryInfC{$\Sigma,\Delta,\Gamma \vdash
+  \syn{(project } x \; i) : A_i$}
+\end{prooftree}
+
+
+\label{fig:lama_prod_expr_types}
+\caption{Typisierung von Produkten}
+\end{figure}
+
+%</typerules>
 
 \end{document}
