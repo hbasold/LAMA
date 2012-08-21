@@ -266,11 +266,11 @@ checkCycles g = case mkDAG g of
     depList h = intercalate " -> " . map (maybe "" id . fmap (\(v, u, m) -> show u ++ " in " ++ show m ++ " " ++ identPretty v) . G.lab h)
 
 -- | Checks if a given list of variables is fully defined
-checkDefined :: Ident i => InterDepDAG i -> [i] -> DepMonad ()
-checkDefined g = mapM_ (check g)
+checkDefined :: Ident i => InterDepDAG i -> VarUsage -> [i] -> DepMonad ()
+checkDefined g usage = mapM_ (check g usage)
   where
-    check gr x =
-      do if gany (\(_, _, (v, u, m), _) -> v == x) gr
+    check gr u x =
+      do if gany (\(_, _, (v, u', _), _) -> v == x && u == u') gr
            then return ()
            else throwError $ identPretty x ++ " not defined."
 
@@ -286,6 +286,7 @@ mkDepsProgram p = do
   es <- mes
   dagProgDeps <- checkCycles progFlowDeps
   return $ InterProgDeps nodeDeps dagProgDeps vs es
+  checkDefined dagProgDeps StateOut (map varIdent . declsState $ progDecls p)
 
 mkDepsNode :: Ident i => Map i (Constant i) -> Node i -> DepMonad (InterNodeDeps i)
 mkDepsNode consts node = do
@@ -299,7 +300,8 @@ mkDepsNode consts node = do
         $ mkDepsNodeParts (nodeFlow node) (Map.toList $ nodeAutomata node)
   es <- mes
   dagDeps <- checkCycles deps
-  checkDefined dagDeps (map varIdent $ nodeOutputs node)
+  checkDefined dagDeps Output (map varIdent $ nodeOutputs node)
+  checkDefined dagDeps StateOut (map varIdent . declsState $ nodeDecls node)
   return $ InterNodeDeps subDeps dagDeps vs es
 
 mkDepsMapNodes :: Ident i => Map i (Constant i) -> Map i (Node i) -> DepMonad (Map i (InterNodeDeps i))
@@ -421,7 +423,6 @@ insDeps ds xu = do
   insVar xu
   ds' <- mapM (\v -> varUsage v >>= return . (v,,GlobalMode)) ds
   insVars ds'
-  forM_ ds' (\(v, u, m) -> case u of { StateIn -> insVar (v, StateOut, m) ; _-> return () })
   mapM_ (insDep xu) ds'
   insGlobLocDeps xu
 
