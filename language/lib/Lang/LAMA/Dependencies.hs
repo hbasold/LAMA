@@ -20,7 +20,7 @@ import qualified Data.Set as Set
 import Data.Set (Set)
 import Data.Map as Map hiding (map, null, foldl, (\\))
 import Data.List (intercalate)
-import Data.Foldable (foldl, foldlM)
+import Data.Foldable (foldlM)
 import Data.Traversable (mapM)
 import qualified Data.ByteString.Char8 as BS
 import Data.Maybe (isJust)
@@ -28,7 +28,7 @@ import Data.Monoid
 
 import Control.Monad.Error (MonadError(..), ErrorT, runErrorT)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad (forM_, void)
+import Control.Monad (void)
 import Control.Monad.Reader (MonadReader(..), ReaderT, runReaderT)
 import Control.Arrow ((&&&))
 
@@ -227,7 +227,6 @@ type InstantMap i = Map (InterIdentCtx i) (InstantDefinition i)
 data InterNodeDeps i = InterNodeDeps {
     inDepsNodes :: Map i (InterNodeDeps i),
     inDepsGraph :: InterDepDAG i,
-    inDepsVars :: G.NodeMap (InterIdentCtx i),
     inDepsExprs :: InstantMap i
   }
 
@@ -236,7 +235,6 @@ data InterNodeDeps i = InterNodeDeps {
 data InterProgDeps i = InterProgDeps {
     ipDepsNodes :: Map i (InterNodeDeps i),
     ipDepsGraph :: InterDepDAG i,
-    ipDepsVars :: G.NodeMap (InterIdentCtx i),
     ipDepsExprs :: InstantMap i
   }
 
@@ -282,18 +280,18 @@ mkDepsProgram p = do
   nodeDeps <- mkDepsMapNodes consts (declsNode $ progDecls p)
 
   let vars = (declsVarMap $ progDecls p) `Map.union` (fmap (const Constant) consts)
-  let (mes, (vs, progFlowDeps)) = G.runNodeMapM G.empty $ runReaderT (runErrorT $ mkDepsNodeParts (progFlow p) []) vars
+  let (mes, (_nodeMap, progFlowDeps)) = G.runNodeMapM G.empty $ runReaderT (runErrorT $ mkDepsNodeParts (progFlow p) []) vars
   es <- mes
   dagProgDeps <- checkCycles progFlowDeps
-  return $ InterProgDeps nodeDeps dagProgDeps vs es
   checkDefined dagProgDeps StateOut (map varIdent . declsState $ progDecls p)
+  return $ InterProgDeps nodeDeps dagProgDeps es
 
 mkDepsNode :: Ident i => Map i (Constant i) -> Node i -> DepMonad (InterNodeDeps i)
 mkDepsNode consts node = do
   subDeps <- mkDepsMapNodes consts (declsNode $ nodeDecls node)
 
   let vars = varMap node `Map.union` (fmap (const Constant) consts)
-  let (mes, (vs, deps)) =
+  let (mes, (_nodeMap, deps)) =
         G.runNodeMapM G.empty
         . (flip runReaderT vars)
         $ runErrorT
@@ -302,7 +300,7 @@ mkDepsNode consts node = do
   dagDeps <- checkCycles deps
   checkDefined dagDeps Output (map varIdent $ nodeOutputs node)
   checkDefined dagDeps StateOut (map varIdent . declsState $ nodeDecls node)
-  return $ InterNodeDeps subDeps dagDeps vs es
+  return $ InterNodeDeps subDeps dagDeps es
 
 mkDepsMapNodes :: Ident i => Map i (Constant i) -> Map i (Node i) -> DepMonad (Map i (InterNodeDeps i))
 mkDepsMapNodes consts = mapM (mkDepsNode consts)
