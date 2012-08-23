@@ -2,8 +2,8 @@ module TestAbsTrans (tests) where
 
 import Test.HUnit
 import qualified Data.ByteString.Lazy.Char8 as BL
-import qualified Data.ByteString.Char8 as B
 import Data.Map as Map
+import Data.String (fromString)
 
 import Lang.LAMA.Identifier
 import Lang.LAMA.Types
@@ -19,11 +19,6 @@ tests = TestList [
   ]
 
 -- Helper
-dontcare :: (Int, Int)
-dontcare = (0, 0)
-ident :: String -> PosIdent
-ident s = PosIdent (B.pack s) dontcare
-
 false :: Constant i
 false = boolConst False
 
@@ -79,7 +74,7 @@ expectedTypes =
     ],
     progConstantDefinitions = fromList [],
     progDecls = Declarations {
-      declsNode = Map.fromList [(ident "main", Node {
+      declsNode = Map.fromList [(fromString "main", Node {
         nodeDecls = Declarations Map.empty [] [] [],
         nodeOutputs = [Variable x (ProdType [EnumType e, intT, ProdType [intT, realT], int5])],
         nodeFlow = Flow {flowDefinitions = [], flowTransitions = []},
@@ -93,11 +88,11 @@ expectedTypes =
     progAssertion = trueE, progInitial = fromList [], progInvariant = trueE
   }
   where
-    main = ident "main"
-    e = ident "e"
-    e1 = EnumCons $ ident "e1"
-    e2 = EnumCons $ ident "e2"
-    x = ident "x"
+    main = fromString "main"
+    e = fromString "e"
+    e1 = EnumCons $ fromString "e1"
+    e2 = EnumCons $ fromString "e2"
+    x = fromString "x"
     int5 = ProdType $ replicate 5 intT
 
 testTypes :: Test
@@ -120,7 +115,7 @@ expectedConstants =
     progEnumDefinitions = fromList [],
     progConstantDefinitions = fromList [],
     progDecls = Declarations {
-      declsNode = Map.fromList [(ident "main", Node {
+      declsNode = Map.fromList [(fromString "main", Node {
         nodeDecls = Declarations Map.empty [] [] [],
         nodeOutputs = [
           Variable x (GroundType (SInt 32)),
@@ -140,8 +135,8 @@ expectedConstants =
     progAssertion = trueE, progInitial = fromList [], progInvariant = trueE
   }
   where
-    x = ident "x"
-    y = ident "y"
+    x = fromString "x"
+    y = fromString "y"
 
 testConstants :: Test
 testConstants = checkEqual expectedConstants constantsSrc
@@ -173,7 +168,7 @@ expectedSwitch =
     progEnumDefinitions = fromList [],
     progConstantDefinitions = fromList [],
     progDecls = Declarations {
-      declsNode = Map.fromList [(ident "Switch", Node {
+      declsNode = Map.fromList [(fromString "Switch", Node {
         nodeDecls = Declarations {
           declsNode = Map.empty,
           declsInput = [Variable on boolT, Variable off boolT], 
@@ -207,12 +202,12 @@ expectedSwitch =
     progAssertion = trueE, progInitial = fromList [], progInvariant = trueE
   }
   where
-    on = ident "on"
-    off = ident "off"
-    s = ident "s"
-    so = ident "so"
-    s_ = ident "s_"
-    switchN = ident "Switch"
+    on = fromString "on"
+    off = fromString "off"
+    s = fromString "s"
+    so = fromString "so"
+    s_ = fromString "s_"
+    switchN = fromString "Switch"
 
 testSwitchTrans :: Test
 testSwitchTrans = checkEqual expectedSwitch switch
@@ -257,7 +252,7 @@ expectedUpDownCounter =
   Program {
     progEnumDefinitions = fromList [], progConstantDefinitions = fromList [],
     progDecls = Declarations {
-      declsNode = Map.fromList [(ident "main", Node {
+      declsNode = Map.fromList [(fromString "main", Node {
         nodeDecls = Declarations {
           declsNode = Map.empty,
           declsInput = [],
@@ -305,12 +300,12 @@ expectedUpDownCounter =
     progInvariant = leqE (varExpr xo intT) (intE 10)
   }
   where
-    main = ident "main"
-    x = ident "x"
-    x_ = ident "x_"
-    xo = ident "xo"
-    sA = ident "A"
-    sB = ident "B"
+    main = fromString "main"
+    x = fromString "x"
+    x_ = fromString "x_"
+    xo = fromString "xo"
+    sA = fromString "A"
+    sB = fromString "B"
 
 testUpDownCounterTrans :: Test
 testUpDownCounterTrans = checkEqual expectedUpDownCounter upDownCounter

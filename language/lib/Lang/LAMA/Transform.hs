@@ -337,7 +337,7 @@ transAutomaton x = case x of
 transLocation :: Abs.Location -> Result Location
 transLocation x = case x of
   Abs.Location identifier flow  ->
-    Location <$> (transIdentifier identifier) <*> (transFlow flow)
+    Location <$> (fmap LocationId $ transIdentifier identifier) <*> (transFlow flow)
 
 isKnownLocation :: [Location] -> LocationId -> Result ()
 isKnownLocation locs loc =
@@ -347,7 +347,7 @@ isKnownLocation locs loc =
 transInitialLocation :: [Location] -> Abs.InitialLocation -> Result LocationId
 transInitialLocation locs x = case x of
   Abs.InitialLocation identifier  -> do
-    loc <- transIdentifier identifier
+    loc <- fmap LocationId $ transIdentifier identifier
     isKnownLocation locs loc
     return loc
 
@@ -355,9 +355,9 @@ transInitialLocation locs x = case x of
 transEdge :: [Location] -> Abs.Edge -> Result Edge
 transEdge locs x = case x of
   Abs.Edge identifier0 identifier expr  -> do
-    t <- transIdentifier identifier0
+    t <- fmap LocationId $ transIdentifier identifier0
     isKnownLocation locs t
-    h <- transIdentifier identifier
+    h <- fmap LocationId $ transIdentifier identifier
     isKnownLocation locs h
     e <- transExpr expr
     return $ Edge t h e

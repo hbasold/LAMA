@@ -9,9 +9,10 @@ module Lang.LAMA.Types(
   boolT, intT, realT, mkProductT,
   -- * Typing structures
   Typed, mkTyped, untyped, getType,
-  mapTyped, preserveType,
-  EqFunctor(..), ShowFunctor(..)
+  mapTyped, preserveType
 ) where
+
+import Prelude.Extras
 
 import Control.Arrow (first, (&&&))
 import Data.Natural
@@ -64,11 +65,11 @@ data Typed0 i e x = Typed {
     getType0 :: Type i
   }
 
-instance (Ident i, EqFunctor e) => EqFunctor (Typed0 i e) where
-  eqF (Typed e1 t1) (Typed e2 t2) = (e1 `eqF` e2) && (t1 == t2)
+instance (Ident i, Eq1 e) => Eq1 (Typed0 i e) where
+  (Typed e1 t1) ==# (Typed e2 t2) = (e1 ==# e2) && (t1 == t2)
 
-instance (Ident i, ShowFunctor e) => ShowFunctor (Typed0 i e) where
-  showF (Typed e t) = "(Typed (" ++ showF e ++ ") (" ++ show t ++ "))"
+instance (Ident i, Show1 e) => Show1 (Typed0 i e) where
+  show1 (Typed e t) = "(Typed (" ++ show1 e ++ ") (" ++ show t ++ "))"
 
 type Typed i e = Fix (Typed0 i e)
 

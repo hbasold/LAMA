@@ -5,7 +5,7 @@ module Lang.LAMA.Typing.TypeCheck (typecheck, typecheckConstExpr) where
 import Data.Map as Map hiding (map, foldl)
 import Data.Natural
 
-import Control.Monad (when, void, liftM)
+import Control.Monad (void, liftM)
 import Control.Monad.Error (MonadError(..), ErrorT(..))
 import Control.Monad.Reader (MonadReader(ask), Reader, runReader)
 import Control.Monad.State.Lazy (MonadState(..), gets, StateT(..), evalStateT)

@@ -51,7 +51,7 @@ data VarUsage =
 
 -- | Characterizes where a variable is defined (in a normal flow
 --  or in a flow a state)
-data Mode i = GlobalMode | LocationRefMode Int | LocationMode Int i deriving (Eq, Ord, Show)
+data Mode i = GlobalMode | LocationRefMode Int | LocationMode Int (LocationId i) deriving (Eq, Ord, Show)
 
 -- | Bundle an identifier with its context.
 type IdentCtx i = (BS.ByteString, VarUsage, Mode i)
@@ -199,7 +199,7 @@ interCtxGetIdent (x, _, _) = x
 
 -- | Beware: should only be used if the context is
 --    known to be from a location.
-interCtxGetLocation :: InterIdentCtx i -> i
+interCtxGetLocation :: InterIdentCtx i -> LocationId i
 interCtxGetLocation (_, _, (LocationMode _ l)) = l
 interCtxGetLocation _ = error "cannot get location from context"
 

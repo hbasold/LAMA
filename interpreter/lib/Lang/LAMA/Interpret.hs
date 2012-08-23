@@ -32,7 +32,7 @@ zipMaps m1 = Map.foldlWithKey (\m k x -> maybe m (\y -> Map.insert k (y, x) m) $
 --  so we drop them.
 type NodeEnv = Map SimpIdent ConstExpr
 -- | Save for each automaton its current state and wether a transition has been taken in the current cycle
-type ActiveLocations = Map Int (SimpIdent, Bool)
+type ActiveLocations = Map Int (LocationId, Bool)
 data State = State { stateEnv :: NodeEnv, stateActiveLocs :: ActiveLocations, stateNodes :: NodeStates } deriving Show
 type NodeStates = Map SimpIdent State
 
@@ -175,11 +175,11 @@ updateAssign :: (State, NodeEnv) -> (IdentCtx PosIdent, ExprCtx PosIdent) -> Eva
 updateAssign (s'', tr) = liftM (second (Map.union tr)) . localState (const s'') . assign
 
 -- | Takes an edge in the given automaton and returns the new location
-takeEdge :: Int -> EvalM (SimpIdent, Bool)
+takeEdge :: Int -> EvalM (LocationId, Bool)
 takeEdge a = do
     aDecl <- lookupAutomaton a
     al <- liftM stateActiveLocs askState
-    let (l, taken) = Map.findWithDefault (dropPos $ automInitial aDecl, False) a al
+    let (l, taken) = Map.findWithDefault (automInitial aDecl, False) a al
     -- TODO: take transition if we just started from an initial state?
     if taken then return (l, taken)
     else do
@@ -192,7 +192,7 @@ takeEdge a = do
         Nothing -> return (l, True)
         Just (t, _) -> return (t, True)
   where
-    suc es l = foldr (\(Edge h t c) s -> if dropPos h == l then (dropPos t, c) : s else s) [] es
+    suc es l = foldr (\(Edge h t c) s -> if h == l then (t, c) : s else s) [] es
 
 evalInstant :: InstantDefinition -> EvalM (ConstExpr, NodeStates)
 evalInstant (InstantExpr _ e) = (,) <$> evalExpr e <*> (liftM stateNodes askState)

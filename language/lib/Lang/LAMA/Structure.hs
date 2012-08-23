@@ -3,26 +3,24 @@
 module Lang.LAMA.Structure (
   GProgram(..),
   -- * Type definitions
-  -- ** Enums
   GEnumDef(..), GEnumConstr(..),
   -- * Constants
   GConst(..),
-  -- * Nodes
-  GNode(..), GVariable(..), varIdent, varType, GDeclarations(..),
+  -- * Declarations of nodes and variables
+  GNode(..), GVariable(..), GDeclarations(..),
   -- * Data flow
   GFlow(..),
-  -- ** Definition of local and output variables
   GInstantDefinition(..),
-  -- ** Definition of state variables
   GStateTransition(..), GStateInit,
   -- * Automata
-  GLocationId, GLocation(..), GEdge(..), GAutomaton(..),
+  GLocationId(..), GLocation(..), GEdge(..), GAutomaton(..),
   -- * Expressions
-  -- ** Untyped expressions
-  -- $untyped-doc
+  -- $generalised-types-doc
   GProd(..), GPatternHead(..), GPattern(..),
   GAtom(..), GExpr(..), GConstExpr(..), BinOp(..)
 ) where
+
+import Prelude.Extras
 
 import Data.Natural
 import Data.Map
@@ -32,6 +30,18 @@ import Data.Monoid
 import Lang.LAMA.Identifier
 import Data.String (IsString(..))
 import Lang.LAMA.Types
+
+-- $generalised-types-doc
+-- All defined types have type parameters which allow them to have
+--
+-- 1. an arbitrary identifier type (in most cases an identifier with or w/o position)
+-- 
+-- 2. additional data attached (mostly a type)
+--
+-- The second one requires the constant and expression types to be instantiated
+-- as fixed point types (see "Lang.LAMA.Types").
+
+---- Program ----
 
 data GProgram i const expr cexpr = Program {
     progEnumDefinitions     :: Map (TypeAlias i) (GEnumDef i),
@@ -47,7 +57,9 @@ data GProgram i const expr cexpr = Program {
 ---- Type definitions -----
 
 -- | Naming of enum constructors
-newtype GEnumConstr i = EnumCons { runEnumCons :: i } deriving (Eq, Ord, Show, Typeable)
+newtype GEnumConstr i = EnumCons { runEnumCons :: i }
+                      deriving (Eq, Ord, Show, Typeable)
+
 instance Ident i => Ident (GEnumConstr i) where
   identBS (EnumCons x) = identBS x
   identPretty (EnumCons x) = identPretty x
@@ -61,11 +73,11 @@ data GEnumDef i = EnumDef [GEnumConstr i] deriving (Eq, Show)
 ---- Constants -----
 -- | LAMA constants
 data GConst f
-    = BoolConst Bool        -- ^ Boolean constant
-    | IntConst Integer      -- ^ Integer constant
-    | RealConst Rational    -- ^ Real constant (seen as arbitrary rational number)
-    | SIntConst Natural Integer     -- ^ Bounded signed constant
-    | UIntConst Natural Natural     -- ^ Bounded unsigned constant
+    = BoolConst Bool             -- ^ Boolean constant
+    | IntConst Integer           -- ^ Integer constant
+    | RealConst Rational         -- ^ Real constant (seen as arbitrary rational number)
+    | SIntConst Natural Integer  -- ^ Bounded signed constant
+    | UIntConst Natural Natural  -- ^ Bounded unsigned constant
     deriving (Eq, Show)
 
 
@@ -79,15 +91,20 @@ data GNode i expr cexpr = Node {
     nodeInitial     :: GStateInit i cexpr,
     nodeAssertion   :: expr
   } deriving (Eq, Show)
-  
-data GVariable i = Variable i (Type i) deriving (Eq, Show)
 
-varIdent :: GVariable i -> i
-varIdent (Variable x _) = x
+-- | A variable consists of an identifier and a type.
+data GVariable i = Variable
+                   { varIdent :: i
+                   , varType :: (Type i)
+                   } deriving (Eq, Show)
 
-varType :: GVariable i -> Type i
-varType (Variable _ t) = t
-
+-- | Keeps declarations of the current scope.
+-- The kind of input depends on the context:
+--
+--  * on program level these are free variables
+--
+--  * on node level these are declared node inputs.
+--
 data GDeclarations i expr cexpr = Declarations {
     declsNode   :: Map i (GNode i expr cexpr),
     declsInput  :: [GVariable i],
@@ -102,47 +119,70 @@ data GFlow i expr = Flow {
     flowTransitions :: [GStateTransition i expr]
   } deriving (Eq, Show)
 
+-- | Definition of local and output variables by an expression
+-- or a call of a node.
 data GInstantDefinition i expr
   = InstantExpr i expr
   | NodeUsage i i [expr]     -- ^ Using a node
   deriving (Eq, Show)
 
+-- | Definition of state variables
 data GStateTransition i expr = StateTransition i expr deriving (Eq, Show)
+
+-- | Initialisation of state variables
 type GStateInit i cexpr = Map i cexpr
 
 
 ---- Automaton -----
 
-type GLocationId i = i
+newtype GLocationId i = LocationId { runLocationId :: i }
+                      deriving (Eq, Ord, Show, Typeable)
+
+instance Ident i => Ident (GLocationId i) where
+  identBS = identBS . runLocationId
+  identPretty = identPretty . runLocationId
+
+instance IsString i => IsString (GLocationId i) where
+  fromString = LocationId . fromString
+
+-- | A named mode of an automaton with its attached flow.
 data GLocation i expr = Location (GLocationId i) (GFlow i expr) deriving (Eq, Show)
+
+-- | An edge h -> t with a condition c.
 data GEdge i expr = Edge (GLocationId i) (GLocationId i) expr deriving (Eq, Show)
+
 data GAutomaton i expr = Automaton {
     automLocations :: [GLocation i expr],
     automInitial :: GLocationId i,
     automEdges :: [GEdge i expr],
     automDefaults :: Map i expr
+    -- ^ Default expressions for partially defined local variables
   } deriving (Eq, Show)
 
 
 ---- Expressions -----
 
--- | Untyped atomic expressions
+-- | Generalised atomic expressions
 data GAtom i const f
-  = AtomConst const  -- ^ Constant
-  | AtomVar i  -- ^ Variable
+  = AtomConst const          -- ^ Constant
+  | AtomVar i                -- ^ Variable
   | AtomEnum (GEnumConstr i) -- ^ Enum value
   deriving (Eq, Show)
 
+-- | Product of the given expression type.
 data GProd expr = Prod [expr] deriving (Eq, Show)
 
+-- | Generalised head of a pattern. Either an enum constructor or _.
 data GPatternHead i =
   EnumPattern (GEnumConstr i)
   | BottomPattern
   deriving (Eq, Show)
 
+-- | A pattern consists of a head /P/ and an expression /M/ which is
+-- evaluated if that head matches: /P.M/.
 data GPattern i expr = Pattern (GPatternHead i) expr deriving (Eq, Show)
 
--- | Untyped LAMA expressions
+-- | Generalised LAMA expressions
 data GExpr i const atom f
   = AtExpr (GAtom i const atom)                    -- ^ Atomic expression (see GAtom)
   | LogNot f                        -- ^ Logical negation
@@ -160,46 +200,46 @@ data BinOp
   | Plus | Minus | Mul | RealDiv | IntDiv | Mod
   deriving (Eq, Show)
 
--- | Untyped constant expressions
+-- | Generalised constant expressions
 data GConstExpr i const f
-  = Const const                       -- ^ Simple constant
-  | ConstEnum (GEnumConstr i)
-  | ConstProd (GProd f) -- ^ Product constructed from constant expressions
+  = Const const               -- ^ Simple constant
+  | ConstEnum (GEnumConstr i) -- ^ Enum in a constant context
+  | ConstProd (GProd f)       -- ^ Product constructed from constant expressions
   deriving (Eq, Show)
 
 
 ---- Instances -----
 
-instance EqFunctor GProd where
-  eqF = (==)
+instance Eq1 GProd where
+  (==#) = (==)
 
-instance EqFunctor GConst where
-  eqF = (==)
+instance Eq1 GConst where
+  (==#) = (==)
 
-instance (Ident i, Eq const) => EqFunctor (GConstExpr i const) where
-  eqF = (==)
+instance (Ident i, Eq const) => Eq1 (GConstExpr i const) where
+  (==#) = (==)
 
-instance (Ident i, Eq const) => EqFunctor (GAtom i const) where
-  eqF = (==)
+instance (Ident i, Eq const) => Eq1 (GAtom i const) where
+  (==#) = (==)
 
-instance (Ident i, Eq const, Eq atom) => EqFunctor (GExpr i const atom) where
-  eqF = (==)
+instance (Ident i, Eq const, Eq atom) => Eq1 (GExpr i const atom) where
+  (==#) = (==)
 
 
-instance ShowFunctor GProd where
-  showF = show
+instance Show1 GProd where
+  show1 = show
 
-instance ShowFunctor GConst where
-  showF = show
+instance Show1 GConst where
+  show1 = show
 
-instance (Ident i, Show const) => ShowFunctor (GConstExpr i const) where
-  showF = show
+instance (Ident i, Show const) => Show1 (GConstExpr i const) where
+  show1 = show
 
-instance (Ident i, Show const) => ShowFunctor (GAtom i const) where
-  showF = show
+instance (Ident i, Show const) => Show1 (GAtom i const) where
+  show1 = show
   
-instance (Ident i, Show const, Show atom) => ShowFunctor (GExpr i const atom) where
-  showF = show
+instance (Ident i, Show const, Show atom) => Show1 (GExpr i const atom) where
+  show1 = show
 
 instance Monoid (GFlow i expr) where
   mempty = Flow [] []

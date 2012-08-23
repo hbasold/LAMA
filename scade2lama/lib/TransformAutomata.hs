@@ -1,3 +1,5 @@
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -43,7 +45,7 @@ import TransformCommon
 import TransformSimple (trSimpleEquation)
 
 data LocationData = LocationData
-                    { stName :: L.SimpIdent
+                    { stName :: L.LocationId
                     , stInitial :: Bool
                     , stFinal :: Bool
                     , stTrEquation :: TrEquation L.Flow
@@ -88,26 +90,26 @@ extractLocations :: [(Node, S.State)] -> TrackUsedNodes ([TrLocation], (Map L.Si
 extractLocations = liftM (second ((mconcat *** mconcat) . unzip) . unzip) . mapM extractLocation
 
 extractLocation :: (Node, S.State) -> TrackUsedNodes (TrLocation, (Map L.SimpIdent L.Expr, L.Flow))
-extractLocation (n, s) =
-  do eq <- extractDataDef (S.stateData s)
+extractLocation (n, S.State{..}) =
+  do eq <- extractDataDef stateData
      let flow = fmap fst eq
          (defaultFlow, surroundingFlow) = snd $ trEqRhs eq
      return ((n, LocationData
-                (fromString $ S.stateName s)
-                (S.stateInitial s) (S.stateFinal s)
+                (fromString stateName)
+                stateInitial stateFinal
                 flow),
              (defaultFlow, surroundingFlow))
 
 -- | Extracts the edges from a given set of Scade states. This may result in
 -- an additional data flow to be placed outside of the automaton which
 -- calculates the conditions for weak transitions.
-extractEdges :: Map L.SimpIdent Node -> [S.State] -> TransM [TrEdge] --, L.Flow, [L.Variable], L.StateInit)
+extractEdges :: Map L.LocationId Node -> [S.State] -> TransM [TrEdge]
 extractEdges stateNodeMap sts =
   do strong <- extractEdges' stateNodeMap S.stateUnless Strong sts
      weak <- extractEdges' stateNodeMap S.stateUntil Weak sts
      return $ strong ++ weak
   where
-    extractEdges' :: Map L.SimpIdent Node -> (S.State -> [S.Transition]) -> EdgeType -> [S.State] -> TransM [TrEdge]
+    extractEdges' :: Map L.LocationId Node -> (S.State -> [S.Transition]) -> EdgeType -> [S.State] -> TransM [TrEdge]
     extractEdges' nodeMap getter eType =
       liftM concat
       . foldlM (\es s -> liftM (:es)
@@ -129,8 +131,8 @@ extractEdges stateNodeMap sts =
 -- Gives back the flow to be placed in the current state and
 -- default expressions.
 extractDataDef :: S.DataDef -> TrackUsedNodes (TrEquation (L.Flow, (Map L.SimpIdent L.Expr, L.Flow)))
-extractDataDef (S.DataDef sigs vars eqs) =
-  do (localVars, localsDefault, localsInit) <- lift $ trVarDecls vars
+extractDataDef S.DataDef { S.dataSignals, S.dataLocals, S.dataEquations } =
+  do (localVars, localsDefault, localsInit) <- lift $ trVarDecls dataLocals
      -- Fixme: we ignore last and default in states for now
      when (not (null localsDefault) || not (null localsInit)) ($notImplemented)
      -- Rename variables because they will be declared at node level and that
@@ -138,7 +140,7 @@ extractDataDef (S.DataDef sigs vars eqs) =
      varNames <- newVarNames localVars
      let varMap = Map.fromList $ zip (map (L.identString . L.varIdent) localVars) (map L.identString varNames)
          localVars' = map (renameVar (varMap !)) localVars
-         eqs' = everywhere (mkT $ rename varMap) eqs
+         eqs' = everywhere (mkT $ rename varMap) dataEquations
      trEqs <- localScope (\sc -> sc { scopeLocals = scopeLocals sc `mappend` (mkVarMap localVars) })
               $ mapM trEquation eqs'
      let trEq = foldlTrEq (\(stateFlow, (default1, globalFlow)) (stateFlow2, (default2, globalFlow2)) ->
@@ -521,7 +523,7 @@ mkAutomaton gr defaultExprs =
     Just i -> let autom = L.Automaton locs i automEdges defaultExprs
               in return $ eq { trEqRhs = autom }
   where
-    mkLocation :: TrLocation -> (L.Location, Maybe L.SimpIdent, TrEquation ())
+    mkLocation :: TrLocation -> (L.Location, Maybe L.LocationId, TrEquation ())
     mkLocation (_, locData) =
       (L.Location (stName locData) (trEqRhs $ stTrEquation locData),
        if stInitial locData then Just $ stName locData else Nothing,

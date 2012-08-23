@@ -1,3 +1,5 @@
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TemplateHaskell, FlexibleContexts #-}
 
@@ -50,29 +52,29 @@ getNode = getUserOperator $ \o ->
 
 trOpDecl :: S.Declaration -> TransM ()
 trOpDecl (S.UserOpDecl {
-             S.userOpKind = kind
-             , S.userOpImported = isImported
-             , S.userOpInterface = ifStatus
-             , S.userOpName = name
-             , S.userOpSize = size
-             , S.userOpParams = params
-             , S.userOpReturns = returns
-             , S.userOpNumerics = numerics
-             , S.userOpContent = content }) =
-  do inputs <- liftM concat . (liftM $ map (\(x,_,_) -> x)) $ mapM trVarDecl params -- inputs have no default/last
-     (outputs, outpDefault, outpLastInit) <- trVarDecls returns
+             S.userOpKind
+             , S.userOpImported
+             , S.userOpInterface
+             , S.userOpName
+             , S.userOpSize
+             , S.userOpParams
+             , S.userOpReturns
+             , S.userOpNumerics
+             , S.userOpContent }) =
+  do inputs <- liftM concat . (liftM $ map (\(x,_,_) -> x)) $ mapM trVarDecl userOpParams -- inputs have no default/last
+     (outputs, outpDefault, outpLastInit) <- trVarDecls userOpReturns
      node <- mkNode inputs outputs
              (Map.fromList outpDefault) (Map.fromList outpLastInit)
-             content
-     declareNode (fromString name) node
+             userOpContent
+     declareNode (fromString userOpName) node
   where
     mkNode :: [L.Variable] -> [L.Variable]
               -> Map L.SimpIdent L.Expr -> Map L.SimpIdent (Either L.ConstExpr L.Expr)
               -> S.DataDef -> TransM L.Node
-    mkNode inp outp outpDefault outpLastInit (S.DataDef { S.dataSignals = sigs
-                                                        , S.dataLocals = locals
-                                                        , S.dataEquations = equations }) = do
-      (localVars, localsDefault, localsInit) <- trVarDecls locals
+    mkNode inp outp outpDefault outpLastInit (S.DataDef { S.dataSignals
+                                                        , S.dataLocals
+                                                        , S.dataEquations }) = do
+      (localVars, localsDefault, localsInit) <- trVarDecls dataLocals
       let -- create new output variables (x -> x_out) ...
           outp' = map (updateVarName $ flip BS.append $ BS.pack "_out") outp
           -- use old output variables as local variables ...
@@ -87,7 +89,7 @@ trOpDecl (S.UserOpDecl {
                       (Map.fromList localsDefault `mappend` outpDefault)
                       (Map.fromList localsInit `mappend` outpLastInit))
         . runWriterT
-        $ mapM trEquation equations
+        $ mapM trEquation dataEquations
       let (flow, automata) = trEqRhs eqs
           flow' = flow { L.flowDefinitions = L.flowDefinitions flow ++ outputDefs }
           (localVars'', stateVars) = separateVars (trEqAsState eqs) localVars'
