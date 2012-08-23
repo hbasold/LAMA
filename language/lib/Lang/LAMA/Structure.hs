@@ -72,9 +72,8 @@ data GConst f
 ---- Nodes -----
 
 data GNode i expr cexpr = Node {
-    nodeInputs      :: [GVariable i],
-    nodeOutputs     :: [GVariable i],
     nodeDecls       :: GDeclarations i expr cexpr,
+    nodeOutputs     :: [GVariable i],
     nodeFlow        :: GFlow i expr,
     nodeAutomata    :: Map Int (GAutomaton i expr),
     nodeInitial     :: GStateInit i cexpr,
@@ -91,6 +90,7 @@ varType (Variable _ t) = t
 
 data GDeclarations i expr cexpr = Declarations {
     declsNode   :: Map i (GNode i expr cexpr),
+    declsInput  :: [GVariable i],
     declsLocal  :: [GVariable i],
     declsState  :: [GVariable i]
   } deriving (Eq, Show)

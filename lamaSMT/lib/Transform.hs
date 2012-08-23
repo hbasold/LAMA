@@ -117,9 +117,10 @@ declareDecls :: Ident i => Maybe (Stream Bool) -> Set i -> Declarations i -> Dec
 declareDecls activeCond excludeNodes d =
   do let (excluded, toDeclare) = Map.partitionWithKey (\n _ -> n `Set.member` excludeNodes) $ declsNode d
      defs <- mapM (uncurry $ declareNode activeCond) $ Map.toList toDeclare
+     inp <- declareVars $ declsInput d
      locs <- declareVars $ declsLocal d
      states <- declareVars $ declsState d
-     modifyVars $ mappend (locs `mappend` states)
+     modifyVars $ mappend (inp `mappend` locs `mappend` states)
      return (concat defs, excluded)
 
 declareVars :: Ident i => [Variable i] -> DeclM i (Map i (TypedStream i))
@@ -158,13 +159,12 @@ declareNode active nName nDecl =
   where
     declareNode' :: Ident i => Maybe (Stream Bool) -> Node i -> DeclM i (NodeEnv i, [Definition])
     declareNode' activeCond n =
-      do inDecls <- declareVarList $ nodeInputs n
-         outDecls <- declareVarList $ nodeOutputs n
-         let ins = map snd inDecls
-             outs = map snd outDecls
-         modifyVars $ Map.union ((Map.fromList inDecls) `Map.union` (Map.fromList outDecls))
-         let automNodes = mconcat . map getNodesInLocations . Map.elems $ nodeAutomata n
+      do let automNodes = mconcat . map getNodesInLocations . Map.elems $ nodeAutomata n
          (declDefs, undeclaredNodes) <- declareDecls activeCond automNodes $ nodeDecls n
+         outDecls <- declareVarList $ nodeOutputs n
+         ins <- mapM (lookupVar . varIdent) . declsInput $ nodeDecls n
+         let outs = map snd outDecls
+         modifyVars $ Map.union (Map.fromList outDecls)
          flowDefs <- declareFlow activeCond $ nodeFlow n
          automDefs <- fmap concat . mapM (declareAutomaton activeCond undeclaredNodes) . Map.toList $ nodeAutomata n
          assertInits $ nodeInitial n

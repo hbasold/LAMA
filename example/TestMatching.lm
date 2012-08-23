@@ -1,8 +1,8 @@
 typedef
   enum E1 = {A, B, C, D};
-
-local
+input
   i : int; -- FIXME: allow enum inputs in interpreter
+local
   s : E1;
   r : int;
 definition

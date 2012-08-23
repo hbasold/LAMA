@@ -136,7 +136,7 @@ envLookupNodeSignature ident = do
   env <- ask
   case getNode env ident of
     Nothing -> fail $ "Undefined nodes " ++ identPretty ident
-    Just n -> return (nodeInputs n, nodeOutputs n)
+    Just n -> return (declsInput $ nodeDecls n, nodeOutputs n)
 
 variableMap :: Ident i => VarUsage -> [Variable i] -> Map i (Type i, VarUsage)
 variableMap u = Map.fromList . map splitVar
@@ -164,7 +164,9 @@ envAddNodes ns = local $ (\env -> addNodes env ns)
 
 envAddDecls :: (DynEnvironment i e, MonadReader e m) => Declarations i -> m a -> m a
 envAddDecls decls =
-  let vars = (variableMap State $ declsState decls) `Map.union` (variableMap Local $ declsLocal decls)
+  let vars = (variableMap Input $ declsInput decls) `Map.union`
+             (variableMap State $ declsState decls) `Map.union`
+             (variableMap Local $ declsLocal decls)
       localNodes = declsNode decls
   in (envAddLocal vars) . (envAddNodes localNodes)
 
@@ -173,4 +175,3 @@ envAddVariables u = envAddLocal . (variableMap u)
 
 envEmptyDecls :: (DynEnvironment i e, MonadReader e m) => m a -> m a
 envEmptyDecls = local emptyDecls
-

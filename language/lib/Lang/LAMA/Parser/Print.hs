@@ -90,7 +90,7 @@ instance Print StateId where
 
 instance Print Program where
   prt i e = case e of
-   Program typedefs constantdefs declarations flow initial assertion invariant -> prPrec i 0 (concatD [prt 0 typedefs , prt 0 constantdefs , prt 0 declarations , prt 0 flow , prt 0 initial , prt 0 assertion , prt 0 invariant])
+   Program typedefs constantdefs inputs declarations flow initial assertion invariant -> prPrec i 0 (concatD [prt 0 typedefs , prt 0 constantdefs , prt 0 inputs , prt 0 declarations , prt 0 flow , prt 0 initial , prt 0 assertion , prt 0 invariant])
 
 
 instance Print TypeDefs where
@@ -173,6 +173,12 @@ instance Print BoolV where
   prt i e = case e of
    TrueV  -> prPrec i 0 (concatD [doc (showString "true")])
    FalseV  -> prPrec i 0 (concatD [doc (showString "false")])
+
+
+instance Print Inputs where
+  prt i e = case e of
+   NoInputs  -> prPrec i 0 (concatD [])
+   JustInputs vardecls -> prPrec i 0 (concatD [doc (showString "input") , prt 0 vardecls])
 
 
 instance Print Initial where

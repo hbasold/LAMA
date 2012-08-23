@@ -128,8 +128,8 @@ lookupErr err m k = case Map.lookup k m of
   Just v -> return v
 
 addParams :: Node -> [ConstExpr] -> NodeEnv -> NodeEnv
-addParams (Node {nodeInputs = inp}) es env =
-  foldl (\env'' (x, c) -> updateNodeEnv (dropPos $ varIdent x) c env'') env (zip inp es)
+addParams (Node {nodeDecls = d}) es env =
+  foldl (\env'' (x, c) -> updateNodeEnv (dropPos $ varIdent x) c env'') env (zip (declsInput d) es)
 
 eval :: State -> Program -> ProgDeps PosIdent -> Either String State
 eval s p d = runReader (runErrorT $ evalProg p d) (emptyEnv{ envState = resetEdges s })

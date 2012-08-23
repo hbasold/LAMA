@@ -53,14 +53,15 @@ The reserved words used in LAMA are the following: \\
 {\reserved{bool}} &{\reserved{constants}} &{\reserved{default}} \\
 {\reserved{definition}} &{\reserved{div}} &{\reserved{edge}} \\
 {\reserved{enum}} &{\reserved{false}} &{\reserved{initial}} \\
-{\reserved{int}} &{\reserved{invariant}} &{\reserved{ite}} \\
-{\reserved{let}} &{\reserved{local}} &{\reserved{location}} \\
-{\reserved{match}} &{\reserved{mod}} &{\reserved{node}} \\
-{\reserved{nodes}} &{\reserved{not}} &{\reserved{or}} \\
-{\reserved{project}} &{\reserved{real}} &{\reserved{returns}} \\
-{\reserved{sint}} &{\reserved{state}} &{\reserved{tel}} \\
-{\reserved{transition}} &{\reserved{true}} &{\reserved{typedef}} \\
-{\reserved{uint}} &{\reserved{use}} &{\reserved{xor}} \\
+{\reserved{input}} &{\reserved{int}} &{\reserved{invariant}} \\
+{\reserved{ite}} &{\reserved{let}} &{\reserved{local}} \\
+{\reserved{location}} &{\reserved{match}} &{\reserved{mod}} \\
+{\reserved{node}} &{\reserved{nodes}} &{\reserved{not}} \\
+{\reserved{or}} &{\reserved{project}} &{\reserved{real}} \\
+{\reserved{returns}} &{\reserved{sint}} &{\reserved{state}} \\
+{\reserved{tel}} &{\reserved{transition}} &{\reserved{true}} \\
+{\reserved{typedef}} &{\reserved{uint}} &{\reserved{use}} \\
+{\reserved{xor}} & & \\
 \end{tabular}\\
 
 The symbols used in LAMA are the following: \\
@@ -87,8 +88,8 @@ All other symbols are terminals.\\
 
 \begin{tabular}{lll}
 {\nonterminal{Program}} & {\arrow}   & {\nonterminal{TypeDefs}} {\nonterminal{ConstantDefs}} \\
-                                & & {\nonterminal{Declarations}} {\nonterminal{Flow}} {\nonterminal{Initial}} \\
-                                & & {\nonterminal{Assertion}} {\nonterminal{Invariant}}  \\
+                                & & {\nonterminal{Inputs}} {\nonterminal{Declarations}} {\nonterminal{Flow}} \\
+                                & & {\nonterminal{Initial}} {\nonterminal{Assertion}} {\nonterminal{Invariant}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}
@@ -172,6 +173,11 @@ All other symbols are terminals.\\
 \begin{tabular}{lll}
 {\nonterminal{BoolV}} & {\arrow}  &{\terminal{true}}  \\
  & {\delimit}  &{\terminal{false}}  \\
+\end{tabular}\\
+
+\begin{tabular}{lll}
+{\nonterminal{Inputs}} & {\arrow}  &{\emptyP} \\
+ & {\delimit}  &{\terminal{input}} {\nonterminal{VarDecls}}  \\
 \end{tabular}\\
 
 \begin{tabular}{lll}

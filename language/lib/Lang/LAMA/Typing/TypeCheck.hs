@@ -264,22 +264,21 @@ checkConstantDefs = fmap Map.fromList . checkConstantDefs' . Map.toList
     checkConstantDefs' = mapM (secondM checkConstant)
 
 checkDeclarations :: Ident i => UT.Declarations i -> Result i (Declarations i)
-checkDeclarations (UT.Declarations nodes states locals) =
+checkDeclarations (UT.Declarations nodes inputs states locals) =
   envEmptyDecls $
     Declarations <$>
       (fmap Map.fromAscList $ mapM (secondM checkNode) $ Map.toAscList nodes) <*>
+      (mapM checkVarDecl inputs) <*>
       (mapM checkVarDecl states) <*>
       (mapM checkVarDecl locals)
 
 checkNode :: Ident i => UT.Node i -> Result i (Node i)
-checkNode (Node inp outp decls flow automata initial assertion) = do
-  inp' <- mapM checkVarDecl inp
+checkNode (Node decls outp flow automata initial assertion) = do
   outp' <- mapM checkVarDecl outp
   decls' <- checkDeclarations decls
-  envAddLocal (variableMap Input inp') $
-    envAddLocal (variableMap Output outp') $
+  envAddLocal (variableMap Output outp') $
     envAddDecls decls' $
-      Node inp' outp' decls' <$>
+      Node decls' outp' <$>
         (checkFlow flow) <*>
         (mapM checkAutomaton automata) <*>
         (checkInitial initial) <*>

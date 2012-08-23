@@ -143,6 +143,7 @@
                     <keyword>typedef</keyword>
                     <keyword>enum</keyword>
                     <keyword>constants</keyword>
+                    <keyword>input</keyword>
                     <keyword>node</keyword>
                     <keyword>returns</keyword>
                     <keyword>var</keyword>

@@ -64,7 +64,7 @@ trBaseType (UInt n) = Abs.UInt $ trNatural n
 
 trProgram :: Ident i => Program i -> Abs.Program
 trProgram (Program t c d f i a p) =
-  Abs.Program (trTypeDefs t) (trConstantDefs c) (trDecls d)
+  Abs.Program (trTypeDefs t) (trConstantDefs c) (trInputs $ declsInput d) (trDecls d)
               (trFlow f) (trInitial i) (trAssertion a) (trInvariant p)
 
 trTypeDefs :: Ident i => Map (TypeAlias i) (EnumDef i) -> Abs.TypeDefs
@@ -83,6 +83,9 @@ trConstantDefs = mapDefault Abs.NoConstantDefs (Abs.JustConstantDefs . map trCon
 
 trConstantDef :: Ident i => (i, Constant) -> Abs.ConstantDef
 trConstantDef (x, c) = Abs.ConstantDef (trIdent x) (trConstant c)
+
+trInputs :: Ident i => [Variable i] -> Abs.Inputs
+trInputs = mapDefault Abs.NoInputs (Abs.JustInputs . trVarDecls)
 
 trDecls :: Ident i => Declarations i -> Abs.Declarations
 trDecls d = Abs.Declarations (trNodeDecls $ declsNode d)
@@ -110,7 +113,7 @@ trMaybeTypedVars = mapDefault Abs.NoTypedVars (Abs.JustTypedVars . map trTypedVa
 
 trNode :: Ident i => (i, Node i) -> Abs.Node
 trNode (x, n) =
-  let inp = trMaybeTypedVars $ nodeInputs n
+  let inp = trMaybeTypedVars . declsInput $ nodeDecls n
       outp = map trTypedVars $ nodeOutputs n
       decls = trDecls $ nodeDecls n
       flow = trFlow $ nodeFlow n

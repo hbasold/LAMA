@@ -79,12 +79,13 @@ transStateId x = case x of
 
 transProgram :: Abs.Program -> Result Program
 transProgram x = case x of
-  Abs.Program typedefs constantdefs declarations flow initial assertion invariant -> do
+  Abs.Program typedefs constantdefs inputs declarations flow initial assertion invariant -> do
     td <- transTypeDefs typedefs
     cs <- transConstantDefs constantdefs
+    inp <- transInputs inputs
     localEnums (mkEnumSet td) $ localConsts cs $
       Program td cs <$>
-        (transDeclarations declarations) <*>
+        (transDeclarations inp declarations) <*>
         (transFlow flow) <*>
         (transInitial initial) <*>
         (transAssertion assertion) <*>
@@ -173,16 +174,23 @@ transBoolV x = case x of
   Abs.FalseV  -> return False
 
 
-transAssertion :: Abs.Assertion -> Result Expr
-transAssertion x = case x of
-  Abs.NoAssertion  -> return $ constAtExpr $ boolConst True
-  Abs.JustAssertion expr  -> transExpr expr
+transInputs :: Abs.Inputs -> Result [Variable]
+transInputs x = case x of
+  Abs.NoInputs  -> return []
+  Abs.JustInputs vardecls  -> transVarDecls vardecls
 
 
 transInitial :: Abs.Initial -> Result (Map PosIdent ConstExpr)
 transInitial x = case x of
   Abs.NoInitial  -> return Map.empty
   Abs.JustInitial stateinits  -> fmap Map.fromList $ mapM transStateInit stateinits
+
+
+transAssertion :: Abs.Assertion -> Result Expr
+transAssertion x = case x of
+  Abs.NoAssertion  -> return $ constAtExpr $ boolConst True
+  Abs.JustAssertion expr  -> transExpr expr
+
 
 
 transInvariant :: Abs.Invariant -> Result Expr
@@ -229,21 +237,23 @@ transMaybeTypedVars x = case x of
 transNode :: Abs.Node -> Result (PosIdent, Node)
 transNode x = case x of
   Abs.Node identifier maybetypedvars typedvarss declarations flow controlstructure initial assertion ->
-    (,) <$> (transIdentifier identifier) <*>
-      (Node <$>
-        (transMaybeTypedVars maybetypedvars) <*>
-        (mapM transTypedVar typedvarss) <*>
-        (transDeclarations declarations) <*>
-        (transFlow flow) <*>
-        (transControlStructure controlstructure) <*>
-        (transInitial initial) <*>
-        transAssertion assertion)
+    do inp <- transMaybeTypedVars maybetypedvars
+       (,) <$> transIdentifier identifier <*>
+         (Node <$>
+          transDeclarations inp declarations <*>
+          mapM transTypedVar typedvarss <*>
+          transFlow flow <*>
+          transControlStructure controlstructure <*>
+          transInitial initial <*>
+          transAssertion assertion
+         )
 
-transDeclarations :: Abs.Declarations -> Result Declarations
-transDeclarations x = case x of
+transDeclarations :: [Variable] -> Abs.Declarations -> Result Declarations
+transDeclarations inp x = case x of
   Abs.Declarations nodedecls localdecls statedecls ->
     Declarations <$>
       transNodeDecls nodedecls <*>
+      pure inp <*>
       transLocalDecls localdecls <*>
       transStateDecls statedecls
 

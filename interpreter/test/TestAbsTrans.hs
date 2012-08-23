@@ -67,7 +67,7 @@ typesSrc :: BL.ByteString
 typesSrc = BL.pack $ unlines [
   "typedef",
   "  enum e = { e1, e2 };",
-  "nodes node main() returns (x : (# e int (# int real) int^5) ); let tel",
+  "nodes node main() returns (x : (# e int (# int real) int^5) ) let tel",
   "local x : (# e int (# int real) int^5);",
   "definition x = (use main);" ]
 
@@ -80,12 +80,12 @@ expectedTypes =
     progConstantDefinitions = fromList [],
     progDecls = Declarations {
       declsNode = Map.fromList [(ident "main", Node {
-        nodeInputs = [],
+        nodeDecls = Declarations Map.empty [] [] [],
         nodeOutputs = [Variable x (ProdType [EnumType e, intT, ProdType [intT, realT], int5])],
-        nodeDecls = Declarations Map.empty [] [],
         nodeFlow = Flow {flowDefinitions = [], flowTransitions = []},
         nodeAutomata = Map.fromList [], nodeInitial = fromList [], nodeAssertion = trueE
       })],
+      declsInput = [],
       declsState = [],
       declsLocal = [Variable x (ProdType [EnumType e, intT, ProdType [intT, realT], int5])]
     },
@@ -108,7 +108,7 @@ testTypes = checkEqual expectedTypes typesSrc
 constantsSrc :: BL.ByteString
 constantsSrc = BL.pack $ unlines [
   "nodes",
-  "  node main() returns (x : sint[32]; y : uint[16]); let",
+  "  node main() returns (x : sint[32], y : uint[16]) let",
   "    definition",
   "      x = sint[32]((- 5));",
   "      y = uint[16](1322);",
@@ -121,18 +121,18 @@ expectedConstants =
     progConstantDefinitions = fromList [],
     progDecls = Declarations {
       declsNode = Map.fromList [(ident "main", Node {
-        nodeInputs = [],
+        nodeDecls = Declarations Map.empty [] [] [],
         nodeOutputs = [
           Variable x (GroundType (SInt 32)),
           Variable y (GroundType (UInt 16))
         ],
-        nodeDecls = Declarations Map.empty [] [],
         nodeFlow = Flow [
           InstantExpr x $ constAtExpr $ mkTyped (SIntConst 32 (-5)) (GroundType (SInt 32)),
           InstantExpr y $ constAtExpr $ mkTyped (UIntConst 16 1322) (GroundType (UInt 16))
         ] [],
         nodeAutomata = Map.fromList [], nodeInitial = fromList [], nodeAssertion = trueE
       })],
+      declsInput = [],
       declsState = [],
       declsLocal = []
     },
@@ -150,9 +150,9 @@ testConstants = checkEqual expectedConstants constantsSrc
 
 switch :: BL.ByteString
 switch = BL.pack $ unlines [
+    "input on : bool; off : bool;",
     "nodes",
-    "node Switch(on, off: bool) returns (so: bool);",
-    "let",
+    "node Switch(on : bool, off: bool) returns (so: bool) let",
     "  local",
     "    s_ : bool;",
     "  state",
@@ -164,7 +164,7 @@ switch = BL.pack $ unlines [
     "    s' = s_;",
     "  initial s = false;",
     "tel",
-    "local on, off, so : bool;",
+    "local so : bool;",
     "definition so = (use Switch on off);"]
 
 expectedSwitch :: Program PosIdent
@@ -174,13 +174,13 @@ expectedSwitch =
     progConstantDefinitions = fromList [],
     progDecls = Declarations {
       declsNode = Map.fromList [(ident "Switch", Node {
-        nodeInputs = [Variable on boolT, Variable off boolT],
-        nodeOutputs = [Variable so boolT],
         nodeDecls = Declarations {
           declsNode = Map.empty,
+          declsInput = [Variable on boolT, Variable off boolT], 
           declsState = [Variable s boolT],
           declsLocal = [Variable s_ boolT]
         },
+        nodeOutputs = [Variable so boolT],
         nodeFlow = Flow {
           flowDefinitions = [
             InstantExpr s_ $ (
@@ -196,8 +196,9 @@ expectedSwitch =
         nodeInitial = fromList [(s,(mkTyped (Const false) boolT))],
         nodeAssertion = trueE
       })],
+      declsInput = [Variable on boolT, Variable off boolT],
       declsState = [],
-      declsLocal = [Variable on boolT, Variable off boolT, Variable so boolT]
+      declsLocal = [Variable so boolT]
     },
     progFlow = Flow {
       flowDefinitions = [NodeUsage so switchN [varExpr on boolT, varExpr off boolT]],
@@ -221,8 +222,7 @@ testSwitchTrans = checkEqual expectedSwitch switch
 upDownCounter :: BL.ByteString
 upDownCounter = BL.pack $ unlines [
   "nodes",
-  "  node main () returns (xo : int);",
-  "  let",
+  "  node main () returns (xo : int) let",
   "    local",
   "      x_ : int;",
   "    state",
@@ -258,13 +258,13 @@ expectedUpDownCounter =
     progEnumDefinitions = fromList [], progConstantDefinitions = fromList [],
     progDecls = Declarations {
       declsNode = Map.fromList [(ident "main", Node {
-        nodeInputs = [],
-        nodeOutputs = [Variable xo intT],
         nodeDecls = Declarations {
           declsNode = Map.empty,
+          declsInput = [],
           declsState = [Variable x intT],
           declsLocal = [Variable x_ intT]
         },
+        nodeOutputs = [Variable xo intT],
         nodeFlow = Flow {
           flowDefinitions = [InstantExpr xo $ (varExpr x_ intT)],
           flowTransitions = [StateTransition x (varExpr x_ intT)]
@@ -292,6 +292,7 @@ expectedUpDownCounter =
         nodeInitial = fromList [(x, intConstE (-1))],
         nodeAssertion = trueE
       })],
+      declsInput = [],
       declsState = [],
       declsLocal = [Variable xo intT]      
     },

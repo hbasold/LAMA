@@ -49,32 +49,33 @@ import qualified Data.ByteString.Lazy.Char8 as BS
  'enum' { PT _ (TS _ 31) }
  'false' { PT _ (TS _ 32) }
  'initial' { PT _ (TS _ 33) }
- 'int' { PT _ (TS _ 34) }
- 'invariant' { PT _ (TS _ 35) }
- 'ite' { PT _ (TS _ 36) }
- 'let' { PT _ (TS _ 37) }
- 'local' { PT _ (TS _ 38) }
- 'location' { PT _ (TS _ 39) }
- 'match' { PT _ (TS _ 40) }
- 'mod' { PT _ (TS _ 41) }
- 'node' { PT _ (TS _ 42) }
- 'nodes' { PT _ (TS _ 43) }
- 'not' { PT _ (TS _ 44) }
- 'or' { PT _ (TS _ 45) }
- 'project' { PT _ (TS _ 46) }
- 'real' { PT _ (TS _ 47) }
- 'returns' { PT _ (TS _ 48) }
- 'sint' { PT _ (TS _ 49) }
- 'state' { PT _ (TS _ 50) }
- 'tel' { PT _ (TS _ 51) }
- 'transition' { PT _ (TS _ 52) }
- 'true' { PT _ (TS _ 53) }
- 'typedef' { PT _ (TS _ 54) }
- 'uint' { PT _ (TS _ 55) }
- 'use' { PT _ (TS _ 56) }
- 'xor' { PT _ (TS _ 57) }
- '{' { PT _ (TS _ 58) }
- '}' { PT _ (TS _ 59) }
+ 'input' { PT _ (TS _ 34) }
+ 'int' { PT _ (TS _ 35) }
+ 'invariant' { PT _ (TS _ 36) }
+ 'ite' { PT _ (TS _ 37) }
+ 'let' { PT _ (TS _ 38) }
+ 'local' { PT _ (TS _ 39) }
+ 'location' { PT _ (TS _ 40) }
+ 'match' { PT _ (TS _ 41) }
+ 'mod' { PT _ (TS _ 42) }
+ 'node' { PT _ (TS _ 43) }
+ 'nodes' { PT _ (TS _ 44) }
+ 'not' { PT _ (TS _ 45) }
+ 'or' { PT _ (TS _ 46) }
+ 'project' { PT _ (TS _ 47) }
+ 'real' { PT _ (TS _ 48) }
+ 'returns' { PT _ (TS _ 49) }
+ 'sint' { PT _ (TS _ 50) }
+ 'state' { PT _ (TS _ 51) }
+ 'tel' { PT _ (TS _ 52) }
+ 'transition' { PT _ (TS _ 53) }
+ 'true' { PT _ (TS _ 54) }
+ 'typedef' { PT _ (TS _ 55) }
+ 'uint' { PT _ (TS _ 56) }
+ 'use' { PT _ (TS _ 57) }
+ 'xor' { PT _ (TS _ 58) }
+ '{' { PT _ (TS _ 59) }
+ '}' { PT _ (TS _ 60) }
 
 L_integ  { PT _ (TI $$) }
 L_Identifier { PT _ (T_Identifier _) }
@@ -89,7 +90,7 @@ Identifier    :: { Identifier} : L_Identifier { Identifier (mkPosToken $1)}
 StateId    :: { StateId} : L_StateId { StateId (mkPosToken $1)}
 
 Program :: { Program }
-Program : TypeDefs ConstantDefs Declarations Flow Initial Assertion Invariant { Program $1 $2 $3 $4 $5 $6 $7 } 
+Program : TypeDefs ConstantDefs Inputs Declarations Flow Initial Assertion Invariant { Program $1 $2 $3 $4 $5 $6 $7 $8 } 
 
 
 TypeDefs :: { TypeDefs }
@@ -169,6 +170,11 @@ Constant : BoolV { BoolConst $1 }
 BoolV :: { BoolV }
 BoolV : 'true' { TrueV } 
   | 'false' { FalseV }
+
+
+Inputs :: { Inputs }
+Inputs : {- empty -} { NoInputs } 
+  | 'input' VarDecls { JustInputs $2 }
 
 
 Initial :: { Initial }

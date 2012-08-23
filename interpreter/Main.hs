@@ -53,17 +53,17 @@ run v r f inp = do
   liftIO $ putStrV 2 v $ show prog
   deps <- checkDeps $ mkDeps prog
   liftIO $ whenV 1 v (showDeps f deps)
-  let fv = getFreeVariables deps
-  void $ go prog deps fv emptyState r
+  let inp = map (dropPos . varIdent) . declsInput $ progDecls prog
+  void $ go prog deps inp emptyState r
   where
     go :: Program PosIdent -> ProgDeps PosIdent -> [SimpIdent] -> State -> Int -> MaybeT IO ()
-    go prog deps fv s i
+    go prog deps inp s i
       | i <= 0 = return ()
       | otherwise = do
-          userInp <- askValues fv
+          userInp <- askValues inp
           s' <- checkInterpret $ eval (updateState s userInp) prog deps
           liftIO $ putStrLn $ render $ prettyState s'
-          void $ go prog deps fv s' (i-1)
+          void $ go prog deps inp s' (i-1)
 
 checkErrors :: Either Error a -> MaybeT IO a
 checkErrors r = case r of

@@ -8,7 +8,7 @@ comment "--" ;
 entrypoints Program, ConstExpr ;
 
 Program. Program  ::= TypeDefs ConstantDefs
-                      Declarations Flow Initial
+                      Inputs Declarations Flow Initial
                       Assertion Invariant
                   ;
 
@@ -57,6 +57,10 @@ TrueV. BoolV ::= "true" ;
 FalseV. BoolV ::= "false" ;
 
 ------
+NoInputs. Inputs ::= ;
+JustInputs. Inputs ::= "input" VarDecls ;
+
+------
 NoInitial. Initial ::= ;
 JustInitial. Initial ::= "initial" [StateInit] ";" ;
 NoAssertion. Assertion ::= ;
@@ -94,7 +98,6 @@ NoLocals. LocalDecls    ::= ;
 JustLocalDecls. LocalDecls    ::= "local" VarDecls ;
 NoStateDecls. StateDecls    ::= ;
 JustStateDecls. StateDecls    ::= "state" VarDecls ;
-
 
 -----
 Flow. Flow ::= LocalDefinitions Transitions ;

@@ -5,7 +5,7 @@ module Lang.LAMA.Dependencies (
   VarUsage(..), Mode(..), ExprCtx(..),
   IdentCtx, ctxGetIdent,
   NodeDeps(..), ProgDeps(..),
-  mkDeps, getFreeVariables, getDeps
+  mkDeps, getDeps
 ) where
 
 import Prelude hiding (mapM, foldl)
@@ -81,15 +81,6 @@ data ProgDeps i = ProgDeps {
     progDepsFlow :: DAG Gr (IdentCtx i, ExprCtx i) ()
   }
 
-getFreeVariables :: ProgDeps i -> [SimpIdent]
-getFreeVariables d = ufold putIfFree [] $ progDepsFlow d
-  where putIfFree (_, _, ((x, u, _), e), _) vs = case e of
-          NoExpr -> case u of
-            Constant -> vs
-            StateIn -> vs
-            _ -> SimpIdent x : vs
-          _ -> vs
-
 -- | Calculates the dependencies of a given program
 --  and its defined nodes.
 --  May return an error if the dependencies are cyclic
@@ -99,7 +90,7 @@ mkDeps p = do
     d <- mkDepsProgram p
     nodes <- mapM convNodeDeps $ ipDepsNodes d
     (dg, refs) <- mergeLocationNodes $ ipDepsGraph d
-    exprDepGr <- dagMapNLabM (fmap dropLocInfo . (addExprFV refs $ ipDepsExprs d)) dg
+    exprDepGr <- dagMapNLabM (fmap dropLocInfo . (addExpr refs $ ipDepsExprs d)) dg
     return $ ProgDeps nodes exprDepGr
 
   where
@@ -107,31 +98,24 @@ mkDeps p = do
     convNodeDeps n = do
       nodes <- mapM convNodeDeps $ inDepsNodes n
       (dg, refs) <- mergeLocationNodes $ inDepsGraph n
-      exprDepGr <- dagMapNLabM (fmap dropLocInfo . (addExprNoFV refs $ inDepsExprs n)) dg
+      exprDepGr <- dagMapNLabM (fmap dropLocInfo . (addExpr refs $ inDepsExprs n)) dg
       return $ NodeDeps nodes exprDepGr
 
     dropLocInfo ((i, u, m), e) = ((identBS i, u, m), e)
 
-    -- | Allow variables to be free
-    addExprFV :: Ident i => RefMap i -> InstantMap i -> InterIdentCtx i -> Either String (InterIdentCtx i, ExprCtx i)
-    addExprFV refs es v@(x, _, m) = case m of
-      GlobalMode -> case Map.lookup v es of
-        Nothing -> return (v, NoExpr)
-        Just e -> return (v, GlobalExpr e)
-      LocationRefMode autom -> case Map.lookup v refs of
-        Nothing -> throwError $ identPretty x ++ " references to a definition in location which does not exist"
-        Just refVars -> lookupExprs es refVars >>= \refExprs -> return (v, LocalExpr autom refExprs)
-      LocationMode _ _ -> error "Remaining location mode" -- should no longer be present here
-
-    addExprNoFV :: Ident i => RefMap i -> InstantMap i -> InterIdentCtx i -> Either String (InterIdentCtx i, ExprCtx i)
-    addExprNoFV refs es v@(x, u, _) = case u of
+    addExpr :: Ident i => RefMap i -> InstantMap i -> InterIdentCtx i -> Either String (InterIdentCtx i, ExprCtx i)
+    addExpr refs es v@(x, u, m) = case u of
       Constant -> return (v, NoExpr)
       Input -> return (v, NoExpr)
       StateIn -> return (v, NoExpr)
-      _ -> addExprFV refs es v >>= \(v', e) ->
-        case e of
-          NoExpr -> throwError $ identPretty x ++ " (" ++ show u ++ ")" ++ " not defined"
-          _ -> return (v', e)
+      _ -> case m of
+        GlobalMode -> case Map.lookup v es of
+          Nothing -> throwError $ identPretty x ++ " (" ++ show u ++ ")" ++ " not defined"
+          Just e -> return (v, GlobalExpr e)
+        LocationRefMode autom -> case Map.lookup v refs of
+          Nothing -> throwError $ identPretty x ++ " references to a definition in location which does not exist"
+          Just refVars -> lookupExprs es refVars >>= \refExprs -> return (v, LocalExpr autom refExprs)
+        LocationMode _ _ -> error "Remaining location mode" -- should no longer be present here
 
     lookupExprs es rs = case mapM (flip Map.lookup es) rs of
       Nothing -> throwError $ "Variable in location undefined"
@@ -242,12 +226,12 @@ type VarMap i = Map i VarUsage
 
 varMap :: Ident i => Node i -> VarMap i
 varMap n =
-  (Map.fromList $ map ((, Input) . varIdent) $ nodeInputs n) `Map.union`
-  (Map.fromList $ map ((, Output) . varIdent) $ nodeOutputs n) `Map.union`
-  (declsVarMap $ nodeDecls n)
+  (declsVarMap $ nodeDecls n) `Map.union`
+  (Map.fromList $ map ((, Output) . varIdent) $ nodeOutputs n)
 
 declsVarMap :: Ident i => Declarations i -> VarMap i
 declsVarMap d =
+  (Map.fromList $ map ((, Input) . varIdent) $ declsInput d) `Map.union`
   (Map.fromList $ map ((, Local) . varIdent) $ declsLocal d) `Map.union`
   (Map.fromList $ map ((, StateIn) . varIdent) $ declsState d)
 

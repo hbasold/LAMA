@@ -260,8 +260,9 @@ mkSubAutomatonNode n eq =
      inp <- mkInputs scope deps
      outp <- mkOutputs scope written
      let automNode =
-           L.Node inp outp
-           (L.Declarations (Map.fromList $ trEqSubAutom eq) localVars stateVars)
+           L.Node
+           (L.Declarations (Map.fromList $ trEqSubAutom eq) inp localVars stateVars)
+           outp
            condFlow
            (Map.singleton 0 autom)
            (trEqInits eq)

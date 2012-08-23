@@ -94,9 +94,10 @@ trOpDecl (S.UserOpDecl {
           precondition = foldl (L.mkExpr2 L.And) (L.constAtExpr $ L.boolConst True) (trEqPrecond eqs)
 
       subNodes <- mapM (liftM snd . getNode) usedNodes
-      return $ L.Node inp outp'
+      return $ L.Node
         (L.Declarations (subNodes `Map.union` (Map.fromList $ trEqSubAutom eqs))
-         (localVars'' ++ trEqLocalVars eqs) (stateVars ++ trEqStateVars eqs))
+         inp (localVars'' ++ trEqLocalVars eqs) (stateVars ++ trEqStateVars eqs))
+        outp'
         flow' automata (trEqInits eqs) precondition
 
     extract :: [TrEquation TrEqCont] -> TrEquation (L.Flow, Map Int L.Automaton)
@@ -124,24 +125,24 @@ transformPackage topNode ps =
     Left e -> Left e
     Right ((topNodeName, n), decls) ->
       do constants <- gatherConstants ps
-         (flowLocals, flowStates, flowInit, topFlow) <- mkFreeFlow (topNodeName, n)
+         (flowInputs, flowLocals, flowStates, flowInit, topFlow) <- mkFreeFlow (topNodeName, n)
          return $ L.Program
            (mkEnumDefs $ types decls) constants
-           (L.Declarations (Map.singleton topNodeName n) flowLocals flowStates)
+           (L.Declarations (Map.singleton topNodeName n) flowInputs flowLocals flowStates)
            topFlow flowInit
            (L.constAtExpr $ L.boolConst True) (L.constAtExpr $ L.boolConst True)
   where
-    mkFreeFlow :: (L.SimpIdent, L.Node) -> Either String ([L.Variable], [L.Variable], L.StateInit, L.Flow)
+    mkFreeFlow :: (L.SimpIdent, L.Node) -> Either String ([L.Variable], [L.Variable], [L.Variable], L.StateInit, L.Flow)
     mkFreeFlow (x, n) =
-      let inp = map L.mkAtomVar . map L.varIdent $ L.nodeInputs n
+      let inp = map L.mkAtomVar . map L.varIdent . L.declsInput $ L.nodeDecls n
           outpType = L.mkProductT . map L.varType $ L.nodeOutputs n
           outpIds = map (Just . L.varIdent) $ L.nodeOutputs n
       in do (a, decl) <- mkLocalAssigns outpIds (Right (x, inp, outpType))
-            let locs = (L.nodeInputs n) ++ (L.nodeOutputs n) ++ (maybeToList decl)
+            let locs = (L.nodeOutputs n) ++ (maybeToList decl)
             let sts = []
             let stInit = Map.empty
             let flow = L.Flow a []
-            return (locs, sts, stInit, flow)
+            return (L.declsInput $ L.nodeDecls n, locs, sts, stInit, flow)
     
     mkEnumDefs :: Map L.SimpIdent (Either Type L.EnumDef) -> Map TypeAlias L.EnumDef
     mkEnumDefs = Map.fromAscList . foldr (\(x, t) tds -> either (const tds) (\td -> (x,td):tds) t) [] . Map.toAscList

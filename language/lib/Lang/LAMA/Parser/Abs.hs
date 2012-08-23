@@ -6,7 +6,7 @@ import qualified Data.ByteString.Char8 as BS
 newtype Identifier = Identifier ((Int,Int),BS.ByteString) deriving (Eq,Ord,Show)
 newtype StateId = StateId ((Int,Int),BS.ByteString) deriving (Eq,Ord,Show)
 data Program =
-   Program TypeDefs ConstantDefs Declarations Flow Initial Assertion Invariant
+   Program TypeDefs ConstantDefs Inputs Declarations Flow Initial Assertion Invariant
   deriving (Eq,Ord,Show)
 
 data TypeDefs =
@@ -66,6 +66,11 @@ data Constant =
 data BoolV =
    TrueV
  | FalseV
+  deriving (Eq,Ord,Show)
+
+data Inputs =
+   NoInputs
+ | JustInputs VarDecls
   deriving (Eq,Ord,Show)
 
 data Initial =
