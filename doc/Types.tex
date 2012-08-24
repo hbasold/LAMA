@@ -63,7 +63,7 @@ Datenfluss ($F$), Anfangszustand ($I$), Assertion ($A$) und Invarianten ($P$).
 \AxiomC{}
 \RightLabel{(enum)}
 \UnaryInfC{$\vdash \syn{enum } x \syn{ = \{} c_1, \ldots, c_n  \syn{\}}
-  \therefore \{(x, \{\func{c_i}{\ast}{x}\})\}$}  
+  \therefore \{(x, \{c_i \colon \ast \Rightarrow x\})\}$}
 \end{prooftree}
 
 %</typedefrules>
@@ -158,14 +158,14 @@ TODO
 \AxiomC{}
 \RightLabel{(eq)}
 \UnaryInfC{$\vdash
-  \syn{=} : \forall t : Type. \; t \rightarrow t \rightarrow bool$}
+  \syn{=} : \forall t : Type. \; t \Rightarrow t \Rightarrow bool$}
 \DisplayProof
 \quad &
 % relations
 \AxiomC{}
 \RightLabel{(rels)}
 \UnaryInfC{$\vdash
-  \boxempty : \forall t : Num. \; t \rightarrow t \rightarrow bool$}
+  \boxempty : \forall t : Num. \; t \Rightarrow t \Rightarrow bool$}
 \DisplayProof \\
 & $\boxempty \in \{\syn{<}, \syn{<=}, \syn{>}, \syn{>=}\}$ \\
 \\
@@ -175,46 +175,45 @@ TODO
 \AxiomC{}
 \RightLabel{(unary-bool)}
 \UnaryInfC{$\vdash
-  \syn{not} : \ty{bool} \rightarrow \ty{bool}$}
+  \syn{not} : \ty{bool} \Rightarrow \ty{bool}$}
 \DisplayProof
 &
 % binary boolean
 \AxiomC{}
 \RightLabel{(bin-bool)}
 \UnaryInfC{$\vdash
-  \boxempty : \ty{bool} \rightarrow \ty{bool}
-  \rightarrow \ty{bool}$}
+  \boxempty : \ty{bool} \Rightarrow \ty{bool}
+  \Rightarrow \ty{bool}$}
 \DisplayProof \\
 & $\boxempty \in \{\syn{and}, \syn{or}, \syn{xor}, \syn{=>}\}$ \\
-\\
+\end{tabular}
+
 % arithmetic
-%<*arith>
 % general arithmetic
+%<*arith>
+\begin{prooftree}
 \AxiomC{}
-\RightLabel{(arith)}
+\RightLabel{(arith), $ \boxempty \in \{\syn{+}, \syn{-}, \syn{*}\}$}
 \UnaryInfC{$\vdash
-  \boxempty : \forall t : Num. \; t \rightarrow t \rightarrow t$}
-\DisplayProof
+  \boxempty : \forall t : Num. \; t \Rightarrow t \Rightarrow t$}
+\end{prooftree}
 %</arith>
-\quad &
+
 % integer arithmetic
 %<*intarith>
+\begin{prooftree}
 \AxiomC{}
-\RightLabel{(int-arith)}
+\RightLabel{(int-arith), $\boxempty \in \{\syn{div}, \syn{mod}\}$}
 \UnaryInfC{$\vdash
-  \boxempty : \ty{int} \rightarrow \ty{int} \rightarrow \ty{int}$}
-\DisplayProof
+  \boxempty : \ty{int} \Rightarrow \ty{int} \Rightarrow \ty{int}$}
+\end{prooftree}
 %</intarith>
-\\
-$\boxempty \in \{\syn{+}, \syn{-}, \syn{*}\}$
-& $\boxempty \in \{\syn{div}, \syn{mod}\}$
-\end{tabular}
 
 \begin{prooftree}
 \AxiomC{}
 \RightLabel{(real-arith)}
 \UnaryInfC{$\vdash
-  \syn{/} : \ty{real} \rightarrow \ty{real} \rightarrow \ty{real}$}
+  \syn{/} : \ty{real} \Rightarrow \ty{real} \Rightarrow \ty{real}$}
 \end{prooftree}
 
 \begin{prooftree}
@@ -222,7 +221,7 @@ $\boxempty \in \{\syn{+}, \syn{-}, \syn{*}\}$
 \RightLabel{(ite)}
 \UnaryInfC{$\vdash
   \syn{ite} : \forall t : Type. \;
-  \ty{bool} \rightarrow t \rightarrow t \rightarrow t$}
+  \ty{bool} \Rightarrow t \Rightarrow t \Rightarrow t$}
 \end{prooftree}
   
 \caption{Typisierung von Relationen und Operatoren}
@@ -286,7 +285,7 @@ n \in \N $ & \\
 % application
 %<*funapp>
 \begin{prooftree}
-\AxiomC{$\Sigma,\Delta,\Gamma \vdash M : A \rightarrow B$}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash M : A \Rightarrow B$}
 \AxiomC{$\Sigma,\Delta,\Gamma \vdash N : B$}
 \RightLabel{(fun-app)}
 \BinaryInfC{$\Sigma,\Delta,\Gamma \vdash
