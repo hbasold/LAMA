@@ -23,7 +23,7 @@ Datenfluss ($F$), Anfangszustand ($I$), Assertion ($A$) und Invarianten ($P$).
 
 %<*typerules>
 
-\begin{figure}[h]
+\begin{figure}[H]
 
 %<*progrule>
 \begin{prooftree}
@@ -77,20 +77,22 @@ Datenfluss ($F$), Anfangszustand ($I$), Assertion ($A$) und Invarianten ($P$).
   \therefore \{(x_1, A_1), \ldots, (x_n, A_n)\} $}
 \end{prooftree}
 
+%<*invariantrule>
 % invariant
 \begin{prooftree}
 \AxiomC{$\Sigma,\Delta,\Gamma \vdash e : \ty{bool}$}
+\RightLabel{(invariant)}
 \UnaryInfC{$\Sigma,\Delta,\Gamma \vdash
   \syn{invariant } e \syn{ ;} : \ty{ok}$}
 \end{prooftree}
-
+%</invariantrule>
 
 \caption{Typisierung von LAMA-Programmen}
 \label{fig:lama_program_types}
 \end{figure}
 
 %%% declarations
-\begin{figure}[h]
+\begin{figure}[H]
 
 % declarations
 \begin{prooftree}
@@ -135,7 +137,7 @@ Datenfluss ($F$), Anfangszustand ($I$), Assertion ($A$) und Invarianten ($P$).
 
 
 %%% nodes
-\begin{figure}[h]
+\begin{figure}[H]
 
 % invariant
 \begin{prooftree}
@@ -151,7 +153,7 @@ TODO
 \label{fig:lama_node_types}
 \end{figure}
 
-\begin{figure}[h]
+\begin{figure}[H]
 
 \begin{tabular}{ll}
 % equality
@@ -229,7 +231,7 @@ TODO
 \end{figure}
 
 %%% universes
-\begin{figure}[h]
+\begin{figure}[H]
 
 % universe instances
 \begin{tabular}{ll}
@@ -270,7 +272,7 @@ n \in \N $ & \\
 \end{figure}
 
 %%% quantifier elimination and function application
-\begin{figure}[h]
+\begin{figure}[H]
 
 % quantifier elimination
 %<*forallelim>
@@ -298,7 +300,7 @@ n \in \N $ & \\
 \end{figure}
 
 %%% product expressions
-\begin{figure}[h]
+\begin{figure}[H]
 
 % product introduction
 \begin{prooftree}
