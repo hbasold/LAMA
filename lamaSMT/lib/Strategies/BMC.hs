@@ -4,10 +4,8 @@ module Strategies.BMC where
 import Data.Natural
 import NatInstance
 import Data.List (stripPrefix)
-import Data.List.Split (splitWhen)
 import qualified Data.Map as Map
 import Data.Map (Map)
-import Data.Foldable (foldl')
 
 import Control.Monad.IO.Class
 import Control.Monad (when)
@@ -26,15 +24,13 @@ data BMC = BMC
 instance StrategyClass BMC where
   defaultStrategyOpts = BMC Nothing False
 
-  readOptions os bmc = foldl' readOption bmc $ splitWhen (== ',') os
-    where
-      readOption s (stripPrefix "depth=" -> Just d) =
-        case d of
-          "inf" -> s { bmcDepth = Nothing }
-          _ -> s { bmcDepth = Just $ read d }
-      readOption s "progress" =
-        s { bmcPrintProgress = True }
-      readOption _ o = error $ "Invalid BMC option: " ++ o
+  readOption (stripPrefix "depth=" -> Just d) s =
+    case d of
+      "inf" -> s { bmcDepth = Nothing }
+      _ -> s { bmcDepth = Just $ read d }
+  readOption "progress" s =
+    s { bmcPrintProgress = True }
+  readOption o _ = error $ "Invalid BMC option: " ++ o
 
   check s getModel defs =
     let base = 0

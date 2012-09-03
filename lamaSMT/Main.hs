@@ -3,7 +3,7 @@
 module Main (main) where
 
 import qualified Data.ByteString.Lazy.Char8 as BL
-import Data.List (intercalate)
+
 import Text.PrettyPrint (render)
 
 import System.IO (stdin)
@@ -58,10 +58,10 @@ options =
       "input FILE or stdin"
     , Option ['s'] ["strategy"]
       (ReqArg (\s opts -> opts {optStrategy = getStrategy s}) "STRATEGY")
-      ("Strategy to use on given model. Can be one of " ++ (intercalate "," getStrategyNames))
-    , Option ['o'] ["options"]
-      (ReqArg (\o opts -> opts {optStrategy = readOptions' o $ optStrategy opts}) "OPTIONS")
-      ("Additional options for the requested strategy")
+      (getStrategyHelp 80)
+    , Option ['o'] ["option"]
+      (ReqArg (\o opts -> opts {optStrategy = readOptions' o $ optStrategy opts}) "OPTION")
+      ("Pass options to the requested strategy (one per -o).")
     , Option ['d'] ["debug"]
       (OptArg resolveDebug "WHAT")
       "Debug something; for more specific debugging use one of: [dump-lama]"
