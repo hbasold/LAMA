@@ -1,0 +1,42 @@
+node User(on : bool; off : bool)
+returns (c : int; a : bool; s_1, s_2 : bool)
+var
+  c_1 : int;
+  s, s_1, s_2 : bool;
+  a, b : bool;
+let
+  /* beware of the parenthesis here */
+  c_1 = 0 -> (pre c) + (pre c_1);
+  c = SubNodes::Count(s, false);
+  s = SubNodes::Switch(on, off);
+  a = SubNodes::Delay(s);
+  s_1 = false -> a;
+  b = SubNodes::Delay(s_1);
+  s_2 = false -> b;
+tel
+
+package SubNodes
+  node Count(x : bool; reset : bool)
+  returns (c : int)
+  var
+    c_1, c_1_i : int;
+  let
+    c_1 = pre c;
+    c_1_i = 0 -> c_1;
+    c = if not reset
+      then c_1_i +
+        if x then 1 else 0
+      else 0;
+  tel
+
+  node Switch(on, off : bool)
+  returns (s : bool)
+  let
+    s = if false -> pre s then not off else on;
+  tel
+  
+  node Delay (s : bool) returns (s_1 : bool)
+  let
+    s_1 = pre s;
+  tel
+end;

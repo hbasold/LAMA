@@ -1,0 +1,79 @@
+nodes
+  node Autom () returns (xo : int, yo : int)
+  let
+    nodes node SubAutom (x : int) returns (x_ : int, yo : int)
+    let
+      state y : int;
+      definition yo = y;
+      
+      automaton let
+        location C let
+          definition x_ = 3;
+          transition y' = (+ x 1);
+        tel
+        location D let
+          definition x_ = 4;
+          transition y' = (+ x 1);
+        tel
+        location E let
+          definition x_ = 5;
+          transition y' = (+ x 1);
+        tel
+        initial C ;
+        edge (C, D) : (= x 3);
+        edge (D, E) : (= x 4);
+        edge (E, C) : (= x 5);
+      tel
+      initial y = 1;
+    tel
+    
+    local
+      x_ : int;
+      r : (# int int);
+    state
+      x : int;
+      y : int;
+    definition
+      xo = x_;
+      yo = y;
+    transition
+      x' = x_;
+
+    automaton let
+      location A let
+        definition x_ = 1;
+        transition y' = (+ x 1);
+      tel
+      location B let
+        definition x_ = 2;
+        transition y' = (+ x 1);
+      tel
+      location Sub let
+        definition
+          r = (use SubAutom x);
+          x_ = (project r 0);
+        transition y' = (project r 1);
+      tel
+      initial A;
+      edge (A, B) : (= x 1);
+      edge (B, Sub) : (= x 2);
+      edge (Sub, A) : (= x 5);
+      default r = (# 0 0);
+    tel
+
+    initial x = 0, y = 1;
+  tel
+local x : int; y : int; r : (# int int);
+state x_1 : int;
+definition r = (use Autom);
+  x = (project r 0);
+  y = (project r 1);
+transition x_1' = x;
+initial x_1 = (- 1);
+
+invariant
+  (and
+    (and (>= x 1) (<= x 5)) -- x ranges only from 1 to 5
+    (and (>= y 1) (<= y 6)) -- y from 1 to 6
+  )
+  ;
