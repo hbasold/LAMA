@@ -1,0 +1,35 @@
+\documentclass{scrartcl}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[ngerman]{babel}
+\usepackage{amsmath}
+
+\usepackage{listings}
+
+%<*def>
+
+\lstdefinelanguage{scade}{
+    morekeywords=[1]{%
+      type, else, if, node, returns, then
+      , returns, var, let, tel, package, public
+      , private, imported, open, group
+      , const, sensor, function, when, not
+      , or, and, xor, mod, end, pre, last
+      , default, sig, automaton, state, restart
+      , resume, every, times, do, emit
+      , case, of, fby, merge, flatten
+      , true, false
+    },
+    morekeywords=[2]{bool, char, int, real, clock, probe},
+    morekeywords=[3]{initial, final, unless, until, synchro},
+    otherkeywords={', ->},
+    sensitive=true,
+    morecomment=[s]{/*}{*/}
+}
+
+%</def>
+
+\begin{document}
+\lstinputlisting[language=scade]{someFile.scade}
+\end{document}
+
