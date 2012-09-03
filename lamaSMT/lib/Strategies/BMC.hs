@@ -4,8 +4,13 @@ module Strategies.BMC where
 import Data.Natural
 import NatInstance
 import Data.List (stripPrefix)
+import Data.List.Split (splitWhen)
 import qualified Data.Map as Map
 import Data.Map (Map)
+import Data.Foldable (foldl')
+
+import Control.Monad.IO.Class
+import Control.Monad (when)
 
 import Language.SMTLib2
 
@@ -14,16 +19,22 @@ import LamaSMTTypes
 import Definition
 import Model (Model)
 
-data BMC = BMC { bmcDepth :: Maybe Natural }
+data BMC = BMC
+           { bmcDepth :: Maybe Natural
+           , bmcPrintProgress :: Bool }
 
 instance StrategyClass BMC where
-  defaultStrategyOpts = BMC Nothing
+  defaultStrategyOpts = BMC Nothing False
 
-  readOptions (stripPrefix "depth=" -> Just d) s =
-    case d of
-      "inf" -> s { bmcDepth = Nothing }
-      _ -> s { bmcDepth = Just $ read d }
-  readOptions o _ = error $ "Invalid BMC option: " ++ o
+  readOptions os bmc = foldl' readOption bmc $ splitWhen (== ',') os
+    where
+      readOption s (stripPrefix "depth=" -> Just d) =
+        case d of
+          "inf" -> s { bmcDepth = Nothing }
+          _ -> s { bmcDepth = Just $ read d }
+      readOption s "progress" =
+        s { bmcPrintProgress = True }
+      readOption _ o = error $ "Invalid BMC option: " ++ o
 
   check s getModel defs =
     let base = 0
@@ -33,7 +44,8 @@ instance StrategyClass BMC where
 check' :: BMC -> (Map Natural StreamPos -> SMT (Model i))
           -> ProgDefs -> Map Natural StreamPos -> Natural -> StreamPos -> SMTErr (Maybe (Model i))
 check' s getModel defs pastIndices i iDef =
-  do liftSMT $ assertDefs iDef (flowDef defs)
+  do liftIO $ when (bmcPrintProgress s) (putStrLn $ "Depth " ++ show i)
+     liftSMT $ assertDefs iDef (flowDef defs)
      liftSMT $ assertPrecond iDef (precondition defs)
      let invs = invariantDef defs
      r <- liftSMT . stack $ (checkGetModel getModel pastIndices =<< checkInvariant iDef invs)

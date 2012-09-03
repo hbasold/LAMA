@@ -10,7 +10,7 @@ Executable lamasmt
   Build-Depends: base, containers, language-lama, smtlib2,
                  transformers, bytestring, natural-numbers,
                  attoparsec, atto-lisp, text, mtl, placeholders,
-                 pretty, array
+                 pretty, array, split
   Hs-Source-Dirs: . lib
   GHC-Options: -Wall
   other-modules:
