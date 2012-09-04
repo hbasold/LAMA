@@ -68,9 +68,8 @@ type Environment = (ScadePackages, Scope)
 type EnvM = ReaderT Environment VarGen
 type TransM = StateT Decls (ErrorT String EnvM)
 
-runTransM :: TransM a -> Package -> Either String (a, Decls)
-runTransM m p = (flip evalVarGen 50)
-                . (flip runReaderT (ScadePackages p p, emptyScope))
+runTransM :: TransM a -> Package -> VarGen (Either String (a, Decls))
+runTransM m p = (flip runReaderT (ScadePackages p p, emptyScope))
                 . runErrorT
                 . (flip runStateT emptyDecls)
                 $ m

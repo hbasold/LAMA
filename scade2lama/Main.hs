@@ -111,14 +111,14 @@ runFile :: Options -> FilePath -> IO (Maybe String)
 runFile opts f = readFile f >>= runMaybeT . run opts f
 
 run :: Options -> FilePath -> String -> MaybeT IO String
-run opts f inp = (flip evalVarGenT 0) $ do
+run opts f inp = (flip evalVarGenT 50) $ do
   s <- lift $ checkScadeError $ scade $ alexScanTokens inp
   liftIO $ when (optDumpScade opts) (putStrLn $ show s)
   r <- checkErr "Rewrite error:" =<< (runInVarGenT $ (flip runReaderT opts) $ runErrorT $ rewrite s)
   let ps = extractPackages r
   ps' <- checkErr "Rewrite error:" =<< (runInVarGenT $ runErrorT $ rewrite2 ps)
   liftIO $ when (optDumpRewrite opts) (putStrLn $ render $ prettyPackage ps')
-  l <- checkErr "Tranform error:" $ transformPackage (optTopNode opts) ps'
+  l <- checkErr "Tranform error:" =<< (runInVarGenT $ transformPackage (optTopNode opts) ps')
   liftIO $ when (optDumpLama opts) (putStrLn $ show l)
   return $ prettyLama l
 

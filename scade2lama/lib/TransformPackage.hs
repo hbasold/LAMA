@@ -38,6 +38,7 @@ import TransformCommon
 import TransformMonads
 import TransformSimple
 import TransformAutomata
+import VarGen
 
 -- | Gets the definition for a node. This may trigger
 -- the translation of the node.
@@ -121,11 +122,12 @@ trOpDecl _ = undefined
 mkPath :: String -> S.Path
 mkPath = S.Path . splitOn "::"
 
-transformPackage :: String -> Package -> Either String L.Program
-transformPackage topNode ps =
-  case runTransM (getNode $ mkPath $ topNode) ps of
-    Left e -> Left e
-    Right ((topNodeName, n), decls) ->
+transformPackage :: String -> Package -> VarGen (Either String L.Program)
+transformPackage topNode ps = do
+  r <- runTransM (getNode $ mkPath $ topNode) ps
+  case r of
+    Left e -> return $ Left e
+    Right ((topNodeName, n), decls) -> return $
       do constants <- gatherConstants ps
          (flowInputs, flowLocals, flowStates, flowInit, topFlow) <- mkFreeFlow (topNodeName, n)
          return $ L.Program
