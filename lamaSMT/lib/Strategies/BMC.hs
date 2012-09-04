@@ -70,7 +70,7 @@ next :: (Map Natural StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (M
 next checkCont s pastIndices i iDef =
   do let i' = succ i
      iDef' <- liftSMT . defConst $ succ' iDef
-     let pastIndices' = Map.insert i iDef' pastIndices
+     let pastIndices' = Map.insert i' iDef' pastIndices
      case bmcDepth s of
        Nothing -> checkCont pastIndices' i' iDef'
        Just l ->
