@@ -18,15 +18,11 @@ tel
 package SubNodes
   node Count(x : bool; reset : bool)
   returns (c : int)
-  var
-    c_1, c_1_i : int;
   let
-    c_1 = pre c;
-    c_1_i = 0 -> c_1;
     c = if not reset
-      then c_1_i +
-        if x then 1 else 0
-      else 0;
+        then 0 -> pre c +
+          if x then 1 else 0
+        else 0;
   tel
 
   node Switch(on, off : bool)
