@@ -15,5 +15,5 @@ tel
 
 /* Properties:
 always(reset implies next (c = 0))
-always(x implies exists lc = c: next (c = lc + 1));
+always(x implies exists lc = c: next (c = lc + 1 or c = lc));
 */
