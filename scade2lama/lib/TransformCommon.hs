@@ -6,7 +6,7 @@ module TransformCommon (
   updateVarName, declareNode, checkNode,
   trVarDecl, trVarDecls, separateVars, trConstDecl, mkLocalAssigns,
   trTypeExpr,
-  EquationRhs(..), trExpr, trExpr', trConstExpr, trConstant
+  EquationRhs(..), trExpr, trExpr', trConstExpr, trConstant, tryConst
   ) where
 
 import Development.Placeholders

@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {- Unrolls temporal constructs. We do that by the following rules:
   
   * x = e_1 -> pre e_2 ~> e_1 -> pre e_2
@@ -41,15 +42,20 @@ import Data.Generics.Aliases
 
 import Control.Monad (liftM)
 import Control.Monad.State (StateT(..), MonadState(..), modify)
+import Control.Applicative (Applicative)
+import Control.Monad.Error (MonadError)
 
 import Language.Scade.Syntax as S
 
 import VarGen
+import TransformCommon (tryConst)
 
-rewrite :: MonadVarGen m => [Declaration] -> m [Declaration]
+rewrite :: (MonadVarGen m, Applicative m, MonadError String m)
+           => [Declaration] -> m [Declaration]
 rewrite = everywhereM $ mkM rewriteDecl
 
-rewriteDecl :: MonadVarGen m => Declaration -> m Declaration
+rewriteDecl :: (MonadVarGen m, Applicative m, MonadError String m)
+               => Declaration -> m Declaration
 rewriteDecl op@(UserOpDecl {}) =
   let typesInp = Map.fromList
                  . concat
@@ -63,7 +69,8 @@ rewriteDecl op@(UserOpDecl {}) =
         return $ op { userOpContent = cont' }
 rewriteDecl d = return d
 
-rewriteDataDef :: MonadVarGen m => Map String TypeExpr -> DataDef -> m DataDef
+rewriteDataDef :: (MonadVarGen m, Applicative m, MonadError String m)
+                  => Map String TypeExpr -> DataDef -> m DataDef
 rewriteDataDef typesEnv (DataDef sigs locals equs) =
   let typesLocals = Map.fromList $ concat $ map (\(VarDecl xs t _ _) -> [(x,t) | (VarId x _ _) <- xs]) locals
       types = typesEnv `Map.union` typesLocals
@@ -72,7 +79,8 @@ rewriteDataDef typesEnv (DataDef sigs locals equs) =
         return $ DataDef sigs locals' equs'
 
 -- We may produce multiple equations out of one
-rewriteEquation :: MonadVarGen m => Map String TypeExpr -> Equation -> m ([VarDecl], [Equation])
+rewriteEquation :: (MonadVarGen m, Applicative m, MonadError String m)
+                   => Map String TypeExpr -> Equation -> m ([VarDecl], [Equation])
 -- We only rewrite equations that do not use nodes
 rewriteEquation ts (SimpleEquation [Named x] e) =
   do (xs, equs) <- mkSubEquations x e
@@ -93,16 +101,16 @@ freshVar = do
   modify (second $ second (x':))
   return x'
 
-putEq :: MonadVarGen m => Equation -> SubEqM m ()
+putEq :: (MonadVarGen m, Applicative m, MonadError String m) => Equation -> SubEqM m ()
 putEq e = modify (second $ first (e:))
 
-mkSubEquations :: MonadVarGen m => String -> Expr -> m ([String], [Equation])
+mkSubEquations :: (MonadVarGen m, Applicative m, MonadError String m) => String -> Expr -> m ([String], [Equation])
 mkSubEquations x expr =
   do (expr', (_, (subs, newVars))) <- runStateT (mkSubEquationsTop expr) (x, ([], []))
      return (newVars, (SimpleEquation [Named x] expr') : subs)
   where
     -- Avoid unrolling on top level
-    mkSubEquationsTop :: MonadVarGen m => Expr -> SubEqM m Expr
+    mkSubEquationsTop :: (MonadVarGen m, Applicative m, MonadError String m) => Expr -> SubEqM m Expr
     mkSubEquationsTop (S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2)) =
       do e2' <- mkSubEquations' e2
          return $ S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2')
@@ -116,14 +124,20 @@ mkSubEquations x expr =
 
     -- first pull out initialised pre's because a pre alone is a sub-pattern and
     -- with everywhere this leads to pulled out pre's but left after's.
-    mkSubEquations' :: MonadVarGen m => Expr -> SubEqM m Expr
+    mkSubEquations' :: (MonadVarGen m, Applicative m, MonadError String m) => Expr -> SubEqM m Expr
     mkSubEquations' = (everywhereM $ mkM mkEqInitPre) >=> (everywhereM $ mkM mkEqSeparated)
 
-    mkEqInitPre (S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2)) = do
-      e2' <- everywhereM (mkM mkEqSeparated) e2
-      x' <- freshVar
-      putEq $ SimpleEquation [Named x'] (S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2'))
-      return $ IdExpr $ Path [x']
+    -- if the initialisation is a constant, we pull the
+    -- expression out. Otherwise we let mkEqSeparated do the work.
+    mkEqInitPre e@(S.BinaryExpr S.BinAfter i (S.UnaryExpr S.UnPre _)) =
+      do isC <- isConstant i
+         if isC then
+           do x' <- freshVar
+              putEq $ SimpleEquation [Named x'] e
+              return $ IdExpr $ Path [x']
+           else return e
+      where
+        isConstant e' = tryConst e' >>= return . (const True ||| const False)
     mkEqInitPre e = return e
 
     mkEqSeparated e@(S.UnaryExpr S.UnPre _) = do
