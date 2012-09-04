@@ -182,7 +182,8 @@ trEquation (S.SimpleEquation lhsIds expr) =
      let lhsDefaults' = lhsDefaults `mappend` lastExprs
      let eq' = eq { trEqStateVars = trEqStateVars eq ++ lastStateVars
                   , trEqInits = trEqInits eq `mappend` lastStateInits }
-     return $ fmap (Just &&& const (lhsDefaults', Just $ L.Flow [] lastStateTrans)) eq'
+         eq'' = fmap (\(Left x) -> x) eq' -- FIXME: generate initialisation states
+     return $ fmap (Just &&& const (lhsDefaults', Just $ L.Flow [] lastStateTrans)) eq''
   where
     getValidIds = foldr (\x xs -> case x of
                             S.Named x' -> (fromString x') : xs

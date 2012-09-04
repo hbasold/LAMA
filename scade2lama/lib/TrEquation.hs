@@ -28,6 +28,9 @@ baseEq x = TrEquation x [] [] Map.empty [] [] Set.empty
 
 data TrEqCont =
   SimpleEq L.Flow
+  | InitEq (L.Flow, L.Flow)
+    -- ^ An equation with an initialisation has two flows:
+    -- one for the initialisation and one for the "true" definition.
   | AutomatonEq L.Automaton [L.Variable] L.Flow
     -- ^ An automaton has additionally locally declared variables (in the states)
     -- and a flow for the conditions of weak transitions.

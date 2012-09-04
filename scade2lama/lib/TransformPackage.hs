@@ -22,7 +22,7 @@ import Control.Monad.Trans.Class
 import Control.Monad (when, liftM)
 import Control.Monad.State (gets)
 
-import Control.Arrow (first)
+import Control.Arrow ((|||))
 import Control.Applicative ((<$>))
 import Control.Monad.Writer (WriterT(..))
 import Control.Monad.Error (MonadError(..))
@@ -85,37 +85,60 @@ trOpDecl (S.UserOpDecl {
                        (\(x, x') ds -> (L.InstantExpr (L.varIdent x') $ L.mkAtomVar (L.varIdent x)) : ds )
                        [] $ zip outp outp'
       (eqs, usedNodes) <-
-        liftM (first extract)
-        . localScope (const $ Scope (mkVarMap inp) (mkVarMap outp) (mkVarMap localVars)
-                      (Map.fromList localsDefault `mappend` outpDefault)
-                      (Map.fromList localsInit `mappend` outpLastInit))
+        localScope (const $ Scope (mkVarMap inp) (mkVarMap outp) (mkVarMap localVars)
+                    (Map.fromList localsDefault `mappend` outpDefault)
+                    (Map.fromList localsInit `mappend` outpLastInit))
         . runWriterT
         $ mapM trEquation dataEquations
-      let (flow, automata) = trEqRhs eqs
+      eq <- mkEqInitAutom $ extract eqs
+      let (flow, automata) = trEqRhs eq
           flow' = flow { L.flowDefinitions = L.flowDefinitions flow ++ outputDefs }
-          (localVars'', stateVars) = separateVars (trEqAsState eqs) localVars'
-          precondition = foldl (L.mkExpr2 L.And) (L.constAtExpr $ L.boolConst True) (trEqPrecond eqs)
+          (localVars'', stateVars) = separateVars (trEqAsState eq) localVars'
+          precondition = foldl (L.mkExpr2 L.And) (L.constAtExpr $ L.boolConst True) (trEqPrecond eq)
 
       subNodes <- mapM (liftM snd . getNode) usedNodes
       return $ L.Node
-        (L.Declarations (subNodes `Map.union` (Map.fromList $ trEqSubAutom eqs))
-         inp (localVars'' ++ trEqLocalVars eqs) (stateVars ++ trEqStateVars eqs))
+        (L.Declarations (subNodes `Map.union` (Map.fromList $ trEqSubAutom eq))
+         inp (localVars'' ++ trEqLocalVars eq) (stateVars ++ trEqStateVars eq))
         outp'
-        flow' automata (trEqInits eqs) precondition
+        flow' automata (trEqInits eq) precondition
 
-    extract :: [TrEquation TrEqCont] -> TrEquation (L.Flow, Map Int L.Automaton)
-    extract = foldlTrEq mergeEq (L.Flow [] [], Map.empty)
+    extract :: [TrEquation TrEqCont] -> TrEquation (L.Flow, (L.Flow, L.Flow), Map Int L.Automaton)
+    extract = foldlTrEq mergeEq (mempty, (mempty, mempty), Map.empty)
       where
-        mergeEq (f1, a1) (SimpleEq f2) =
-          (f1 `mappend` f2, a1)
+        mergeEq (f1, initF, a1) (SimpleEq f2) =
+          (f1 `mappend` f2, initF, a1)
+        mergeEq (f1, (i1, def1), a1) (InitEq (i2, def2)) =
+          (f1, (i1 `mappend` i2, def1 `mappend` def2), a1)
         -- we don't care if variables have been declared inside a state,
         -- we declare them outside nevertheless.
-        mergeEq (f1, a1) (AutomatonEq a2 _ condFlow) =
+        mergeEq (f1, initF, a1) (AutomatonEq a2 _ condFlow) =
           let a = if Map.null a1
-                  then Map.singleton 0 a2
+                  then Map.singleton 1 a2
                   else Map.insert ((fst $ Map.findMin a1) + 1) a2 a1
-          in (f1 `mappend` condFlow, a)
+          in (f1 `mappend` condFlow, initF, a)
         mergeEq r NonExecutable = r
+
+    mkEqInitAutom :: MonadVarGen m => TrEquation (L.Flow, (L.Flow, L.Flow), Map Int L.Automaton)
+                     -> m (TrEquation (L.Flow, Map Int L.Automaton))
+    mkEqInitAutom eq =
+      do dummy <- liftM fromString $ newVar "dummy"
+         initLoc <- liftM fromString $ newVar "init"
+         running <- liftM fromString $ newVar "running"
+         return $ fmap (mkInitAutom dummy initLoc running) eq
+      where
+        mkInitAutom dummy initLoc running (f, (i, def), a)
+          -- only add an automaton if there actually is an initialising flow
+          | i == mempty && def == mempty = (f, a)
+          | otherwise =
+            let locations = [L.Location dummy i,
+                             L.Location initLoc i,
+                             L.Location running def ]
+                autom = L.Automaton locations dummy
+                        [L.Edge dummy initLoc (L.constAtExpr $ L.boolConst True),
+                         L.Edge initLoc running (L.constAtExpr $ L.boolConst True)] Map.empty
+            in (f, Map.insert 0 autom a)
+
 
 trOpDecl _ = undefined
 
@@ -169,7 +192,7 @@ transformPackage topNode ps = do
 -- a set of intermediate variables to be declared is returned.
 trEquation :: S.Equation -> TrackUsedNodes (TrEquation TrEqCont)
 trEquation (S.SimpleEquation lhsIds expr) =
-  fmap SimpleEq <$> trSimpleEquation lhsIds expr
+  fmap (SimpleEq ||| InitEq) <$> trSimpleEquation lhsIds expr
 trEquation (S.AssertEquation S.Assume _name expr) =
   lift $ trExpr' expr >>= \pc ->  return $ (baseEq NonExecutable) { trEqPrecond = [pc] }
 trEquation (S.AssertEquation S.Guarantee _name expr) = $notImplemented
