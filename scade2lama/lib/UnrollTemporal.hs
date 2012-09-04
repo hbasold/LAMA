@@ -109,22 +109,29 @@ mkSubEquations x expr =
     mkSubEquationsTop (S.UnaryExpr S.UnPre e) =
       do e' <- mkSubEquations' e
          return $ S.UnaryExpr S.UnPre e'
+    mkSubEquationsTop (S.BinaryExpr S.BinAfter e1 e2) =
+      do e2' <- mkSubEquations' e2
+         return $ S.BinaryExpr S.BinAfter e1 e2'
     mkSubEquationsTop e = mkSubEquations' e
 
     -- first pull out initialised pre's because a pre alone is a sub-pattern and
     -- with everywhere this leads to pulled out pre's but left after's.
     mkSubEquations' :: MonadVarGen m => Expr -> SubEqM m Expr
-    mkSubEquations' = (everywhereM $ mkM mkEqInitPre) >=> (everywhereM $ mkM mkEqUninitPre)
+    mkSubEquations' = (everywhereM $ mkM mkEqInitPre) >=> (everywhereM $ mkM mkEqSeparated)
 
     mkEqInitPre (S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2)) = do
-      e2' <- everywhereM (mkM mkEqUninitPre) e2
+      e2' <- everywhereM (mkM mkEqSeparated) e2
       x' <- freshVar
       putEq $ SimpleEquation [Named x'] (S.BinaryExpr S.BinAfter e1 (S.UnaryExpr S.UnPre e2'))
       return $ IdExpr $ Path [x']
     mkEqInitPre e = return e
 
-    mkEqUninitPre (S.UnaryExpr S.UnPre e) = do
+    mkEqSeparated e@(S.UnaryExpr S.UnPre _) = do
       x' <- freshVar
-      putEq $ SimpleEquation [Named x'] (S.UnaryExpr S.UnPre e)
+      putEq $ SimpleEquation [Named x'] e
       return $ IdExpr $ Path [x']
-    mkEqUninitPre e = return e
+    mkEqSeparated e@(S.BinaryExpr S.BinAfter _ _) = do
+      x' <- freshVar
+      putEq $ SimpleEquation [Named x'] e
+      return $ IdExpr $ Path [x']
+    mkEqSeparated e = return e
