@@ -1,0 +1,23 @@
+node UpDownCounter() returns (x : int)
+var
+  x_1 : int;
+let
+  
+  automaton SM1
+    initial state A
+      let
+        x = x_1 + 1;
+      tel
+      until
+        if x >= 10 do restart B;
+
+    state B
+      let
+        x = x_1 - 1;
+      tel
+      until
+        if x <= 0 do restart A;
+  returns ..;
+  
+  x_1 = -1 -> pre x;
+tel
