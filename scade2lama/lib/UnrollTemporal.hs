@@ -1,17 +1,20 @@
 {-# LANGUAGE FlexibleContexts #-}
-{- Unrolls temporal constructs. We do that by the following rules:
+{- Unrolls temporal constructs. We do that by
+   the following relations ~> and =>.
   
-  * x = e_1 -> pre e_2 ~> e_1 -> pre e_2
-  * x = e ~>
-      x_1 = e_1;
-      ...
-      x_k = e_k;
-      x = e';
-    where [] ⊢ e => (e', [(x_1, e_1), ..., (x_k, e_k)])
-  
+  x = M ~>
+      x' : A;
+      x' = N;
+      x = M';
+    where M /= c -> pre N, pre N and P -> N with c constant
+    Let then Γ ⊢ (x, M) => (M', x', N_1) with
+    Γ being the variables in the current scope.
+
   Where => is defined by:
-  * Γ ⊢ e_1 -> pre e_2 => (x', Γ ∪ [(x', e_1 -> pre e_2)]) , x' ∉ Γ
-  * Γ ⊢ pre e => (x', Γ ∪ [(x', pre e)]) , x' ∉ Γ
+  * Γ ⊢ M -> pre N : A => (x', x':A, M -> pre N) , x' ∉ Γ and M constant
+  * Γ ⊢ pre M : A => (x', x':A, pre M) , x' ∉ Γ
+  * Γ ⊢ M -> N : A => (x', x':A, M -> N) , x' ∉ Γ
+  * Γ ⊢ M => M
   
   Example:
     z = a + (0 -> pre (b + 1));
@@ -82,6 +85,7 @@ rewriteDataDef typesEnv (DataDef sigs locals equs) =
 rewriteEquation :: (MonadVarGen m, Applicative m, MonadError String m)
                    => Map String TypeExpr -> Equation -> m ([VarDecl], [Equation])
 -- We only rewrite equations that do not use nodes
+-- FIXME: respect type of subexpression
 rewriteEquation ts (SimpleEquation [Named x] e) =
   do (xs, equs) <- mkSubEquations x e
      let decls = map (\y -> VarDecl [VarId y False False] (ts ! x) Nothing Nothing) xs
@@ -101,10 +105,11 @@ freshVar = do
   modify (second $ second (x':))
   return x'
 
-putEq :: (MonadVarGen m, Applicative m, MonadError String m) => Equation -> SubEqM m ()
+putEq :: Monad m => Equation -> SubEqM m ()
 putEq e = modify (second $ first (e:))
 
-mkSubEquations :: (MonadVarGen m, Applicative m, MonadError String m) => String -> Expr -> m ([String], [Equation])
+mkSubEquations :: (MonadVarGen m, Applicative m, MonadError String m)
+                  => String -> Expr -> m ([String], [Equation])
 mkSubEquations x expr =
   do (expr', (_, (subs, newVars))) <- runStateT (mkSubEquationsTop expr) (x, ([], []))
      return (newVars, (SimpleEquation [Named x] expr') : subs)
