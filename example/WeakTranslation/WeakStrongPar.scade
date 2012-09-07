@@ -1,0 +1,59 @@
+node WeakStrongPar(c0 : bool; c1 : bool; c2 : bool; c3 : bool)
+  returns (
+    state0 : bool default = false;
+    state1 : bool default = false;
+    state2 : bool default = false;
+    state3 : bool default = false;
+    state4 : bool default = false)
+let
+  
+  automaton SM1
+    state State1
+      unless
+        if c2 restart State2;
+      var
+        _L4 : bool;
+      let
+        _L4= true;
+        state1= _L4;
+      tel
+      until
+        if c1 do restart State3;
+
+    state State2
+      var
+        _L1 : bool;
+      let
+        _L1= true;
+        state2= _L1;
+      tel
+
+    state State3
+      unless
+        if c3 restart State4;
+      var
+        _L1 : bool;
+      let
+        _L1= true;
+        state3= _L1;
+      tel
+
+    state State4
+      var
+        _L1 : bool;
+      let
+        state4= _L1;
+        _L1= true;
+      tel
+
+    initial state State0
+      var
+        _L1 : bool;
+      let
+        state0= _L1;
+        _L1= true;
+      tel
+      until
+        if c0 do restart State1;
+  returns ..;
+tel

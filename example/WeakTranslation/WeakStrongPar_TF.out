@@ -1,0 +1,44 @@
+STEP 1
+INPUT WeakStrongPar/c0 = true
+INPUT WeakStrongPar/c1 = false
+INPUT WeakStrongPar/c2 = false
+INPUT WeakStrongPar/c3 = false
+OUTPUT WeakStrongPar/state0 = true
+OUTPUT WeakStrongPar/state1 = false
+OUTPUT WeakStrongPar/state2 = false
+OUTPUT WeakStrongPar/state3 = false
+OUTPUT WeakStrongPar/state4 = false
+
+STEP 2
+INPUT WeakStrongPar/c0 = false
+INPUT WeakStrongPar/c1 = false
+INPUT WeakStrongPar/c2 = false
+INPUT WeakStrongPar/c3 = false
+OUTPUT WeakStrongPar/state0 = false
+OUTPUT WeakStrongPar/state1 = true
+OUTPUT WeakStrongPar/state2 = false
+OUTPUT WeakStrongPar/state3 = false
+OUTPUT WeakStrongPar/state4 = false
+
+STEP 3
+INPUT WeakStrongPar/c0 = false
+INPUT WeakStrongPar/c1 = true
+INPUT WeakStrongPar/c2 = false
+INPUT WeakStrongPar/c3 = false
+OUTPUT WeakStrongPar/state0 = false
+OUTPUT WeakStrongPar/state1 = true
+OUTPUT WeakStrongPar/state2 = false
+OUTPUT WeakStrongPar/state3 = false
+OUTPUT WeakStrongPar/state4 = false
+
+STEP 4
+INPUT WeakStrongPar/c0 = false
+INPUT WeakStrongPar/c1 = false
+INPUT WeakStrongPar/c2 = false
+INPUT WeakStrongPar/c3 = false
+OUTPUT WeakStrongPar/state0 = false
+OUTPUT WeakStrongPar/state1 = false
+OUTPUT WeakStrongPar/state2 = false
+OUTPUT WeakStrongPar/state3 = true
+OUTPUT WeakStrongPar/state4 = false
+
