@@ -500,12 +500,12 @@ strongAfterWeak =
       in ((weakIns' ++ strongIns, s2, stData, succSts), transEdges)
 
     -- we are in node s2
-    mkTransEdges strongOuts transEdges (weakInData, s3) =
+    mkTransEdges strongOuts transEdges (weakInData, s1) =
       let weakInCond = edgeCondition weakInData
           oneStrongActive = foldl1 (L.mkExpr2 L.Or) . map (edgeCondition . fst) $ strongOuts
           weakInCond' = L.mkExpr2 L.And weakInCond (L.mkLogNot oneStrongActive)
-          transEdges' = map (\(ed, s1) -> (s1, s3, mapCondition (L.mkExpr2 L.And weakInCond) ed)) strongOuts
-      in (transEdges ++ transEdges', (weakInData { edgeCondition = weakInCond' }, s3))
+          transEdges' = map (\(ed, s3) -> (s1, s3, mapCondition (L.mkExpr2 L.And weakInCond) ed)) strongOuts
+      in (transEdges ++ transEdges', (weakInData { edgeCondition = weakInCond' }, s1))
 
 -- | Builds an automaton out of the given state graph.
 -- FIXME: respect priorities
