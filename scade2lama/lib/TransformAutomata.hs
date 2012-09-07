@@ -411,22 +411,32 @@ rewriteWeak = (uncurry $ foldlM go)
     createWeakActivation st stData strongPred =
       case strongPred of
         [] -> return (L.constAtExpr $ L.boolConst True, stData, [], Map.empty)
-        _ -> do let stN = L.identString $ stName stData
-                inSt <- liftM fromString . newVar $ "inState" ++ stN -- true if st is currently active
-                wasSt <- liftM fromString . newVar $ "wasState" ++ stN-- true if st was active in last cycle
+        _ -> do (inStPred, stData', predDefault) <- mkStatePredicate stData
+                let stN = L.identString $ stName stData
+                wasSt <- liftM fromString . newVar $ "wasState" ++ stN -- true if st was active in last cycle
                 let entryCond = mkEntryCond st wasSt strongPred
-                    inStFlow = L.Flow [L.InstantExpr inSt $ L.constAtExpr $ L.boolConst True] []
-                    wasStEq = L.StateTransition wasSt $ L.mkAtomVar inSt
+                    wasStEq = L.StateTransition wasSt inStPred
                     trEq = stTrEquation stData
-                    trEq' = trEq { trEqRhs = (trEqRhs trEq) `mappend` inStFlow
-                                 , trEqLocalVars = trEqLocalVars trEq ++ [L.Variable inSt L.boolT]
-                                 , trEqStateVars = trEqStateVars trEq ++ [L.Variable wasSt L.boolT]
+                    trEq' = trEq { trEqStateVars = trEqStateVars trEq ++ [L.Variable wasSt L.boolT]
                                  , trEqInits = trEqInits trEq
                                                `mappend` Map.singleton wasSt (L.mkConst . L.boolConst $ stInitial stData)
                                  }
                     stData' = stData { stTrEquation = trEq' }
-                return (entryCond, stData', [wasStEq],
-                        Map.singleton inSt (L.constAtExpr $ L.boolConst False))
+                return (entryCond, stData', [wasStEq], predDefault)
+
+    -- Creates a predicate which is true if the given state is currently active.
+    -- Also creates the corresponding flow in the state and automaton.
+    mkStatePredicate :: MonadVarGen m => LocationData -> m (L.Expr, LocationData, Map L.SimpIdent L.Expr)
+    mkStatePredicate stData@LocationData{ .. } =
+      do let stN = L.identString $ stName
+         inSt <- liftM fromString . newVar $ "inState" ++ stN
+         let inStFlow = L.Flow [L.InstantExpr inSt $ L.constAtExpr $ L.boolConst True] []
+             trEq' = stTrEquation { trEqRhs = (trEqRhs stTrEquation) `mappend` inStFlow
+                                  , trEqLocalVars = trEqLocalVars stTrEquation ++ [L.Variable inSt L.boolT]
+                                  }
+             stPred = L.mkAtomVar inSt
+             stData' = stData { stTrEquation = trEq' }
+         return (stPred, stData', Map.singleton inSt (L.constAtExpr $ L.boolConst False))
 
     -- Creates a condition which is true if a state has not been
     -- entered this cycle through a strong transition.
