@@ -5,6 +5,7 @@ module Main (main) where
 import qualified Data.ByteString.Lazy.Char8 as BL
 
 import Text.PrettyPrint (render)
+import Data.List.Split (splitOn)
 
 import System.IO (stdin)
 import System.Environment (getArgs)
@@ -18,6 +19,7 @@ import Control.Monad.Error (ErrorT(..))
 
 import Lang.LAMA.Parse
 import Lang.LAMA.Identifier
+import Lang.LAMA.Typing.TypedStructure (Program)
 
 import Transform
 import Model
@@ -31,8 +33,11 @@ data Options = Options
   { optInput :: FilePath
   , optStrategy :: Strategy
   , optSMTOpts :: [SMTOption]
+  , optScenarioFile :: Maybe FilePath
+  , optTopNodePath :: [String]
   , optDebug :: Bool
   , optDumpLama :: Bool
+  , optDumpModel :: Bool
   , optShowHelp :: Bool
   }
 
@@ -41,15 +46,22 @@ defaultOptions = Options
   { optInput              = "-"
   , optStrategy           = defaultStrategy
   , optSMTOpts            = [ProduceModels True]
+  , optScenarioFile       = Nothing
+  , optTopNodePath        = []
   , optDebug              = False
   , optDumpLama           = False
+  , optDumpModel          = False
   , optShowHelp           = False
   }
 
 resolveDebug :: Maybe String -> Options -> Options
 resolveDebug Nothing opts = opts {optDebug = True}
 resolveDebug (Just "dump-lama") opts = opts {optDumpLama = True}
+resolveDebug (Just "dump-model") opts = opts {optDumpModel = True}
 resolveDebug _ opts = opts
+
+parseNodeName :: String -> [String]
+parseNodeName = splitOn "::"
 
 options :: [OptDescr (Options -> Options)]
 options =
@@ -62,9 +74,15 @@ options =
     , Option ['o'] ["option"]
       (ReqArg (\o opts -> opts {optStrategy = readOptions' o $ optStrategy opts}) "OPTION")
       ("Pass options to the requested strategy (one per -o).")
+    , Option [] ["scenario"]
+      (ReqArg (\f opts -> opts {optScenarioFile = Just f}) "FILE")
+      ("File where to put the error Scade trace.")
+    , Option [] ["node-name"]
+      (ReqArg (\n opts -> opts {optTopNodePath = parseNodeName n}) "SCADE NODE")
+      ("Qualified name of Scade node for which the trace should be generated.")
     , Option ['d'] ["debug"]
       (OptArg resolveDebug "WHAT")
-      "Debug something; for more specific debugging use one of: [dump-lama]"
+      "Debug something; for more specific debugging use one of: [dump-lama,dump-model]"
     , Option ['h'] ["help"]
       (NoArg  (\opts -> opts {optShowHelp = True}))
       "Show this help"
@@ -108,7 +126,7 @@ run opts@Options {optStrategy = strat} file inp = do
     . runCheck opts
     $ (liftSMT . mapM_ setOption $ optSMTOpts opts) >>
     lamaSMT p >>= (uncurry $ checkWithModel strat)
-  liftIO $ checkModel model
+  liftIO $ checkModel opts p model
 
 checkErrors :: Either Error a -> MaybeT IO a
 checkErrors r = case r of
@@ -136,6 +154,11 @@ runCheck opts = chooseSolver (optDebug opts) . checkError
       then withSMTSolver "tee debug.txt | z3 -smt2 -in -m"
       else withZ3
 
-checkModel :: Ident i => Maybe (Model i) -> IO ()
-checkModel Nothing = putStrLn "42"
-checkModel (Just m) = putStrLn . render $ prettyModel m
+checkModel :: Ident i => Options -> Program i -> Maybe (Model i) -> IO ()
+checkModel _ _ Nothing = putStrLn "42"
+checkModel opts prog (Just m) =
+  do putStrLn ":-("
+     when (optDumpModel opts) (putStrLn . render $ prettyModel m)
+     case optScenarioFile opts of
+       Nothing -> return ()
+       Just f -> writeFile f $ render $ scadeScenario prog (optTopNodePath opts) m
