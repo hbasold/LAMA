@@ -463,7 +463,7 @@ rewriteWeak = (uncurry $ foldlM go)
       do c <- liftM fromString $ newVar "cond"
          let cond = L.StateTransition c $ L.mkExpr2 L.And (edgeCondition eData) activateWeak
          return ((eData { edgeCondition = L.mkAtomVar c }, to),
-                 cond, L.Variable c L.boolT, Map.singleton c (L.mkConst $ L.boolConst True))
+                 cond, L.Variable c L.boolT, Map.singleton c (L.mkConst $ L.boolConst False))
 
 -- | Builds a transitive transition
 -- if there is a strong transition going out of the state into
