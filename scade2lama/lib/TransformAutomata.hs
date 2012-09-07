@@ -411,18 +411,18 @@ rewriteWeak = (uncurry $ foldlM go)
     createWeakActivation st stData strongPred =
       case strongPred of
         [] -> return (L.constAtExpr $ L.boolConst True, stData, [], Map.empty)
-        _ -> do (inStPred, stData', predDefault) <- mkStatePredicate stData
-                let stN = L.identString $ stName stData
+        _ -> do (inStPred, stData1, predDefault) <- mkStatePredicate stData
+                let stN = L.identString $ stName stData1
                 wasSt <- liftM fromString . newVar $ "wasState" ++ stN -- true if st was active in last cycle
                 let entryCond = mkEntryCond st wasSt strongPred
                     wasStEq = L.StateTransition wasSt inStPred
-                    trEq = stTrEquation stData
+                    trEq = stTrEquation stData1
                     trEq' = trEq { trEqStateVars = trEqStateVars trEq ++ [L.Variable wasSt L.boolT]
                                  , trEqInits = trEqInits trEq
-                                               `mappend` Map.singleton wasSt (L.mkConst . L.boolConst $ stInitial stData)
+                                               `mappend` Map.singleton wasSt (L.mkConst . L.boolConst $ stInitial stData1)
                                  }
-                    stData' = stData { stTrEquation = trEq' }
-                return (entryCond, stData', [wasStEq], predDefault)
+                    stData2 = stData1 { stTrEquation = trEq' }
+                return (entryCond, stData2, [wasStEq], predDefault)
 
     -- Creates a predicate which is true if the given state is currently active.
     -- Also creates the corresponding flow in the state and automaton.
