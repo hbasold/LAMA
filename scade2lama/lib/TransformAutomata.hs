@@ -100,9 +100,7 @@ extractLocation (n, S.State{..}) =
                 flow),
              (defaultFlow, surroundingFlow))
 
--- | Extracts the edges from a given set of Scade states. This may result in
--- an additional data flow to be placed outside of the automaton which
--- calculates the conditions for weak transitions.
+-- | Extracts the edges from a given set of Scade states.
 extractEdges :: Map L.LocationId Node -> [S.State] -> TransM [TrEdge]
 extractEdges stateNodeMap sts =
   do strong <- extractEdges' stateNodeMap S.stateUnless Strong sts
