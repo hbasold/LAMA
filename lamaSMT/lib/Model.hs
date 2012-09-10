@@ -103,7 +103,7 @@ scadeScenario p varPath m =
       inputTraces = Map.toList $ (modelVars m) `Map.intersection` progInputs
       path = case varPath of
         [] -> mempty
-        _ -> (vcat $ punctuate (text "/") $ map text varPath) <> text ("/")
+        _ -> (hcat $ punctuate (text "::") $ map text varPath) <> text ("/")
   in scenario inputTraces path 0
   where
     scenario [] _ _ = mempty
