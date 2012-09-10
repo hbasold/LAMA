@@ -2,6 +2,8 @@ module Options where
 
 import Data.Set as Set
 
+import Lang.LAMA.Structure.SimpIdentUntyped (Expr)
+
 data InlineScope =
   InlineStateScope
   deriving (Eq, Ord, Show)
@@ -31,6 +33,7 @@ data Options = Options
   { optInput :: FilePath
   , optOutput :: FilePath
   , optTopNode :: String
+  , optInvariant :: Maybe Expr
   , optClockAsAutomaton :: Bool
   , optInline :: InlineOptions
   , optDebug :: Bool
@@ -45,6 +48,7 @@ defaultOptions = Options
   { optInput              = "-"
   , optOutput             = "-"
   , optTopNode            = ""
+  , optInvariant          = Nothing
   , optClockAsAutomaton   = True
   , optInline             = defaultInlineOptions
   , optDebug              = False

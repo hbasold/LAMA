@@ -1,5 +1,6 @@
 module Main (main) where
 
+import qualified Data.ByteString.Lazy.Char8 as BS
 import qualified Data.Set as Set
 import Data.List.Split (splitOn)
 import Data.Foldable (foldlM)
@@ -33,7 +34,13 @@ import qualified UnrollTemporal as Unroll
 import qualified UnrollFby as Fby
 import ExtractPackages
 import TransformPackage
+
 import Lang.LAMA.Pretty
+import Lang.LAMA.Parse (parseLAMAExpr)
+import Lang.LAMA.Structure (mapIdentExpr)
+import Lang.LAMA.Identifier (dropPos)
+import qualified Lang.LAMA.Structure.SimpIdentUntyped as L
+import Lang.LAMA.UnTypedStructure ()
 
 resolveDebug :: Maybe String -> Options -> Options
 resolveDebug Nothing opts = opts {optDebug = True}
@@ -58,6 +65,11 @@ resolveInline (Just extra) = resolve' extra
     assignValue _ [n] = throwError $ "Unknown inlining option: " ++ n
     assignValue _ o = throwError $ "Invalid inlining option: " ++ show o
 
+parseInvariant :: String -> Either String L.Expr
+parseInvariant s = case parseLAMAExpr $ BS.pack s of
+  Left err -> throwError $ show err
+  Right e -> return $ mapIdentExpr dropPos e
+
 options :: [OptDescr (Options -> Either String Options)]
 options =
   [ Option ['i']     []
@@ -65,6 +77,9 @@ options =
       "input FILE or stdin"
     , Option ['f'] ["file"] (ReqArg (\f opts -> return $ opts {optOutput = f}) "FILE")
       "output FILE or stdout"
+    , Option [] ["invariant"]
+      (ReqArg (\i opts -> parseInvariant i >>= \e -> return $ opts { optInvariant = Just e }) "EXPRESSION")
+      "Invariant to be put into generated LAMA program"
     , Option [] ["inline"] (OptArg (\o -> resolveInline o . activateInlining) "OPTIONS")
       ("Activates inlining with optional extra options (comma separated). " ++
        "Those can be: depth=<int>, state-scope.")
@@ -120,7 +135,8 @@ run opts f inp = (flip evalVarGenT 50) $ do
   liftIO $ when (optDumpRewrite opts) (putStrLn $ render $ prettyPackage ps')
   l <- checkErr "Tranform error:" =<< (runInVarGenT $ transformPackage (optTopNode opts) ps')
   liftIO $ when (optDumpLama opts) (putStrLn $ show l)
-  return $ prettyLama l
+  let l' = putInvariant (optInvariant opts) l
+  return $ prettyLama l'
 
 checkScadeError :: [Declaration] -> MaybeT IO [Declaration]
 checkScadeError = return
@@ -141,3 +157,7 @@ rewrite = -- Temporal.rewrite
 
 rewrite2 :: Package -> ErrorT String VarGen Package
 rewrite2 = OpApp.rewrite
+
+putInvariant :: Maybe L.Expr -> L.Program -> L.Program
+putInvariant Nothing = id
+putInvariant (Just e) = \p -> p { L.progInvariant = e }
