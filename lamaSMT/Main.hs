@@ -6,6 +6,7 @@ import qualified Data.ByteString.Lazy.Char8 as BL
 
 import Text.PrettyPrint (render)
 import Data.List.Split (splitOn)
+import Data.List (intercalate)
 
 import System.IO (stdin)
 import System.Environment (getArgs)
@@ -27,7 +28,10 @@ import Strategy
 import Strategies.Factory
 
 import Language.SMTLib2 (SMT, MonadSMT(..), SMTOption(..), setOption, withSMTSolver)
-import Language.SMTLib2.Solver
+
+
+z3Base :: String
+z3Base = "z3 -smt2 -in -m"
 
 data Options = Options
   { optInput :: FilePath
@@ -35,6 +39,8 @@ data Options = Options
   , optSMTOpts :: [SMTOption]
   , optScenarioFile :: Maybe FilePath
   , optTopNodePath :: [String]
+  , optSolver :: String -- ^ base command to run solver
+  , optSolverOptions :: [String]
   , optDebug :: Bool
   , optDumpLama :: Bool
   , optDumpModel :: Bool
@@ -48,6 +54,8 @@ defaultOptions = Options
   , optSMTOpts            = [ProduceModels True]
   , optScenarioFile       = Nothing
   , optTopNodePath        = []
+  , optSolver             = z3Base
+  , optSolverOptions      = []
   , optDebug              = False
   , optDumpLama           = False
   , optDumpModel          = False
@@ -80,6 +88,9 @@ options =
     , Option [] ["node-name"]
       (ReqArg (\n opts -> opts {optTopNodePath = parseNodeName n}) "SCADE NODE")
       ("Qualified name of Scade node for which the trace should be generated.")
+    , Option [] ["solver-opts"]
+      (ReqArg (\o opts -> opts {optSolverOptions = optSolverOptions opts ++ [o]}) "OPTION")
+      ("Additional option to pass to used SMT solver.")
     , Option ['d'] ["debug"]
       (OptArg resolveDebug "WHAT")
       "Debug something; for more specific debugging use one of: [dump-lama,dump-model]"
@@ -139,7 +150,7 @@ printAndFail :: MonadIO m => String -> MaybeT m a
 printAndFail e = liftIO (putStrLn e) >> mzero
 
 runCheck :: Options -> SMTErr a -> IO a
-runCheck opts = chooseSolver (optDebug opts) . checkError
+runCheck progOpts = chooseSolver progOpts . checkError
   where
     checkError :: SMTErr a -> SMT a
     checkError m =
@@ -149,10 +160,11 @@ runCheck opts = chooseSolver (optDebug opts) . checkError
               Left err -> liftIO $ fail err
               Right x -> return x
 
-    chooseSolver hasDebug =
-      if hasDebug
-      then withSMTSolver "tee debug.txt | z3 -smt2 -in -m"
-      else withZ3
+    chooseSolver opts =
+      let solverBase = optSolver opts ++ " " ++ (intercalate " " $ optSolverOptions opts)
+          solverCmd = (if optDebug opts then "tee debug.txt | " else "")
+                      ++ solverBase
+      in withSMTSolver solverCmd
 
 checkModel :: Ident i => Options -> Program i -> Maybe (Model i) -> IO ()
 checkModel _ _ Nothing = putStrLn "42"
