@@ -1,3 +1,6 @@
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-| Structure of LAMA programs -}
 module Lang.LAMA.Structure (
@@ -17,7 +20,10 @@ module Lang.LAMA.Structure (
   -- * Expressions
   -- $generalised-types-doc
   GProd(..), GPatternHead(..), GPattern(..),
-  GAtom(..), GExpr(..), GConstExpr(..), BinOp(..)
+  GAtom(..), GExpr(..), GConstExpr(..), BinOp(..),
+  -- * Viewing and mapping
+  ViewExpr(..), PackedExpr(..), ViewConst(..), PackedConst(..),
+  mapIdentExpr
 ) where
 
 import Prelude.Extras
@@ -244,3 +250,55 @@ instance (Ident i, Show const, Show atom) => Show1 (GExpr i const atom) where
 instance Monoid (GFlow i expr) where
   mempty = Flow [] []
   mappend (Flow d1 s1) (Flow d2 s2) = Flow (d1 ++ d2) (s1 ++ s2)
+
+class Ident i => ViewExpr i e const atom | e -> i, e -> const, e -> atom where
+  viewExpr :: e -> GExpr i const atom e
+
+class Ident i => PackedExpr i e const atom | e -> i, e -> const, e -> atom where
+  packExpr :: GExpr i const atom e -> e
+
+class ViewConst c where
+  viewConst :: c -> GConst c
+
+class PackedConst c where
+  packConst :: GConst c -> c
+
+
+mapIdentExpr :: (Ident i1, Ident i2,
+                 ViewExpr i1 e1 c1 a1, ViewExpr i2 e2 c2 a2,
+                 PackedExpr i1 e1 c1 a1, PackedExpr i2 e2 c2 a2,
+                 ViewConst c1, ViewConst c2, PackedConst c1, PackedConst c2)
+                => (i1 -> i2) -> (e1 -> e2)
+mapIdentExpr f = \expr -> case expr of
+  (viewExpr -> AtExpr (AtomConst c)) -> packExpr $ AtExpr (AtomConst $ mapIdentConst f c)
+  (viewExpr -> AtExpr (AtomVar x)) -> packExpr $ AtExpr (AtomVar $ f x)
+  (viewExpr -> AtExpr (AtomEnum x)) -> packExpr $ AtExpr (AtomEnum . EnumCons . f $ runEnumCons x)
+  (viewExpr -> LogNot e) -> packExpr . LogNot $ mapIdentExpr f e
+  (viewExpr -> Expr2 op e1 e2) ->
+    packExpr $ Expr2 op (mapIdentExpr f e1) (mapIdentExpr f e2)
+  (viewExpr -> Ite c e1 e2) ->
+    packExpr $ Ite (mapIdentExpr f c) (mapIdentExpr f e1) (mapIdentExpr f e2)
+  (viewExpr -> ProdCons (Prod es)) ->
+    packExpr . ProdCons . Prod $ fmap (mapIdentExpr f) es
+  (viewExpr -> Project x n) -> packExpr $ Project (f x) n
+  (viewExpr -> Match e pats) -> packExpr $ Match (mapIdentExpr f e) $ fmap (mapIdentPattern f) pats
+  _ -> undefined -- silence ghc
+
+mapIdentConst :: (ViewConst c1, ViewConst c2, PackedConst c1, PackedConst c2) =>
+                 (i1 -> i2) -> (c1 -> c2)
+mapIdentConst _ (viewConst -> BoolConst c) = packConst $ BoolConst c
+mapIdentConst _ (viewConst -> IntConst c) = packConst $ IntConst c
+mapIdentConst _ (viewConst -> RealConst c) = packConst $ RealConst c
+mapIdentConst _ (viewConst -> SIntConst n c) = packConst $ SIntConst n c
+mapIdentConst _ (viewConst -> UIntConst n c) = packConst $ UIntConst n c
+
+mapIdentPattern :: (Ident i1, Ident i2,
+                    ViewExpr i1 e1 c1 a1, ViewExpr i2 e2 c2 a2,
+                    PackedExpr i1 e1 c1 a1, PackedExpr i2 e2 c2 a2,
+                    ViewConst c1, ViewConst c2, PackedConst c1, PackedConst c2)
+                   => (i1 -> i2) -> (GPattern i1 e1 -> GPattern i2 e2)
+mapIdentPattern f (Pattern h e) = Pattern (mapIdentPatternHead f h) (mapIdentExpr f e)
+
+mapIdentPatternHead :: (Ident i1, Ident i2) => (i1 -> i2) -> (GPatternHead i1 -> GPatternHead i2)
+mapIdentPatternHead f (EnumPattern (EnumCons x)) = EnumPattern . EnumCons $ f x
+mapIdentPatternHead _ BottomPattern = BottomPattern

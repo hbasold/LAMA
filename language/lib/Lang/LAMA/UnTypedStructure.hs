@@ -1,3 +1,7 @@
+{-# OPTIONS -fno-warn-orphans #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-| Structure of LAMA programs without types -}
 module Lang.LAMA.UnTypedStructure (
   module Lang.LAMA.Structure,
@@ -30,6 +34,7 @@ module Lang.LAMA.UnTypedStructure (
 import Data.Natural
 import Lang.LAMA.Structure
 import Lang.LAMA.Fix
+import Lang.LAMA.Identifier
 
 -- | Constants
 type Constant = Fix GConst
@@ -86,3 +91,15 @@ mkProject x = Fix . Project x
 
 mkConst :: Constant -> ConstExpr i
 mkConst = Fix . Const
+
+instance Ident i => ViewExpr i (Expr i) Constant (Atom i) where
+  viewExpr = unfix
+
+instance Ident i => PackedExpr i (Expr i) Constant (Atom i) where
+  packExpr = Fix
+
+instance ViewConst Constant where
+  viewConst = unfix
+
+instance PackedConst Constant where
+  packConst = Fix
