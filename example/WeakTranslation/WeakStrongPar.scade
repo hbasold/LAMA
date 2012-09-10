@@ -57,3 +57,31 @@ let
         if c0 do restart State1;
   returns ..;
 tel
+
+/*
+state
+  c0_1 : bool;
+  c1_1 : bool;
+  state0_1 : bool;
+  state1_1 : bool;
+transition
+  c0_1' = c0;
+  c1_1' = c1;
+  state0_1' = state0_out;
+  state1_1' = state1_out;
+initial
+  c0_1 = false,
+  c1_1 = false,
+  state0_1 = true,  
+  state1_1 = false;
+
+invariant
+  (and (and (and (and -- (and
+    (=> (and (and state0_1 c0_1) (not c2)) state1_out) -- CondAssoc
+    (=> (and state1_1 (and (not c1_1) (not c2))) state1_out)) -- FF
+    (=> (and state1_1 (and (not c1_1) c2)) state2_out)) -- FT
+    (=> (and state1_1 (and c1_1 (not c2))) (or state3_out state4_out))) -- TF
+    -- (=> (and state1_1 (and c1_1 c2)) (or state3_out state4_out))) -- TT -> holds if the transitions from state2 are exchanged
+    (=> (and state1_1 (and c3 (and c1_1 (not c2)))) state4_out)) -- Transitive
+  ;
+*/
