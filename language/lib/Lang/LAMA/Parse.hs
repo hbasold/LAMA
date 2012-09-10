@@ -1,4 +1,4 @@
-module Lang.LAMA.Parse (Error(..), parseLAMA, parseLAMAConstExpr) where
+module Lang.LAMA.Parse (Error(..), parseLAMA, parseLAMAExpr, parseLAMAConstExpr) where
 
 import qualified Data.ByteString.Lazy.Char8 as BS
 
@@ -9,6 +9,7 @@ import Lang.LAMA.Parser.ErrM
 
 import Lang.LAMA.Transform
 import Lang.LAMA.Structure.PosIdentTyped
+import qualified Lang.LAMA.Structure.PosIdentUntyped as UT
 import Lang.LAMA.Typing.TypeCheck
 
 lexer :: BS.ByteString -> [Lex.Token]
@@ -39,3 +40,12 @@ parseLAMAConstExpr inp =
         Right concTree -> case typecheckConstExpr concTree of
           Left s -> Left $ TypeError s
           Right typedTree -> Right typedTree
+
+parseLAMAExpr :: BS.ByteString -> Either Error UT.Expr
+parseLAMAExpr inp =
+  let ts = lexer inp
+  in case Par.pExpr ts of
+    Bad s   -> Left $ ParseError s
+    Ok tree -> case trExpr tree of
+        Left s -> Left $ StaticError s
+        Right e -> Right e

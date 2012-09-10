@@ -5,7 +5,7 @@ comment "--" ;
 -- TODO: remove constants and require enums to be written as (enum x).
 -- This makes all environments superfluous.
 
-entrypoints Program, ConstExpr ;
+entrypoints Program, Expr, ConstExpr ;
 
 Program. Program  ::= TypeDefs ConstantDefs
                       Inputs Declarations Flow Initial

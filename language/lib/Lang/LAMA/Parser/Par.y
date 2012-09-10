@@ -9,6 +9,7 @@ import qualified Data.ByteString.Lazy.Char8 as BS
 }
 
 %name pProgram Program
+%name pExpr Expr
 %name pConstExpr ConstExpr
 
 -- no lexer declaration

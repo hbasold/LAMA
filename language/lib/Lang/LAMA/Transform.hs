@@ -1,7 +1,7 @@
 {- Translate generated data structures to internal structures
   while checking for undefined automaton locations and
   constant expressions. -}
-module Lang.LAMA.Transform (absToConc, trConstExpr) where
+module Lang.LAMA.Transform (absToConc, trExpr, trConstExpr) where
 
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -51,6 +51,9 @@ mkEnumSet = foldl getEnumCons Set.empty
 
 absToConc :: Abs.Program -> Either String Program
 absToConc p = runReader (runErrorT $ transProgram p) emptyEnv
+
+trExpr :: Abs.Expr -> Either String Expr
+trExpr e = runReader (runErrorT $ transExpr e) emptyEnv
 
 trConstExpr :: Abs.ConstExpr -> Either String ConstExpr
 trConstExpr e = runReader (runErrorT $ transConstExpr e) emptyEnv
@@ -440,4 +443,3 @@ transBinOp = return . transBinOp'
       Abs.RealDiv  -> RealDiv
       Abs.IntDiv  -> IntDiv
       Abs.Mod  -> Mod
-
