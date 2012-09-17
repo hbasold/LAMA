@@ -12,8 +12,10 @@ else
 fi
 strategy="-s $3 -o depth=$d -o progress"
 
+timefmt="%U user\n%S system\n%E elapsed\n%P CPU\n%Xkb text + %Dkb data -> %Kkb total + %Mkb max\n%I inputs + %O outputs\n%F major + %R minor pagefaults\n%W swaps"
+
 echo "Running $base"
 
 mkdir -p "$workdir"
 
-time ../lamaSMT/dist/build/lamasmt/lamasmt -i $1 $strategy --scenario="$workdir/$name.sss" --node-name=$2 --enum-impl=bits
+TIME="$timefmt" /usr/bin/time ../lamaSMT/dist/build/lamasmt/lamasmt -i $1 $strategy --scenario="$workdir/$name.sss" --node-name=$2 --enum-impl=bits
