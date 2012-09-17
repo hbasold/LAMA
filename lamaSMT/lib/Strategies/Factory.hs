@@ -5,6 +5,7 @@ import Text.PrettyPrint
 
 import Strategy
 import Strategies.BMC
+import Strategies.KInduction
 
 defaultStrategy :: Strategy
 defaultStrategy = Strategy (defaultStrategyOpts :: BMC)
@@ -26,11 +27,22 @@ getStrategyHelp lineLength = renderStyle (style { lineLength }) $
                 text "should stop if no error is found.",
                 text "If \"inf\"(inite) is given,",
                 text "it only halts in case of an error."]),
-         (text "progress", text "Display progress while checking.")])]
+         (text "progress", text "Display progress while checking.")])
+      , ("kinduct",
+        [(text "depth=DEPTH (natural number or \"inf\")",
+          fsep [text "Depth where the checking process",
+                text "should stop if no error is found",
+                text "or the property cannot be proven",
+                text "If \"inf\"(inite) is given,",
+                text "it only halts in case of an error."]),
+         (text "progress", text "Display progress while checking.")])
+      ]
+
 
     stratHelp (s, opts) =
       text s $+$ nest 2 (vcat $ map (\(o,descr) -> fsep [text "*" <+> o, nest 2 $ text "—" <+> descr]) opts)
 
 getStrategy :: String -> Strategy
 getStrategy "bmc" = Strategy (defaultStrategyOpts :: BMC)
+getStrategy "kinduct" = Strategy (defaultStrategyOpts :: KInduct)
 getStrategy _ = error "Unknown strategy"

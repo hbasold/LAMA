@@ -1,5 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
-module Strategies.BMC where
+module Strategies.BMC (BMC, assumeTrace, checkInvariant, bmcStep, assertPrecond) where
 
 import Data.Natural
 import NatInstance
@@ -8,7 +8,7 @@ import qualified Data.Map as Map
 import Data.Map (Map)
 
 import Control.Monad.IO.Class
-import Control.Monad (when)
+import Control.Monad (when, liftM)
 
 import Language.SMTLib2
 
@@ -37,33 +37,48 @@ instance StrategyClass BMC where
     in do baseDef <- liftSMT . defConst $ constant base
           check' s getModel defs (Map.singleton base baseDef) base baseDef
 
+assumeTrace :: MonadSMT m => ProgDefs -> StreamPos -> m ()
+assumeTrace defs iDef =
+  assertDefs iDef (flowDef defs) >>
+  assertPrecond iDef (precondition defs)
+
+bmcStep :: MonadSMT m
+             => (Map Natural StreamPos -> SMT (Model i))
+             -> ProgDefs -> Map Natural StreamPos -> StreamPos -> m (Maybe (Model i))
+bmcStep getModel defs pastIndices iDef =
+  do assumeTrace defs iDef
+     let invs = invariantDef defs
+     liftSMT . stack
+       $ checkInvariant iDef invs >>=
+       checkGetModel getModel pastIndices
+
 check' :: BMC -> (Map Natural StreamPos -> SMT (Model i))
           -> ProgDefs -> Map Natural StreamPos -> Natural -> StreamPos -> SMTErr (Maybe (Model i))
 check' s getModel defs pastIndices i iDef =
   do liftIO $ when (bmcPrintProgress s) (putStrLn $ "Depth " ++ show i)
-     liftSMT $ assertDefs iDef (flowDef defs)
-     liftSMT $ assertPrecond iDef (precondition defs)
-     let invs = invariantDef defs
-     r <- liftSMT . stack $ (checkGetModel getModel pastIndices =<< checkInvariant iDef invs)
+     r <- bmcStep getModel defs pastIndices iDef
      case r of
        Nothing -> next (check' s getModel defs) s pastIndices i iDef
        Just m -> return $ Just m
 
-assertDefs :: SMTExpr Natural -> [Definition] -> SMT ()
+assertDefs :: MonadSMT m => SMTExpr Natural -> [Definition] -> m ()
 assertDefs i = mapM_ (assertDef i)
 
-assertDef :: SMTExpr Natural -> Definition -> SMT ()
+assertDef :: MonadSMT m => SMTExpr Natural -> Definition -> m ()
 assertDef = assertDefinition id
 
-assertPrecond :: SMTExpr Natural -> Definition -> SMT ()
+assertPrecond :: MonadSMT m => SMTExpr Natural -> Definition -> m ()
 assertPrecond = assertDefinition id
 
-checkInvariant :: SMTExpr Natural -> Definition -> SMT Bool
-checkInvariant i p = assertDefinition not' i p >> checkSat
+-- | Returns true, if the invariant holds
+checkInvariant :: MonadSMT m => SMTExpr Natural -> Definition -> m Bool
+checkInvariant i p = liftSMT $ assertDefinition not' i p >> liftM not checkSat
 
-checkGetModel :: (Map Natural StreamPos -> SMT (Model i)) -> Map Natural StreamPos -> Bool -> SMT (Maybe (Model i))
-checkGetModel getModel indices r =
-  if r then fmap Just $ getModel indices else return Nothing
+checkGetModel :: MonadSMT m
+                 => (Map Natural StreamPos -> SMT (Model i)) -> Map Natural StreamPos
+                 -> Bool -> m (Maybe (Model i))
+checkGetModel getModel indices r = liftSMT $
+  if r then return Nothing else fmap Just $ getModel indices
 
 next :: (Map Natural StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (Model i)))
         -> BMC -> Map Natural StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (Model i))

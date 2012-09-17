@@ -16,8 +16,8 @@ ensureDefinition (BoolStream s) = SingleDef s
 ensureDefinition (ProdStream ps) = ProdDef $ fmap ensureDefinition ps
 ensureDefinition s = error $ "ensureDefinition: not a boolean stream: " ++ show s
 
-assertDefinition :: (SMTExpr Bool -> SMTExpr Bool) -> StreamPos -> Definition -> SMT ()
-assertDefinition f i (SingleDef s) = assert (f $ s `app` i)
+assertDefinition :: MonadSMT m => (SMTExpr Bool -> SMTExpr Bool) -> StreamPos -> Definition -> m ()
+assertDefinition f i (SingleDef s) = liftSMT $ assert (f $ s `app` i)
 assertDefinition f i (ProdDef ps) = mapM_ (assertDefinition f i) $ Arr.elems ps
 
 data ProgDefs = ProgDefs
