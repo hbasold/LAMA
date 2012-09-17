@@ -19,6 +19,7 @@ import Control.Monad.Trans.Maybe
 import Control.Monad (when, MonadPlus(..))
 import Control.Monad.IO.Class
 import Control.Monad.Error (ErrorT(..))
+import Control.Monad.Trans.Class
 
 import Lang.LAMA.Parse
 import Lang.LAMA.Identifier
@@ -157,7 +158,7 @@ run :: Options -> FilePath -> BL.ByteString -> MaybeT IO ()
 run opts@Options{..} file inp = do
   p <- checkErrors $ parseLAMA inp
   liftIO $ when optDumpLama (print p)
-  model <- liftIO $ runCheck opts
+  model <- runCheck opts
     ( (liftSMT $ mapM_ setOption optSMTOpts) >>
       lamaSMT optNatImpl optEnumImpl p >>=
       (uncurry $ checkWithModel optNatImpl optStrategy) )
@@ -173,22 +174,23 @@ checkErrors r = case r of
 printAndFail :: MonadIO m => String -> MaybeT m a
 printAndFail e = liftIO (putStrLn e) >> mzero
 
-runCheck :: Options -> SMTErr a -> IO a
+runCheck :: Options -> SMTErr a -> MaybeT IO a
 runCheck progOpts = chooseSolver progOpts . checkError
   where
-    checkError :: SMTErr a -> SMT a
+    checkError :: SMTErr a -> MaybeT SMT a
     checkError m =
       let smt = runErrorT m
-      in do r <- smt
+      in do r <- lift smt
             case r of
-              Left err -> liftIO $ fail err
+              Left err -> printAndFail err
               Right x -> return x
 
+    chooseSolver :: Options -> MaybeT SMT a -> MaybeT IO a
     chooseSolver opts =
       let solverBase = optSolver opts ++ " " ++ (intercalate " " $ optSolverOptions opts)
           solverCmd = (if optDebug opts then "tee debug.txt | " else "")
                       ++ solverBase
-      in withSMTSolver solverCmd
+      in mapMaybeT $ withSMTSolver solverCmd
 
 checkModel :: Ident i => Options -> Program i -> Maybe (Natural, Model i) -> IO ()
 checkModel _ _ Nothing = putStrLn "42"
