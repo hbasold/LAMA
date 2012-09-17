@@ -22,10 +22,13 @@ data Strategy = forall s. StrategyClass s => Strategy s
 class StrategyClass s where
   defaultStrategyOpts :: s
   readOption :: String -> s -> s
-  check :: s -> (Map Natural StreamPos -> SMT (Model i)) -> ProgDefs -> SMTErr (Maybe (Model i))
+  check :: SMTAnnotation Natural
+           -> s
+           -> (Map Natural StreamPos -> SMT (Model i))
+           -> ProgDefs -> SMTErr (Maybe (Natural, Model i))
 
-checkWithModel :: Strategy -> ProgDefs -> VarEnv i -> SMTErr (Maybe (Model i))
-checkWithModel (Strategy s) d env = check s (getModel env) d
+checkWithModel :: SMTAnnotation Natural -> Strategy -> ProgDefs -> VarEnv i -> SMTErr (Maybe (Natural, Model i))
+checkWithModel natAnn (Strategy s) d env = check natAnn s (getModel env) d
 
 readOptions' :: String -> Strategy -> Strategy
 readOptions' o (Strategy s) = Strategy $ readOption o s

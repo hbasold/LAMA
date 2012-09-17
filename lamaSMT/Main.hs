@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
 module Main (main) where
@@ -7,6 +8,7 @@ import qualified Data.ByteString.Lazy.Char8 as BL
 import Text.PrettyPrint (render)
 import Data.List.Split (splitOn)
 import Data.List (intercalate)
+import Data.Natural
 
 import System.IO (stdin)
 import System.Environment (getArgs)
@@ -22,6 +24,8 @@ import Lang.LAMA.Parse
 import Lang.LAMA.Identifier
 import Lang.LAMA.Typing.TypedStructure (Program)
 
+import SMTEnum
+import NatInstance
 import Transform
 import Model
 import Strategy
@@ -41,6 +45,8 @@ data Options = Options
   , optTopNodePath :: [String]
   , optSolver :: String -- ^ base command to run solver
   , optSolverOptions :: [String]
+  , optNatImpl :: NatImplementation
+  , optEnumImpl :: EnumImplementation
   , optDebug :: Bool
   , optDumpLama :: Bool
   , optDumpModel :: Bool
@@ -56,6 +62,8 @@ defaultOptions = Options
   , optTopNodePath        = []
   , optSolver             = z3Base
   , optSolverOptions      = []
+  , optNatImpl            = NatType
+  , optEnumImpl           = EnumImplType
   , optDebug              = False
   , optDumpLama           = False
   , optDumpModel          = False
@@ -70,6 +78,16 @@ resolveDebug _ opts = opts
 
 parseNodeName :: String -> [String]
 parseNodeName = splitOn "::"
+
+parseNatImpl :: String -> NatImplementation
+parseNatImpl "type" = NatType
+parseNatImpl "int" = NatInt
+parseNatImpl i = error $ "Invalid natural implementation: " ++ i
+
+parseEnumImpl :: String -> EnumImplementation
+parseEnumImpl "type" = EnumImplType
+parseEnumImpl "bits" = EnumImplBit
+parseEnumImpl i = error $ "Invalid enum implementation: " ++ i
 
 options :: [OptDescr (Options -> Options)]
 options =
@@ -91,6 +109,12 @@ options =
     , Option [] ["solver-opts"]
       (ReqArg (\o opts -> opts {optSolverOptions = optSolverOptions opts ++ [o]}) "OPTION")
       ("Additional option to pass to used SMT solver.")
+    , Option [] ["nat-impl"]
+      (ReqArg (\i opts -> opts {optNatImpl = parseNatImpl i}) "IMPL")
+      ("Implementation to use for natural numbers. Can be one of {type, int}.")
+    , Option [] ["enum-impl"]
+      (ReqArg (\i opts -> opts {optEnumImpl = parseEnumImpl i}) "IMPL")
+      ("Implementation to use for enumerations. Can be one of {type, bits}.")
     , Option ['d'] ["debug"]
       (OptArg resolveDebug "WHAT")
       "Debug something; for more specific debugging use one of: [dump-lama,dump-model]"
@@ -130,13 +154,13 @@ runFile :: Options -> FilePath -> IO (Maybe ())
 runFile opts f = BL.readFile f >>= runMaybeT . run opts f
 
 run :: Options -> FilePath -> BL.ByteString -> MaybeT IO ()
-run opts@Options {optStrategy = strat} file inp = do
+run opts@Options{..} file inp = do
   p <- checkErrors $ parseLAMA inp
-  liftIO $ when (optDumpLama opts) (print p)
-  model <- liftIO
-    . runCheck opts
-    $ (liftSMT . mapM_ setOption $ optSMTOpts opts) >>
-    lamaSMT p >>= (uncurry $ checkWithModel strat)
+  liftIO $ when optDumpLama (print p)
+  model <- liftIO $ runCheck opts
+    ( (liftSMT $ mapM_ setOption optSMTOpts) >>
+      lamaSMT optNatImpl optEnumImpl p >>=
+      (uncurry $ checkWithModel optNatImpl optStrategy) )
   liftIO $ checkModel opts p model
 
 checkErrors :: Either Error a -> MaybeT IO a
@@ -166,11 +190,11 @@ runCheck progOpts = chooseSolver progOpts . checkError
                       ++ solverBase
       in withSMTSolver solverCmd
 
-checkModel :: Ident i => Options -> Program i -> Maybe (Model i) -> IO ()
+checkModel :: Ident i => Options -> Program i -> Maybe (Natural, Model i) -> IO ()
 checkModel _ _ Nothing = putStrLn "42"
-checkModel opts prog (Just m) =
+checkModel opts prog (Just (lastIndex, m)) =
   do putStrLn ":-("
      when (optDumpModel opts) (putStrLn . render $ prettyModel m)
      case optScenarioFile opts of
        Nothing -> return ()
-       Just f -> writeFile f $ render $ scadeScenario prog (optTopNodePath opts) m
+       Just f -> writeFile f $ render $ scadeScenario prog (optTopNodePath opts) lastIndex m

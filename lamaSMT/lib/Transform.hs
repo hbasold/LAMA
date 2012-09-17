@@ -59,9 +59,8 @@ getBottom (BoolStream _) = BoolExpr $ constant False
 getBottom (IntStream _) = IntExpr $ constant 0xdeadbeef
 getBottom (RealStream _) = RealExpr . constant $ fromInteger 0xdeadbeef
 getBottom (EnumStream s) =
-  let ann@(_, cons, _) = extractStreamAnn s
-      firstCons = head cons
-  in EnumExpr $ constantAnn (SMTEnum firstCons) ann
+  let ann = extractStreamAnn s
+  in EnumExpr $ constantAnn (enumBottom ann) ann
 getBottom (ProdStream strs) = ProdExpr $ fmap getBottom strs
 
 -- | Transforms a LAMA program into a set of formulas which is
@@ -71,8 +70,11 @@ getBottom (ProdStream strs) = ProdExpr $ fmap getBottom strs
 -- variables together with their defining stream. So if the defining
 -- function (see above) is called for a cycle the corresponding stream
 -- gets a value at that time (after getting the model).
-lamaSMT :: Ident i => Program i -> ErrorT String SMT (ProgDefs, VarEnv i)
-lamaSMT = fmap (second varEnv) . flip runStateT emptyEnv . declProgram
+lamaSMT :: Ident i => NatImplementation -> EnumImplementation -> Program i -> ErrorT String SMT (ProgDefs, VarEnv i)
+lamaSMT natImpl' enumImpl' =
+  fmap (second varEnv)
+  . flip runStateT (emptyEnv natImpl' enumImpl')
+  . declProgram
 
 -- | Declare the formulas which define a LAMA program.
 declProgram :: Ident i => Program i -> DeclM i ProgDefs
@@ -91,8 +93,7 @@ declProgram p =
 -- At the moment just Natural is defined.
 preamble :: DeclM i ()
 preamble =
-  liftSMT $
-  declareType (undefined :: Natural) unit
+  gets natImpl >>= liftSMT . declareType (undefined :: Natural)
 
 declareEnums :: Ident i => Map (TypeAlias i) (EnumDef i) -> DeclM i ()
 declareEnums es =
@@ -110,8 +111,8 @@ declareEnum :: Ident i => (TypeAlias i, EnumDef i) -> DeclM i (i, SMTAnnotation 
 declareEnum (t, EnumDef cs) =
   let t' = fromString $ identString t
       cs' = map (fromString . identString) cs
-      ann = mkSMTEnumAnn t' cs'
-  in liftSMT (declareType (undefined :: SMTEnum) ann) >> return (t, ann)
+  in do ann <- gets enumImpl >>= \impl -> return $ mkSMTEnumAnn impl t' cs'
+        liftSMT (declareType (undefined :: SMTEnum) ann) >> return (t, ann)
 
 declareDecls :: Ident i => Maybe (Stream Bool) -> Set i -> Declarations i -> DeclM i ([Definition], Map i (Node i))
 declareDecls activeCond excludeNodes d =
@@ -130,16 +131,18 @@ declareVarList :: Ident i => [Variable i] -> DeclM i [(i, TypedStream i)]
 declareVarList = mapM declareVar
 
 declareVar :: Ident i => Variable i -> DeclM i (i, TypedStream i)
-declareVar (Variable x t) = (x,) <$> typedVar t
+declareVar (Variable x t) =
+  do natAnn <- gets natImpl
+     (x,) <$> typedVar natAnn t
   where
-    typedVar :: Ident i => Type i -> DeclM i (TypedStream i)
-    typedVar (GroundType BoolT) = liftSMT $ fmap BoolStream fun
-    typedVar (GroundType IntT) = liftSMT $ fmap IntStream fun
-    typedVar (GroundType RealT) = liftSMT $ fmap RealStream fun
-    typedVar (GroundType _) = $notImplemented
-    typedVar (EnumType et) = lookupEnumAnn et >>= liftSMT . fmap EnumStream . funAnnRet
-    typedVar (ProdType ts) =
-      do vs <- mapM typedVar ts
+    typedVar :: Ident i => SMTAnnotation Natural -> Type i -> DeclM i (TypedStream i)
+    typedVar ann (GroundType BoolT) = liftSMT $ fmap BoolStream $ funAnn ann unit
+    typedVar ann (GroundType IntT) = liftSMT $ fmap IntStream $ funAnn ann unit
+    typedVar ann (GroundType RealT) = liftSMT $ fmap RealStream $ funAnn ann unit
+    typedVar ann (GroundType _) = $notImplemented
+    typedVar ann (EnumType et) = lookupEnumAnn et >>= liftSMT . fmap EnumStream . funAnn ann
+    typedVar ann (ProdType ts) =
+      do vs <- mapM (typedVar ann) ts
          return . ProdStream $ listArray (0, (length vs) - 1) vs
 
 -- | Declares a node and puts the interface variables into the environment.
@@ -218,7 +221,8 @@ trInstant inpActive (NodeUsage _ n es) =
 declareTransition :: Ident i => Maybe (Stream Bool) -> StateTransition i -> DeclM i Definition
 declareTransition activeCond (StateTransition x e) =
   lookupVar x >>= \xStream ->
-  declareConditionalAssign activeCond succ' (appStream xStream) xStream (runTransM $ trExpr e)
+  gets natImpl >>= \natAnn ->
+  declareConditionalAssign activeCond (succ' natAnn) (appStream xStream) xStream (runTransM $ trExpr e)
 
 -- | Creates a declaration for an assignment. Depending on the
 -- activation condition the given expression or a default expression
@@ -312,9 +316,10 @@ declareAutomaton activeCond localNodes (_, a) =
 -- state for the next cycle.
 mkStateVars :: Ident i => i -> DeclM i (Stream SMTEnum, Stream SMTEnum)
 mkStateVars stateEnum =
-  do ann <- lookupEnumAnn stateEnum
-     s <- liftSMT $ funAnnRet ann
-     s_1 <- liftSMT $ funAnnRet ann
+  do enumAnn <- lookupEnumAnn stateEnum
+     natAnn <- gets natImpl
+     s <- liftSMT $ funAnn natAnn enumAnn
+     s_1 <- liftSMT $ funAnn natAnn enumAnn
      return (s, s_1) 
 
 -- | Extracts the the expressions for each variable seperated into
@@ -370,7 +375,8 @@ declareLocations activeCond s defaultExprs locations =
     declareLocTransitions active (x, locs) =
       do res <- trLocTransition s locs
          xStream <- lookupVar x
-         def <- lift $ declareConditionalAssign active succ' (appStream xStream) xStream res
+         natAnn <- gets natImpl
+         def <- lift $ declareConditionalAssign active (succ' natAnn) (appStream xStream) xStream res
          return def
 
     getDefault defaults x locs =
@@ -436,8 +442,9 @@ mkLocationActivationCond :: Ident i => Maybe (Stream Bool) -> Stream SMTEnum
 mkLocationActivationCond activeCond s l =
   do lCons <- lookupLocName l
      lEnum <- lift $ trEnumConsAnn lCons <$> lookupEnumConsAnn lCons
+     natAnn <- gets natImpl
      let cond = \_env t -> BoolExpr $ (s `app` t) .==. lEnum
-     activeVar <- liftSMT fun
+     activeVar <- liftSMT $ funAnn natAnn unit
      def <- lift $ declareConditionalAssign activeCond id
             (const . BoolExpr $ constant False) (BoolStream activeVar) cond
      return (activeVar, def)
@@ -497,9 +504,10 @@ assertInits = mapM_ assertInit . Map.toList
 
 assertInit :: Ident i => (i, ConstExpr i) -> DeclM i ()
 assertInit (x, e) =
-  do x' <- lookupVar x
+  do natAnn <- gets natImpl
+     x' <- lookupVar x
      e' <- trConstExpr e
-     let def = liftRel (.==.) (x' `appStream` zero') e'
+     let def = liftRel (.==.) (x' `appStream` (zero' natAnn)) e'
      liftSMT $ liftAssert def
 
 -- | Creates a definition for a precondition p. If an activation condition c

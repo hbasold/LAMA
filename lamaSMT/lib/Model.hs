@@ -14,6 +14,7 @@ import Control.Monad.Reader (MonadReader(..), ReaderT(..))
 import Control.Applicative (Applicative(..), (<$>))
 
 import Language.SMTLib2 as SMT
+import Language.SMTLib2.Internals.Translation as SMT (getValue')
 
 import Lang.LAMA.Identifier
 import Lang.LAMA.Typing.TypedStructure
@@ -94,33 +95,25 @@ getVarModel (EnumStream s) = EnumVStream <$> getStreamValue s
 getVarModel (ProdStream s) = ProdVStream <$> mapM getVarModel s
 
 getStreamValue :: SMTValue t => Stream t -> ModelM (ValueStreamT t)
-getStreamValue s = ask >>= liftSMT . mapM (\i -> getValue $ s `app` i)
+getStreamValue s = ask >>= liftSMT . mapM (\i -> getValue' (extractStreamAnn s) $ s `app` i)
 
-scadeScenario :: Ident i => Program i -> [String] -> Model i -> Doc
-scadeScenario p varPath m =
+scadeScenario :: Ident i => Program i -> [String] -> Natural -> Model i -> Doc
+scadeScenario p varPath lastIndex m =
   let progInputNames = map varIdent . declsInput $ progDecls p
       progInputs = (Map.fromList $ zip progInputNames (repeat ()))
       inputTraces = Map.toList $ (modelVars m) `Map.intersection` progInputs
       path = case varPath of
         [] -> mempty
         _ -> (hcat $ punctuate (text "::") $ map text varPath) <> text ("/")
-  in scenario inputTraces path 0
+  in scenario inputTraces path lastIndex 0
   where
-    scenario [] _ _ = mempty
-    scenario inp@((_,s0):_) path i
-      | hasValAt s0 i =
+    scenario inp path n i
+      | i <= n =
         let setOp = text "SSM::set"
             varSetter = map (\(x, v) -> setOp <+> (path <> (ptext $ identString x)) <+> (prettyVal i v)) inp
-            rest = scenario inp path (i+1)
+            rest = scenario inp path n (i+1)
         in vcat varSetter $+$ text "SSM::cycle 1" $+$ rest
       | otherwise = mempty
-
-    hasValAt :: ValueStream -> Natural -> Bool
-    hasValAt (BoolVStream s) i = Map.member i s
-    hasValAt (IntVStream s) i = Map.member i s
-    hasValAt (RealVStream s) i = Map.member i s
-    hasValAt (EnumVStream s) i = Map.member i s
-    hasValAt (ProdVStream s) i = hasValAt (s ! 0) i
 
     prettyVal :: Natural -> ValueStream  -> Doc
     prettyVal i (BoolVStream s) = bool $ s Map.! i

@@ -32,10 +32,10 @@ instance StrategyClass BMC where
     s { bmcPrintProgress = True }
   readOption o _ = error $ "Invalid BMC option: " ++ o
 
-  check s getModel defs =
+  check natAnn s getModel defs =
     let base = 0
-    in do baseDef <- liftSMT . defConst $ constant base
-          check' s getModel defs (Map.singleton base baseDef) base baseDef
+    in do baseDef <- liftSMT . defConstAnn natAnn $ constantAnn base natAnn
+          check' natAnn s getModel defs (Map.singleton base baseDef) base baseDef
 
 assumeTrace :: MonadSMT m => ProgDefs -> StreamPos -> m ()
 assumeTrace defs iDef =
@@ -52,14 +52,14 @@ bmcStep getModel defs pastIndices iDef =
        $ checkInvariant iDef invs >>=
        checkGetModel getModel pastIndices
 
-check' :: BMC -> (Map Natural StreamPos -> SMT (Model i))
-          -> ProgDefs -> Map Natural StreamPos -> Natural -> StreamPos -> SMTErr (Maybe (Model i))
-check' s getModel defs pastIndices i iDef =
+check' :: SMTAnnotation Natural -> BMC -> (Map Natural StreamPos -> SMT (Model i))
+          -> ProgDefs -> Map Natural StreamPos -> Natural -> StreamPos -> SMTErr (Maybe (Natural, Model i))
+check' natAnn s getModel defs pastIndices i iDef =
   do liftIO $ when (bmcPrintProgress s) (putStrLn $ "Depth " ++ show i)
      r <- bmcStep getModel defs pastIndices iDef
      case r of
-       Nothing -> next (check' s getModel defs) s pastIndices i iDef
-       Just m -> return $ Just m
+       Nothing -> next (check' natAnn s getModel defs) natAnn s pastIndices i iDef
+       Just m -> return $ Just (i, m)
 
 assertDefs :: MonadSMT m => SMTExpr Natural -> [Definition] -> m ()
 assertDefs i = mapM_ (assertDef i)
@@ -80,11 +80,12 @@ checkGetModel :: MonadSMT m
 checkGetModel getModel indices r = liftSMT $
   if r then return Nothing else fmap Just $ getModel indices
 
-next :: (Map Natural StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (Model i)))
-        -> BMC -> Map Natural StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (Model i))
-next checkCont s pastIndices i iDef =
+next :: (Map Natural StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (Natural, Model i)))
+        -> SMTAnnotation Natural
+        -> BMC -> Map Natural StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (Natural, Model i))
+next checkCont natAnn s pastIndices i iDef =
   do let i' = succ i
-     iDef' <- liftSMT . defConst $ succ' iDef
+     iDef' <- liftSMT . defConstAnn natAnn $ succ' natAnn iDef
      let pastIndices' = Map.insert i' iDef' pastIndices
      case bmcDepth s of
        Nothing -> checkCont pastIndices' i' iDef'

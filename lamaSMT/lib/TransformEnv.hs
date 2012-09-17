@@ -11,6 +11,7 @@ import Lang.LAMA.Types
 import Language.SMTLib2 as SMT
 import Data.Unit
 
+
 import Data.Array as Arr
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -21,6 +22,7 @@ import Control.Monad.State (StateT(..), MonadState(..), modify, gets)
 import Control.Monad.Error (ErrorT(..), MonadError(..))
 
 import SMTEnum
+import NatInstance
 import LamaSMTTypes
 
 data NodeEnv i = NodeEnv
@@ -41,12 +43,14 @@ data Env i = Env
            , enumConsAnn :: Map (EnumConstr i) (SMTAnnotation SMTEnum)
            , varEnv :: VarEnv i
            , currAutomatonIndex :: Integer
+           , natImpl :: NatImplementation
+           , enumImpl :: EnumImplementation
            }
 
 emptyVarEnv :: VarEnv i
 emptyVarEnv = VarEnv Map.empty Map.empty
 
-emptyEnv :: Env i
+emptyEnv :: NatImplementation -> EnumImplementation -> Env i
 emptyEnv = Env Map.empty Map.empty Map.empty emptyVarEnv 0
 
 type DeclM i = StateT (Env i) (ErrorT String SMT)
@@ -105,21 +109,25 @@ nextAutomatonIndex = state $ \env ->
 
 -- | Defines a stream analogous to defFun.
 defStream :: Ident i => Type i -> (StreamPos -> TypedExpr i) -> DeclM i (TypedStream i)
-defStream (GroundType BoolT) f = liftSMT . fmap BoolStream $ defFun (unBool' . f)
-defStream (GroundType IntT) f = liftSMT . fmap IntStream $ defFun (unInt . f)
-defStream (GroundType RealT) f = liftSMT . fmap RealStream $ defFun (unReal . f)
-defStream (GroundType _) f = $notImplemented
-defStream (EnumType t) f = lookupEnumAnn t >>= \a -> liftSMT . fmap EnumStream $ defFunAnn unit a (unEnum . f)
--- We have to pull the product out of a stream.
--- If we are given a function f : StreamPos -> (Ix -> TE) = TypedExpr as above,
--- we would like to have as result something like:
--- g : Ix -> (StreamPos -> TE)
--- g(i)(t) = defStream(λt'.f(t')(i))(t)
--- Here i is the index into the product and t,t' are time variables.
-defStream (ProdType ts) f =
-  do let u = length ts - 1
-     x <- mapM (\(ty, i) -> defStream ty ((! i) . unProd' . f)) $ zip ts [0..u]
-     return . ProdStream $ listArray (0,u) x
+defStream ty sf = gets natImpl >>= \natAnn -> defStream' natAnn ty sf
+  where
+    defStream' natAnn (GroundType BoolT) f = liftSMT . fmap BoolStream $ defFunAnn natAnn unit (unBool' . f)
+    defStream' natAnn (GroundType IntT) f = liftSMT . fmap IntStream $ defFunAnn natAnn unit (unInt . f)
+    defStream' natAnn (GroundType RealT) f = liftSMT . fmap RealStream $ defFunAnn natAnn unit (unReal . f)
+    defStream' natAnn (GroundType _) f = $notImplemented
+    defStream' natAnn (EnumType t) f = lookupEnumAnn t >>= \a -> liftSMT . fmap EnumStream $ defFunAnn natAnn a (unEnum . f)
+    -- We have to pull the product out of a stream.
+    -- If we are given a function f : StreamPos -> (Ix -> TE) = TypedExpr as above,
+    -- we would like to have as result something like:
+    -- g : Ix -> (StreamPos -> TE)
+    -- g(i)(t) = defStream(λt'.f(t')(i))(t)
+    -- Here i is the index into the product and t,t' are time variables.
+    defStream' natAnn (ProdType ts) f =
+      do let u = length ts - 1
+         x <- mapM (\(ty2, i) -> defStream' natAnn ty2 ((! i) . unProd' . f)) $ zip ts [0..u]
+         return . ProdStream $ listArray (0,u) x
+
+-- stream :: Ident i => Type i -> DeclM i (Stream t)
 
 trConstant :: Ident i => Constant i -> TypedExpr i
 trConstant (untyped -> BoolConst c) = BoolExpr $ constant c
