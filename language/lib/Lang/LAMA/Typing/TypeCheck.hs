@@ -19,6 +19,7 @@ import Data.Foldable (Foldable, foldl, foldlM)
 import Data.List (intercalate)
 import Data.String (IsString(..))
 import Data.Tuple (swap)
+import Data.Bits.Size
 
 import Text.PrettyPrint
 
@@ -484,18 +485,6 @@ checkConstant (Fix (UIntConst bits a)) =
   in if neededBits > bits
       then throwError $ show a ++ " (unsigned) does not fit into " ++ show bits ++ " bits, requires at least " ++ show neededBits
       else return $ mkTyped (UIntConst bits a) (GroundType $ UInt bits)
-
-usedBits :: Integer -> Natural
-usedBits = (+ 1) . log2
-  where
-    log2 :: (Integral a, Num b) => a -> b
-    log2 x
-      | x < 0 = error "Argument to log2 must be non-negative"
-      | otherwise = log2' x
-      where
-        log2' 0 = 0
-        log2' 1 = 0
-        log2' y = 1 + (log2 $ div y 2)
 
 opType :: BinOp -> Result i (InterType i)
 opType o = case o of
