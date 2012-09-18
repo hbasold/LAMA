@@ -1,7 +1,5 @@
 module Data.Bits.Size where
 
-import Data.Natural
-
 -- | Number of bits needed to encode the given
 -- non-negative integer
 usedBits :: (Integral a, Num b) => a -> b
@@ -14,4 +12,4 @@ usedBits = (+ 1) . log2
       where
         log2' 0 = 0
         log2' 1 = 0
-        log2' y = 1 + (log2 $ div y 2)
+        log2' y = 1 + (log2' $ quot y 2)

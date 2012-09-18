@@ -3,7 +3,6 @@
 module Lang.LAMA.Typing.TypeCheck (typecheck, typecheckConstExpr) where
 
 import Data.Map as Map hiding (map, foldl)
-import Data.Natural
 
 import Control.Monad (void, liftM)
 import Control.Monad.Error (MonadError(..), ErrorT(..))
