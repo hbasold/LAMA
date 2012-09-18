@@ -1,3 +1,3 @@
 #!/bin/bash
 
-./runBase.sh $1 $2 "bmc"
+./runBase.sh $1 $2 "bmc" $3
