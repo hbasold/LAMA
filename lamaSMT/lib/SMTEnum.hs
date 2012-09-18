@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -26,11 +27,14 @@ data EnumImplementation =
 
 data EnumAnn =
   EnumTypeAnn EnumAlias [EnumCons] TypeRep
-  | EnumBitAnn Integer (Bimap EnumCons BitVector)
+  | EnumBitAnn Integer (Bimap EnumCons BitVector) BitVector
+    -- ^ Bit vector size, bijective mapping between constructors
+    -- and bit vectors and the last constructor i.e. that with
+    -- the highest value
 
 enumBottom :: EnumAnn -> SMTEnum
 enumBottom (EnumTypeAnn _ (c0:_) _) = SMTEnum c0
-enumBottom (EnumBitAnn _ cons) = SMTEnum . snd $ Bimap.findMinR cons
+enumBottom (EnumBitAnn _ cons _) = SMTEnum . snd $ Bimap.findMinR cons
 
 mkSMTEnumAnn :: EnumImplementation -> String -> [String] -> SMTAnnotation SMTEnum
 mkSMTEnumAnn EnumImplType e cons =
@@ -40,25 +44,26 @@ mkSMTEnumAnn EnumImplType e cons =
 mkSMTEnumAnn EnumImplBit _ cons =
   let cons' = map fromString cons
       (numCons, bvCons) = mapAccumL (\n c -> (n+1,(c, fromInteger n))) 0 cons'
-      bits = usedBits numCons
-  in EnumBitAnn bits (Bimap.fromList bvCons)
+      biggestCons = numCons - 1
+      bits = usedBits biggestCons
+  in EnumBitAnn bits (Bimap.fromList bvCons) (fromInteger biggestCons)
 
 instance SMTType SMTEnum where
   type SMTAnnotation SMTEnum = EnumAnn
 
   getSort _ (EnumTypeAnn a _ _) = L.Symbol a
-  getSort _ (EnumBitAnn size _) = getSort (undefined :: BitVector) size
+  getSort _ (EnumBitAnn size _ _) = getSort (undefined :: BitVector) size
 
   getSortBase _ = undefined
 
   declareType _ (EnumTypeAnn e cons ty) = declareType' ty (decl e cons)
     where decl a cs =
             declareDatatypes [] [(a, map (,[]) cs)]
-  declareType _ (EnumBitAnn size _) = declareType (undefined :: BitVector) size
+  declareType _ (EnumBitAnn size _ _) = declareType (undefined :: BitVector) size
 
 instance SMTValue SMTEnum where
   unmangle (L.Symbol c) (EnumTypeAnn _ _ _) = return . Just $ SMTEnum c
-  unmangle x (EnumBitAnn size cons) =
+  unmangle x (EnumBitAnn size cons _) =
     do r <- unmangle x size
        case r of
          Nothing -> return Nothing
@@ -66,7 +71,13 @@ instance SMTValue SMTEnum where
   unmangle _ _ = return Nothing
 
   mangle (SMTEnum c) (EnumTypeAnn _ _ _) = L.Symbol c
-  mangle (SMTEnum c) (EnumBitAnn size cons) =
+  mangle (SMTEnum c) (EnumBitAnn size cons _) =
     case Bimap.lookup c cons of
          Nothing -> error $ "Unknown enum " ++ unpack c
          Just bv -> mangle bv size
+
+toBVExpr :: (Args a) => SMTExpr (SMTFun a SMTEnum) -> SMTExpr (SMTFun a BitVector)
+toBVExpr e =
+  case e of
+    Fun x argAnn (EnumBitAnn size _ _) -> Fun x argAnn size
+    _ -> error $ "cannot convert enum expr to bit vector expr: " ++ show e

@@ -37,12 +37,13 @@ import Data.Traversable
 import Data.Foldable (foldlM, foldrM)
 import Data.Monoid
 
+import Control.Monad (liftM)
 import Control.Monad.Trans.Class
 import Control.Monad.State (StateT(..), MonadState(..), gets)
 import Control.Monad.Error (ErrorT(..), MonadError(..))
 import Control.Monad.Reader (ReaderT(..), asks)
 import Control.Applicative (Applicative(..), (<$>))
-import Control.Arrow ((&&&), second)
+import Control.Arrow ((&&&), first, second)
 
 import SMTEnum
 import LamaSMTTypes
@@ -118,32 +119,41 @@ declareDecls :: Ident i => Maybe (Stream Bool) -> Set i -> Declarations i -> Dec
 declareDecls activeCond excludeNodes d =
   do let (excluded, toDeclare) = Map.partitionWithKey (\n _ -> n `Set.member` excludeNodes) $ declsNode d
      defs <- mapM (uncurry $ declareNode activeCond) $ Map.toList toDeclare
-     inp <- declareVars $ declsInput d
-     locs <- declareVars $ declsLocal d
-     states <- declareVars $ declsState d
+     (inp, constr1) <- declareVars $ declsInput d
+     (locs, constr2) <- declareVars $ declsLocal d
+     (states, constr3) <- declareVars $ declsState d
      modifyVars $ mappend (inp `mappend` locs `mappend` states)
-     return (concat defs, excluded)
+     return (concat defs ++ constr1 ++ constr2 ++ constr3, excluded)
 
-declareVars :: Ident i => [Variable i] -> DeclM i (Map i (TypedStream i))
-declareVars = fmap Map.fromList . declareVarList
+declareVars :: Ident i => [Variable i] -> DeclM i (Map i (TypedStream i), [Definition])
+declareVars = fmap (first Map.fromList) . declareVarList
 
-declareVarList :: Ident i => [Variable i] -> DeclM i [(i, TypedStream i)]
-declareVarList = mapM declareVar
+declareVarList :: Ident i => [Variable i] -> DeclM i ([(i, TypedStream i)], [Definition])
+declareVarList = liftM (second concat . unzip) . mapM declareVar
 
-declareVar :: Ident i => Variable i -> DeclM i (i, TypedStream i)
+declareVar :: Ident i => Variable i -> DeclM i ((i, TypedStream i), [Definition])
 declareVar (Variable x t) =
   do natAnn <- gets natImpl
-     (x,) <$> typedVar natAnn t
+     first (x,) <$> typedVar natAnn t
   where
-    typedVar :: Ident i => SMTAnnotation Natural -> Type i -> DeclM i (TypedStream i)
-    typedVar ann (GroundType BoolT) = liftSMT $ fmap BoolStream $ funAnn ann unit
-    typedVar ann (GroundType IntT) = liftSMT $ fmap IntStream $ funAnn ann unit
-    typedVar ann (GroundType RealT) = liftSMT $ fmap RealStream $ funAnn ann unit
+    typedVar :: Ident i => SMTAnnotation Natural -> Type i -> DeclM i (TypedStream i, [Definition])
+    typedVar ann (GroundType BoolT) = liftSMT $ fmap ((, []) . BoolStream) $ funAnn ann unit
+    typedVar ann (GroundType IntT) = liftSMT $ fmap ((, []) . IntStream) $ funAnn ann unit
+    typedVar ann (GroundType RealT) = liftSMT $ fmap ((, []) . RealStream) $ funAnn ann unit
     typedVar ann (GroundType _) = $notImplemented
-    typedVar ann (EnumType et) = lookupEnumAnn et >>= liftSMT . fmap EnumStream . funAnn ann
+    typedVar ann (EnumType et) = lookupEnumAnn et >>= fmap (first EnumStream) . enumVar ann
     typedVar ann (ProdType ts) =
-      do vs <- mapM (typedVar ann) ts
-         return . ProdStream $ listArray (0, (length vs) - 1) vs
+      do (vs, constraints) <- liftM (second concat . unzip) $ mapM (typedVar ann) ts
+         return (ProdStream $ listArray (0, (length vs) - 1) vs, constraints)
+
+enumVar :: MonadSMT m
+           => SMTAnnotation Natural -> SMTAnnotation SMTEnum
+           -> m (Stream SMTEnum, [Definition])
+enumVar argAnn ann@(EnumTypeAnn _ _ _) = liftSMT (funAnn argAnn ann) >>= return . (, [])
+enumVar argAnn ann@(EnumBitAnn size _ biggestCons) =
+  do v <- liftSMT (funAnn argAnn ann)
+     constr <- liftSMT $ defFunAnn argAnn unit $ \t -> bvule ((toBVExpr v) `app` t) (constantAnn biggestCons size)
+     return (v, [SingleDef constr])
 
 -- | Declares a node and puts the interface variables into the environment.
 -- Here it becomes crucial that a node is used at most once in a program, since
@@ -164,7 +174,7 @@ declareNode active nName nDecl =
     declareNode' activeCond n =
       do let automNodes = mconcat . map getNodesInLocations . Map.elems $ nodeAutomata n
          (declDefs, undeclaredNodes) <- declareDecls activeCond automNodes $ nodeDecls n
-         outDecls <- declareVarList $ nodeOutputs n
+         (outDecls, constr1) <- declareVarList $ nodeOutputs n
          ins <- mapM (lookupVar . varIdent) . declsInput $ nodeDecls n
          let outs = map snd outDecls
          modifyVars $ Map.union (Map.fromList outDecls)
@@ -174,7 +184,7 @@ declareNode active nName nDecl =
          precondDef <- declarePrecond activeCond $ nodeAssertion n
          varDefs <- gets varEnv
          return (NodeEnv ins outs varDefs,
-                 declDefs ++ flowDefs ++ automDefs ++ [precondDef])
+                 declDefs ++ constr1 ++ flowDefs ++ automDefs ++ [precondDef])
 
 -- | Extracts all nodes which are used inside some location.
 getNodesInLocations :: Ident i => Automaton i -> Set i
@@ -288,14 +298,14 @@ declareAutomaton activeCond localNodes (_, a) =
          sName = fromString $ "s" ++ (identString enumName)
          s_1Name = fromString $ "s_1" ++ (identString enumName)
      declareEnums $ Map.singleton enumName enum
-     (s, s_1) <- mkStateVars enumName
+     ((s, s_1), constr) <- mkStateVars enumName
      modifyVars (`Map.union` Map.fromList [(sName, EnumStream $ s), (s_1Name, EnumStream $ s_1)])
      locDefs <- (flip runReaderT (locCons, localNodes))
                 $ declareLocations activeCond s
                 (automDefaults a) (automLocations a)
      edgeDefs <- mkTransitionEq activeCond stateT locCons sName s_1Name $ automEdges a
      assertInit (s_1Name, locConsConstExpr locCons stateT $ automInitial a)
-     return $ locDefs ++ edgeDefs
+     return $ constr ++ locDefs ++ edgeDefs
 
   where
     getLocId (Location i _) = i
@@ -314,13 +324,13 @@ declareAutomaton activeCond localNodes (_, a) =
 -- s represents the current state which is calculated
 -- at the beginning of a clock cycle. s_1 saves this
 -- state for the next cycle.
-mkStateVars :: Ident i => i -> DeclM i (Stream SMTEnum, Stream SMTEnum)
+mkStateVars :: Ident i => i -> DeclM i ((Stream SMTEnum, Stream SMTEnum), [Definition])
 mkStateVars stateEnum =
   do enumAnn <- lookupEnumAnn stateEnum
      natAnn <- gets natImpl
-     s <- liftSMT $ funAnn natAnn enumAnn
-     s_1 <- liftSMT $ funAnn natAnn enumAnn
-     return (s, s_1) 
+     (s, constr1) <- enumVar natAnn enumAnn
+     (s_1, constr2) <- enumVar natAnn enumAnn
+     return ((s, s_1), constr1 ++ constr2)
 
 -- | Extracts the the expressions for each variable seperated into
 -- local definitons and state transitions.
