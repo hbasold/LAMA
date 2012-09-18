@@ -107,6 +107,9 @@ options =
     , Option [] ["node-name"]
       (ReqArg (\n opts -> opts {optTopNodePath = parseNodeName n}) "SCADE NODE")
       ("Qualified name of Scade node for which the trace should be generated.")
+    , Option [] ["solver"]
+      (ReqArg (\s opts -> opts {optSolver = s}) "CMD")
+      ("Command to run solver interactively using SMTLib2 input.")
     , Option [] ["solver-opts"]
       (ReqArg (\o opts -> opts {optSolverOptions = optSolverOptions opts ++ [o]}) "OPTION")
       ("Additional option to pass to used SMT solver.")
