@@ -36,7 +36,7 @@ import Language.SMTLib2 (SMT, MonadSMT(..), SMTOption(..), setOption, withSMTSol
 
 
 z3Base :: String
-z3Base = "z3 -smt2 -in -m"
+z3Base = "z3 -smt2 -in"
 
 data Options = Options
   { optInput :: FilePath
