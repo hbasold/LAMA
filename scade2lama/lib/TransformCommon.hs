@@ -198,7 +198,16 @@ trOpApply (S.PrefixOp (S.PrefixPath p)) es =
      x' <- liftM fromString . newVar $ L.identString x
      tellNode x' p
      return (x', es, t)
-trOpApply _ _ = $notImplemented
+trOpApply (S.PrefixParamOp prefix es1) es2 = $notImplemented
+trOpApply (S.IteratorOp iter op e) es = $notImplemented
+trOpApply (S.ActivateOp op cond) es = $notImplemented
+trOpApply (S.Flatten path) es = $notImplemented
+trOpApply (S.Make path) es = $notImplemented
+trOpApply (S.RestartOp op e) es = $notImplemented
+trOpApply (S.MapWOp op e1 e2 e3) es = $notImplemented
+trOpApply (S.MapWiOp op e1 e2 e3) es = $notImplemented
+trOpApply (S.FoldWOp op e1 e2) es = $notImplemented
+trOpApply (S.FoldWiOp op e1 e2) es = $notImplemented
 
 trConstExpr :: (MonadError String m) => S.Expr -> m L.ConstExpr
 trConstExpr = liftM L.mkConst . trConstant
