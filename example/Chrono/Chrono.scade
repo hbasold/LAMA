@@ -1,6 +1,6 @@
 /* $*************** KCG Version 6.1.3 (build i6) ****************
 ** Command: x2s613 F:/ScadeProjects/Examples/Operator4.xscade
-** Generation date: 2012-09-03T10:36:18
+** Generation date: 2012-09-19T10:27:46
 *************************************************************$ */
 
 /* xscade source: F:/ScadeProjects/Examples/Operator4.xscade */
@@ -40,7 +40,7 @@ let
               d= _L2;
               _L2= 0 -> (pre d + 1) mod 100;
               s= _L3;
-              _L3= if d < (0 -> pre d) then (last 's + 1) mod 60 else last 's;
+              _L3= if d < fby(d; 1; 0) then (last 's + 1) mod 60 else last 's;
               _L6= if s < last 's then (last 'm + 1) mod 60 else last 'm;
               m= _L6;
               run= _L8;
