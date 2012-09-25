@@ -94,6 +94,7 @@ mkDeps p = do
     return $ ProgDeps nodes exprDepGr
 
   where
+    -- Convert dependencies of nested nodes from intermediate to final datastructure
     convNodeDeps :: Ident i => InterNodeDeps i -> Either String (NodeDeps i)
     convNodeDeps n = do
       nodes <- mapM convNodeDeps $ inDepsNodes n
