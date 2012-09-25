@@ -147,6 +147,24 @@ Datenfluss ($F$), Anfangszustand ($I$), Assertion ($A$) und Invarianten ($P$).
   \syn{invariant } e \syn{ ;} : \ty{ok}$}
 \end{prooftree}
 
+\begin{prooftree}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash x_1 : A_1 \ldots x_n : A_n$}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash M_1 : A_1 \ldots M_n : A_n$}
+\RightLabel{(definition)}
+\BinaryInfC{$\Sigma,\Delta,\Gamma \vdash \syn{definition }
+  x_1 \syn{ = } M_1 \syn{;} \ldots \; x_n \syn{ = } M_n \syn{;}
+  : \ty{ok}$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash x_1 : A_1 \ldots x_n : A_n$}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash M_1 : A_1 \ldots M_n : A_n$}
+\RightLabel{(transition)}
+\BinaryInfC{$\Sigma,\Delta,\Gamma \vdash \syn{transition }
+  x_1' \syn{ = } M_1 \syn{;} \ldots \; x_n' \syn{ = } M_n \syn{;}
+  : \ty{ok}$}
+\end{prooftree}
+
 TODO
   
 \caption{Typisierung von Knoten}
@@ -318,13 +336,37 @@ n \in \N $ & \\
   x : \syn{(\# } A_1, \, \ldots \, , A_n \syn{)}$}
 \RightLabel{(\#-elim)}
 \UnaryInfC{$\Sigma,\Delta,\Gamma \vdash
-  \syn{(project } x \; i) : A_i$}
+  \syn{(project } x \; i \syn{)} : A_i$}
 \end{prooftree}
-
-
 \label{fig:lama_prod_expr_types}
 \caption{Typisierung von Produkten}
 \end{figure}
+
+%%% enum expressions
+\begin{figure}[H]
+
+% enum introduction
+\begin{prooftree}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash
+  (E, E_i) \in \Sigma$}
+\RightLabel{(enum-intro)}
+\UnaryInfC{$\Sigma,\Delta,\Gamma \vdash
+  E_i : E$}
+\end{prooftree}
+
+% enum elimination
+\begin{prooftree}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash M : E$}
+\AxiomC{$\Sigma \vdash E_{r_1}, \dotsc, E_{r_k} : E$}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash N_1, \dotsc, N_k : A$}
+\RightLabel{(enum-elim)}
+\TrinaryInfC{$\Sigma,\Delta,\Gamma \vdash
+  \syn{(match } M \; \{ E_{r_1}.N_1, \dotsc, E_{r_k}.N_k\}\syn{)} : A$}
+\end{prooftree}
+\label{fig:lama_enum_expr_types}
+\caption{Typisierung von Enums}
+\end{figure}
+
 
 %</typerules>
 
