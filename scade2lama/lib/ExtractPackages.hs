@@ -1,5 +1,9 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-module ExtractPackages (Package(..), PackageMap, extractPackages, prettyPackage) where
+{-# LANGUAGE TemplateHaskell #-}
+module ExtractPackages (Package(..), PackageMap, extractPackages, prettyPackage, getOpType) where
+
+import Development.Placeholders
 
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -9,9 +13,12 @@ import Data.Data
 import Text.PrettyPrint
 
 import Control.Monad.State as ST
+import Control.Monad.Error (MonadError(..))
 
 import Language.Scade.Syntax as S
 import Language.Scade.Pretty as S
+
+import Lookup
 
 data Package = Package
                { pkgTypes :: [TypeDecl]
@@ -65,3 +72,23 @@ extractDecl :: Declaration -> Result ()
 extractDecl (PackageDecl _vis n ds)
   = openPackage n $ extractDecls ds
 extractDecl d = putDecl d
+
+findPackage :: Package -> [String] -> Maybe Package
+findPackage curr [] = Just curr
+findPackage curr (p:ps) =
+  case Map.lookup p $ pkgSubPackages curr of
+    Nothing -> Nothing
+    Just next -> findPackage next ps
+
+getOpType :: MonadError String m => Path -> [Package] -> m TypeExpr
+getOpType (Path p) pkgs =
+  let o = last p
+      p' = init p
+      mpkg = msum $ map (flip findPackage p')  pkgs
+  in case mpkg of
+    Nothing -> throwError $ "Unknow path " ++ show p'
+    Just pkg ->
+      do op <- lookupErr ("Unknown operator " ++ o) o $ pkgUserOps pkg
+         case userOpReturns op of
+          [VarDecl [_] t _ _] -> return t
+          _ -> $notImplemented

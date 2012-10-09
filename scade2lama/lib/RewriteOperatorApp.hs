@@ -19,9 +19,9 @@
 
 module RewriteOperatorApp where
 
-import Development.Placeholders
 
-import qualified Data.Map as Map
+
+
 import Data.Data
 import Data.Generics.Schemes (everywhereM)
 import Data.Generics.Aliases (mkM)
@@ -44,28 +44,6 @@ rewrite ps = (flip runReaderT $ ScadePackages ps ps) $ rewritePackage ps
 
 type RewrT = ReaderT ScadePackages
 type LocalRewrT m = StateT ([Equation], [VarDecl]) (RewrT m)
-
-getOpType :: MonadError String m => Path -> LocalRewrT m TypeExpr
-getOpType (Path p) =
-  let o = last p
-      p' = init p
-  in do ps <- ask
-        pkg <- case findPackage (global ps) p' of
-          Nothing -> case findPackage (current ps) p' of
-            Nothing -> throwError $ "Unknow package " ++ show p'
-            Just pkg' -> return pkg'
-          Just pkg' -> return pkg'
-        op <- lookupErr ("Unknown operator " ++ o) o $ pkgUserOps pkg
-        case userOpReturns op of
-          [VarDecl [_] t _ _] -> return t
-          _ -> $notImplemented
-
-findPackage :: Package -> [String] -> Maybe Package
-findPackage curr [] = Just curr
-findPackage curr (p:ps) =
-  case Map.lookup p $ pkgSubPackages curr of
-    Nothing -> Nothing
-    Just next -> findPackage next ps
 
 rewritePackage :: (MonadError String m, MonadVarGen m) => Package -> RewrT m Package
 rewritePackage p = local (\sps -> sps { current = p }) $
@@ -105,7 +83,7 @@ rewriteExprTop e = rewriteExprAll e
 rewriteExpr :: (MonadError String m, MonadVarGen m) => Expr -> LocalRewrT m Expr
 rewriteExpr app@(ApplyExpr (PrefixOp (PrefixPath p)) _) =
   do appRes <- newVar "opresult"
-     t <- getOpType p
+     t <- ask >>= \ps -> getOpType p [global ps, current ps]
      modify $ \(eqs, vs) -> ((SimpleEquation [Named appRes] app) : eqs,
                              (VarDecl [VarId appRes False False] t Nothing Nothing) : vs)
      return . IdExpr $ Path [appRes]

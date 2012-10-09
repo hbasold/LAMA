@@ -32,6 +32,7 @@ import qualified Lang.LAMA.Structure.SimpIdentUntyped as L
 import qualified Lang.LAMA.Identifier as L
 import qualified Lang.LAMA.Types as L
 
+import Lookup
 import ExtractPackages
 import TrEquation
 import TransformCommon

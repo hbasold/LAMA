@@ -39,6 +39,7 @@ import qualified Lang.LAMA.Identifier as L
 import qualified Lang.LAMA.Types as L
 
 import VarGen
+import Lookup
 import TransformMonads
 import TrEquation
 import TransformCommon

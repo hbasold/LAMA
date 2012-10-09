@@ -37,6 +37,7 @@ import qualified Lang.LAMA.Structure.SimpIdentUntyped as L
 import qualified Lang.LAMA.Identifier as L
 import qualified Lang.LAMA.Types as L
 
+import Lookup
 import TransformMonads
 import VarGen
 
@@ -200,6 +201,7 @@ trOpApply (S.PrefixOp (S.PrefixPath p)) es =
      return (x', es, t)
 trOpApply (S.PrefixParamOp prefix es1) es2 = $notImplemented
 trOpApply (S.IteratorOp iter op e) es = $notImplemented
+trOpApply (S.ActivateOp op (S.ActivateDefault clock defaultExpr)) es = $notImplemented
 trOpApply (S.ActivateOp op cond) es = $notImplemented
 trOpApply (S.Flatten path) es = $notImplemented
 trOpApply (S.Make path) es = $notImplemented

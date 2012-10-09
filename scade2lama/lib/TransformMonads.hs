@@ -4,12 +4,12 @@ module TransformMonads where
 import qualified  Data.Set as Set
 import Data.Set (Set)
 import qualified Data.Map as Map
-import Data.Map (Map, (\\))
+import Data.Map (Map)
 import Data.String (fromString)
 
 import Control.Monad (liftM, MonadPlus(..))
 import Control.Monad.Trans.Class
-import Control.Monad.State (MonadState(..), StateT(..), gets, modify)
+import Control.Monad.State (MonadState(..), StateT(..), gets)
 import Control.Monad.Error (MonadError(..), ErrorT(..))
 import Control.Monad.Reader (MonadReader(..), ReaderT(..))
 import Control.Monad.Writer (MonadWriter(..), WriterT(..))
@@ -22,15 +22,11 @@ import qualified Lang.LAMA.Identifier as L
 import qualified Lang.LAMA.Types as L
 
 import VarGen
+import Lookup
 import ExtractPackages as Extract
 
 fromSet :: Ord k => (k -> a) -> Set k -> Map k a
 fromSet f = Map.fromList . map (id &&& f) . Set.toList
-
-lookupErr :: (MonadError e m, Ord k) => e -> k -> Map k v -> m v
-lookupErr err k m = case Map.lookup k m of
-  Nothing -> throwError err
-  Just v -> return v
 
 type Type = L.Type L.SimpIdent
 type TypeAlias = L.TypeAlias L.SimpIdent
