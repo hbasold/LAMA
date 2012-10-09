@@ -20,7 +20,8 @@ import Data.Foldable (foldlM)
 import Data.Traversable (mapAccumL)
 import Data.Monoid
 import Data.Maybe (maybeToList, catMaybes)
-import Data.List (partition, unzip4)
+import Data.List (partition, unzip4, sortBy)
+import Data.Function (on)
 
 import Data.Generics.Schemes
 import Data.Generics.Aliases
@@ -56,6 +57,7 @@ data EdgeType = Weak | Strong deriving (Eq, Ord, Show)
 
 data EdgeData = EdgeData
                 { edgeCondition :: L.Expr
+                , edgePriority :: Int
                 , edgeType :: EdgeType
                 , edgeTargetType :: S.TargetType
                 , edgeActions :: Maybe S.Actions
@@ -104,22 +106,22 @@ extractLocation (n, S.State{..}) =
 -- | Extracts the edges from a given set of Scade states.
 extractEdges :: Map L.LocationId Node -> [S.State] -> TransM [TrEdge]
 extractEdges stateNodeMap sts =
-  do strong <- extractEdges' stateNodeMap S.stateUnless Strong sts
-     weak <- extractEdges' stateNodeMap S.stateUntil Weak sts
+  do weak <- extractEdges' stateNodeMap S.stateUntil Weak 0 sts
+     strong <- extractEdges' stateNodeMap S.stateUnless Strong (length weak) sts
      return $ strong ++ weak
   where
-    extractEdges' :: Map L.LocationId Node -> (S.State -> [S.Transition]) -> EdgeType -> [S.State] -> TransM [TrEdge]
-    extractEdges' nodeMap getter eType =
+    extractEdges' :: Map L.LocationId Node -> (S.State -> [S.Transition]) -> EdgeType -> Int -> [S.State] -> TransM [TrEdge]
+    extractEdges' nodeMap getter eType startPrio =
       liftM concat
       . foldlM (\es s -> liftM (:es)
                          . mapM (extract nodeMap eType (fromString $ S.stateName s))
-                         $ getter s) []
+                         $ zip (getter s) [startPrio..]) []
 
-    extract nodeMap eType from (S.Transition c act (S.TargetFork forkType to)) =
+    extract nodeMap eType from ((S.Transition c act (S.TargetFork forkType to)), prio) =
       do fromNode <- lookupErr ("Unknown state " ++ L.identString from) from nodeMap
          toNode <- lookupErr ("Unknown state " ++ to) (fromString to) nodeMap
-         (fromNode, toNode, ) <$> (EdgeData <$> trExpr' c <*> pure eType <*> pure forkType <*> pure act)
-    extract nodeMap eType from (S.Transition c act (S.ConditionalFork _ _)) = $notImplemented
+         (fromNode, toNode, ) <$> (EdgeData <$> trExpr' c <*> pure prio <*> pure eType <*> pure forkType <*> pure act)
+    extract nodeMap eType from ((S.Transition c act (S.ConditionalFork _ _)), prio) = $notImplemented
 
 -- | We translate all equations for the current state. If
 -- there occurs another automaton, a node containing that
@@ -513,11 +515,13 @@ strongAfterWeak =
       let weakInCond = edgeCondition weakInData
           oneStrongActive = foldl1 (L.mkExpr2 L.Or) . map (edgeCondition . fst) $ strongOuts
           weakInCond' = L.mkExpr2 L.And weakInCond (L.mkLogNot oneStrongActive)
-          transEdges' = map (\(ed, s3) -> (s1, s3, mapCondition (L.mkExpr2 L.And weakInCond) ed)) strongOuts
+          transEdges' = map (\(ed, s3) -> (s1, s3,
+                                           ed { edgeCondition = L.mkExpr2 L.And weakInCond (edgeCondition ed)
+                                              , edgePriority = edgePriority weakInData })
+                            ) strongOuts
       in (transEdges ++ transEdges', (weakInData { edgeCondition = weakInCond' }, s1))
 
 -- | Builds an automaton out of the given state graph.
--- FIXME: respect priorities
 mkAutomaton :: MonadError String m => StateGr -> Map L.SimpIdent L.Expr -> m (TrEquation L.Automaton)
 mkAutomaton gr defaultExprs =
   let ns = labNodes gr
@@ -526,8 +530,7 @@ mkAutomaton gr defaultExprs =
                 let (l', i', eq'') = mkLocation l
                 in (l':ls, i `mappend` (First i'), mergeEq eq' eq''))
         ([], First Nothing, baseEq ()) ns
-      grEdges = labEdges gr
-      automEdges = map (mkEdge gr) grEdges
+      automEdges = map (mkEdge gr) . sortBy (compare `on` (\(h, _, d) -> (h, edgePriority d))) $ labEdges gr
   in case getFirst inits of
     Nothing -> throwError "No initial state given"
     Just i -> let autom = L.Automaton locs i automEdges defaultExprs
@@ -544,7 +547,7 @@ mkAutomaton gr defaultExprs =
 
     mkEdge :: StateGr -> LEdge EdgeData -> L.Edge
     mkEdge g (h, t, EdgeData { edgeCondition = cond
-                              , edgeActions = actions }) =
+                             , edgeActions = actions }) =
       let (Just LocationData { stName = hName }) = lab g h
           (Just LocationData { stName = tName }) = lab g t
       in case actions of
