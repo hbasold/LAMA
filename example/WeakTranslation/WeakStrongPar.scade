@@ -8,72 +8,53 @@ node WeakStrongPar(c0 : bool; c1 : bool; c2 : bool; c3 : bool)
 let
   
   automaton SM1
-    state State1
-      unless
-        if c2 restart State2;
-      var
-        _L4 : bool;
+    initial state State0
       let
-        _L4= true;
-        state1= _L4;
+        state0 = true;
       tel
-      until
-        if c1 do restart State3;
+      until if c0 do restart State1;
+
+    state State1
+      unless if c2 restart State2;
+      let
+        state1 = true;
+      tel
+      until if c1 do restart State3;
 
     state State2
-      var
-        _L1 : bool;
       let
-        _L1= true;
-        state2= _L1;
+        state2 = true;
       tel
 
     state State3
-      unless
-        if c3 restart State4;
-      var
-        _L1 : bool;
+      unless if c3 restart State4;
       let
-        _L1= true;
-        state3= _L1;
+        state3 = true;
       tel
 
     state State4
-      var
-        _L1 : bool;
       let
-        state4= _L1;
-        _L1= true;
+        state4 = true;
       tel
-
-    initial state State0
-      var
-        _L1 : bool;
-      let
-        state0= _L1;
-        _L1= true;
-      tel
-      until
-        if c0 do restart State1;
   returns ..;
 tel
 
+node Prop(c0 : bool; c1 : bool; c2 : bool; c3 : bool)
+  returns (state0, state1, state2, state3, state4 : bool;
+    c0_1, c1_1, state0_1, state1_1 : bool)
+let
+  state0, state1, state2, state3, state4
+    = WeakStrongPar(c0, c1, c2, c3);
+  
+  c0_1 = false -> pre c0;
+  c1_1 = false -> pre c1;
+  state0_1 = true -> pre state0;
+  state1_1 = false -> pre state1;  
+tel
+
 /*
-state
-  c0_1 : bool;
-  c1_1 : bool;
-  state0_1 : bool;
-  state1_1 : bool;
-transition
-  c0_1' = c0;
-  c1_1' = c1;
-  state0_1' = state0_out;
-  state1_1' = state1_out;
-initial
-  c0_1 = false,
-  c1_1 = false,
-  state0_1 = true,  
-  state1_1 = false;
+
+with proper names:
 
 invariant
   (and (and (and (and (and
@@ -84,4 +65,27 @@ invariant
     (=> (and state1_1 (and c1_1 c2)) (or state3_out state4_out))) -- TT
     (=> (and state1_1 (and c3 (and c1_1 (not c2)))) state4_out)) -- Transitive
   ;
+
+in current implementation:
+  
+invariant
+  (and (and (and (and (and
+    (=> (and (and state0_1_out c0_1_out) (not c2)) state1_out) -- CondAssoc
+    (=> (and state1_1_out (and (not c1_1_out) (not c2))) state1_out)) -- FF
+    (=> (and state1_1_out (and (not c1_1_out) c2)) state2_out)) -- FT
+    (=> (and state1_1_out (and c1_1_out (not c2))) (or state3_out state4_out))) -- TF
+    (=> (and state1_1_out (and c1_1_out c2)) (or state3_out state4_out))) -- TT
+    (=> (and state1_1_out (and c3 (and c1_1_out (not c2)))) state4_out)) -- Transitive
+  ;
+
+as command:
+
+./translate.sh WeakTranslation/WeakStrongPar.scade Prop "(and (and (and (and (and
+  (=> (and (and state0_1_out c0_1_out) (not c2)) state1_out) -- CondAssoc
+  (=> (and state1_1_out (and (not c1_1_out) (not c2))) state1_out)) -- FF
+  (=> (and state1_1_out (and (not c1_1_out) c2)) state2_out)) -- FT
+  (=> (and state1_1_out (and c1_1_out (not c2))) (or state3_out state4_out))) -- TF
+  (=> (and state1_1_out (and c1_1_out c2)) (or state3_out state4_out))) -- TT
+  (=> (and state1_1_out (and c3 (and c1_1_out (not c2)))) state4_out)) -- Transitive"
+
 */
