@@ -513,7 +513,9 @@ strongAfterWeak =
     -- we are in node s2
     mkTransEdges strongOuts transEdges (weakInData, s1) =
       let weakInCond = edgeCondition weakInData
-          oneStrongActive = foldl1 (L.mkExpr2 L.Or) . map (edgeCondition . fst) $ strongOuts
+          oneStrongActive = foldl (\oneActive -> L.mkExpr2 L.Or oneActive) (L.constAtExpr $ L.boolConst False)
+                            . map (edgeCondition . fst)
+                            $ strongOuts
           weakInCond' = L.mkExpr2 L.And weakInCond (L.mkLogNot oneStrongActive)
           transEdges' = map (\(ed, s3) -> (s1, s3,
                                            ed { edgeCondition = L.mkExpr2 L.And weakInCond (edgeCondition ed)
