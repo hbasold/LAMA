@@ -8,9 +8,13 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{bussproofs}
+\usepackage{stmaryrd}
 
 \newcommand{\syn}[1]{\texttt{{#1}}}
 \newcommand{\ty}[1]{\textbf{#1}}
+
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\Z}{\mathbb{Z}}
 
 \begin{document}
 \maketitle
@@ -18,8 +22,10 @@
 \section{...}
 
 Typisierung eines LAMA-Programms bestehend aus:
-Typdeklarationen ($T$), Konstantendeklarationen ($C$), Variablendeklarationen ($D$),
-Datenfluss ($F$), Anfangszustand ($I$), Assertion ($A$) und Invarianten ($P$).
+Typdeklarationen ($T$), Konstantendeklarationen ($C$),
+Eingabedeklarationen ($In$), Variablendeklarationen ($D$),
+Datenfluss ($F$), Anfangszustand ($I$), Assertion ($A$)
+und einer Invariante ($P$).
 
 %<*typerules>
 
@@ -29,21 +35,21 @@ Datenfluss ($F$), Anfangszustand ($I$), Assertion ($A$) und Invarianten ($P$).
 \begin{prooftree}
   \alwaysNoLine
   \AxiomC{$ \vdash T \therefore \Sigma$}
+  \UnaryInfC{$\Sigma \vdash In \therefore \Gamma_1$}
+  \UnaryInfC{$\Gamma = \Gamma_1 \cup \Gamma_2$}
   \UnaryInfC{$\Sigma,\Delta,\Gamma \vdash F : \ty{ok}$}
   \UnaryInfC{$\Sigma,\Delta,\Gamma \vdash A : \ty{ok}$}
 
     \AxiomC{$\Sigma \vdash C \therefore \Delta$}
+    \UnaryInfC{$\Sigma \vdash D \therefore \Gamma_2$}
+    \UnaryInfC{\phantom{$\Gamma_1$}} % empty premisses
     \UnaryInfC{$\Sigma,\Delta,\Gamma \vdash I : \ty{ok}$}
     \UnaryInfC{$\Sigma,\Delta,\Gamma \vdash P : \ty{ok}$}
 
-      \AxiomC{$\Sigma \vdash D \therefore \Gamma$}
-      \UnaryInfC{\phantom{$\Delta,$}} % empty premisses
-      \UnaryInfC{\phantom{$\emptyset,\Sigma \vdash D
-          \therefore \Delta_2$}} % force correct line length
-
   \alwaysSingleLine
   \RightLabel{(program)}
-  \TrinaryInfC{$\vdash T \; C \; D \; F \; I \; A \; P : \ty{ok}$}
+  \BinaryInfC{$\vdash T \; C \; In \; D \; F
+    \; I \; A \; P : \ty{ok}$}
 \end{prooftree}
 
 %</progrule>
@@ -75,6 +81,15 @@ Datenfluss ($F$), Anfangszustand ($I$), Assertion ($A$) und Invarianten ($P$).
 \UnaryInfC{$\Sigma \vdash \syn{constants }
   x_1 \syn{ = } c_1 \syn{;} \ldots \; x_n \syn{ = } c_n \syn{;}
   \therefore \{(x_1, A_1), \ldots, (x_n, A_n)\} $}
+\end{prooftree}
+
+% input
+\begin{prooftree}
+\AxiomC{$A_1 = \Sigma(t_1), \, \ldots, \, A_n = \Sigma(t_n)$}
+\RightLabel{(input-prog)}
+\UnaryInfC{$\Sigma \vdash \syn{input }
+  x_1 \syn{ : } t_1 \syn{;} \; \ldots \; x_n \syn{ : } t_n \syn{;}
+  \therefore \{(x_1,A_1), \ldots, (x_n, A_n)\}$}  
 \end{prooftree}
 
 %<*invariantrule>
@@ -130,6 +145,13 @@ Datenfluss ($F$), Anfangszustand ($I$), Assertion ($A$) und Invarianten ($P$).
   \therefore \{(x_1,A_1), \ldots, (x_n, A_n)\}$}  
 \end{prooftree}
 
+% assertion
+\begin{prooftree}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash e : \ty{bool}$}
+\RightLabel{(assertion)}
+\UnaryInfC{$\Sigma,\Delta,\Gamma \vdash
+  \syn{assertion } e \syn{ ;} : \ty{ok}$}
+\end{prooftree}
 
 \caption{Typisierung von Deklarationen}
 \label{fig:lama_decls_types}
@@ -139,14 +161,43 @@ Datenfluss ($F$), Anfangszustand ($I$), Assertion ($A$) und Invarianten ($P$).
 %%% nodes
 \begin{figure}[H]
 
-% invariant
 \begin{prooftree}
-\AxiomC{$\Sigma,\Delta,\Gamma \vdash e : \ty{bool}$}
-\RightLabel{(invariant)}
-\UnaryInfC{$\Sigma,\Delta,\Gamma \vdash
-  \syn{invariant } e \syn{ ;} : \ty{ok}$}
-\end{prooftree}
+  \alwaysNoLine
+  \AxiomC{$A_1 = \Sigma(t_1), \, \ldots, \, A_n = \Sigma(t_n)$}
+  \UnaryInfC{$B_1 = \Sigma(r_1), \, \ldots, \, B_m = \Sigma(r_m)$}
+  \UnaryInfC{$\Sigma \vdash D \therefore \Gamma_3$}
+  \UnaryInfC{$\Gamma = \Gamma_1 \cup \Gamma_2 \cup \Gamma_3$}
+  \UnaryInfC{$\Sigma,\Delta,\Gamma \vdash F : \ty{ok}$}
+  \UnaryInfC{$\Sigma,\Delta,\Gamma \vdash I : \ty{ok}$}
 
+    \AxiomC{$\Gamma_1 = \{(x_1,A_1), \ldots, (x_n, A_n)\}$}
+    \UnaryInfC{$\Gamma_2 = \{(y_1,B_1), \ldots, (y_m, B_m)\}$}
+    \UnaryInfC{\phantom{$\Gamma_3$}} % spacing
+    \UnaryInfC{\phantom{$\Gamma_3$}} % spacing
+    \UnaryInfC{$\Sigma,\Delta,\Gamma \vdash C : \ty{ok}$}
+    \UnaryInfC{$\Sigma,\Delta,\Gamma \vdash A : \ty{ok}$}
+
+  \singleLine
+  \RightLabel{(node)}
+  \BinaryInf$\Sigma,\Delta \vdash \fCenter \ 
+      \syn{node x (} \; x_1 \syn{:} t_1 \syn{,} \dotsc \syn{,}
+      x_n \syn{:} t_n \; \syn{)}$
+    \UnaryInf$\fCenter \quad \syn{returns (} \; y_1 \syn{:} r_1 \syn{,}
+      \dotsc \syn{,} y_m \syn{:} r_m \; \syn{)}$
+    \UnaryInf$\fCenter \quad \syn{let} \; D \; F \; C \; \; I \; A \;
+      \syn{tel}$
+    \UnaryInf$\fCenter \ : \ty{(\# } A_1, \dotsc, A_n \ty{)}
+      \Rightarrow \ty{(\# } B_1, \dotsc, B_m \ty{)}$
+\end{prooftree}
+  
+\caption{Typisierung von Knoten}
+\label{fig:lama_node_types}
+\end{figure}
+
+% Flow
+\begin{figure}[H]
+
+% definitions
 \begin{prooftree}
 \AxiomC{$\Sigma,\Delta,\Gamma \vdash x_1 : A_1 \ldots x_n : A_n$}
 \AxiomC{$\Sigma,\Delta,\Gamma \vdash M_1 : A_1 \ldots M_n : A_n$}
@@ -156,6 +207,7 @@ Datenfluss ($F$), Anfangszustand ($I$), Assertion ($A$) und Invarianten ($P$).
   : \ty{ok}$}
 \end{prooftree}
 
+% transitions
 \begin{prooftree}
 \AxiomC{$\Sigma,\Delta,\Gamma \vdash x_1 : A_1 \ldots x_n : A_n$}
 \AxiomC{$\Sigma,\Delta,\Gamma \vdash M_1 : A_1 \ldots M_n : A_n$}
@@ -165,11 +217,65 @@ Datenfluss ($F$), Anfangszustand ($I$), Assertion ($A$) und Invarianten ($P$).
   : \ty{ok}$}
 \end{prooftree}
 
-TODO
-  
-\caption{Typisierung von Knoten}
+\caption{Typisierung von Fluss}
 \label{fig:lama_node_types}
 \end{figure}
+
+% automaton
+\begin{figure}[H]
+
+% automata
+\begin{prooftree}
+\alwaysNoLine
+
+  \AxiomC{$\Sigma,\Delta,\Gamma \vdash L_1, \dotsc, L_n : \ty{ok}$}
+  \UnaryInfC{$I \in \mathcal{L}$}
+  \UnaryInfC{$\Sigma,\Delta,\Gamma \vdash E_1, \dotsc, E_n : \ty{ok}$}
+  \UnaryInfC{$\Sigma,\Delta,\Gamma \vdash D : \ty{ok}$}
+
+  \AxiomC{$\mathcal{L} = \{L_1, \dotsc, \L_n\}$}
+  \UnaryInfC{\phantom{$\mathcal{L}$}} % spacing
+  \UnaryInfC{$E_1, \dotsc, E_m \in \mathcal{L} \times \mathcal{L}$}
+  \UnaryInfC{\phantom{$,\Gamma$}} % spacing
+\singleLine
+\RightLabel{(automaton)}
+  \BinaryInf$\Sigma,\Delta,\Gamma \vdash \fCenter \ 
+      \syn{automaton let } E \; D$
+    \UnaryInf$\fCenter \quad L_1 \ldots L_n \syn{ initial } I$
+    \UnaryInf$\fCenter \quad E_1 \ldots E_m \; D$
+    \UnaryInf$\fCenter \ \syn{tel } : \ty{ok}$
+\end{prooftree}
+
+% location
+\begin{prooftree}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash F : \ty{ok}$}
+\RightLabel{(location)}
+\UnaryInfC{$\Sigma,\Delta,\Gamma \vdash \syn{location }
+  x \syn{ let } F \syn{ tel } : \ty{ok}$}
+\end{prooftree}
+
+% edge
+\begin{prooftree}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash M : \ty{bool}$}
+\RightLabel{(edge)}
+\UnaryInfC{$\Sigma,\Delta,\Gamma \vdash \syn{edge }
+  \syn{(} u \syn{,} v \syn{)} \syn{:} M : \ty{ok}$}
+\end{prooftree}
+
+% defaults
+\begin{prooftree}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash x_1 : A_1 \ldots x_n : A_n$}
+\AxiomC{$\Sigma,\Delta,\Gamma \vdash M_1 : A_1 \ldots M_n : A_n$}
+\RightLabel{(default)}
+\BinaryInfC{$\Sigma,\Delta,\Gamma \vdash \syn{default }
+  x_1 \syn{ = } M_1 \syn{,} \ldots \syn{,} \; x_n \syn{ = } M_n
+  : \ty{ok}$}
+\end{prooftree}
+
+\caption{Typisierung von Automaten}
+\label{fig:lama_automata_types}
+\end{figure}
+
 
 \begin{figure}[H]
 
@@ -367,6 +473,52 @@ n \in \N $ & \\
 \caption{Typisierung von Enums}
 \end{figure}
 
+%%% constant expressions
+\begin{figure}[H]
+
+\begin{prooftree}
+\AxiomC{$\Gamma(x) = A$}
+\RightLabel{(variable)}
+\UnaryInfC{$\Gamma \vdash x : A$}
+\end{prooftree}
+
+
+\begin{tabular}{ll}
+% bool
+\AxiomC{}
+\RightLabel{(true-bool)}
+\UnaryInfC{$\vdash \syn{true} : \ty{bool}$}
+\DisplayProof
+&
+\AxiomC{}
+\RightLabel{(false-bool)}
+\UnaryInfC{$\vdash \syn{false} : \ty{bool}$}
+\DisplayProof \\ \\
+% unbounded numbers
+\AxiomC{$a \in \Z$}
+\RightLabel{(int-const)}
+\UnaryInfC{$\vdash \syn{a} : \ty{int}$}
+\DisplayProof
+&
+\AxiomC{$a,b \in \Z$}
+\RightLabel{(real-const)}
+\UnaryInfC{$\vdash \syn{a / b} : \ty{real}$}
+\DisplayProof \\ \\
+% bounded numbers
+\AxiomC{$a \in \{-2^{n-1}, \ldots, 2^{n-1}-1\}$}
+\RightLabel{(sint-const)}
+\UnaryInfC{$\vdash \syn{sint[n](a)} : \ty{sint[n]}$}
+\DisplayProof
+&
+\AxiomC{$a \in \{0, \ldots, 2^n-1\}$}
+\RightLabel{(uint-const)}
+\UnaryInfC{$\vdash \syn{uint[n](a)} : \ty{uint[n]}$}
+\DisplayProof \\ \\
+\end{tabular}
+
+\label{fig:lama_const_expr_types}
+\caption{Typisierung von Atomen (Variablen, Konstanten)}
+\end{figure}
 
 %</typerules>
 
