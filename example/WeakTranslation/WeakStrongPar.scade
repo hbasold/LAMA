@@ -6,7 +6,6 @@ node WeakStrongPar(c0 : bool; c1 : bool; c2 : bool; c3 : bool)
     state3 : bool default = false;
     state4 : bool default = false)
 let
-  
   automaton SM1
     initial state State0
       let
@@ -45,11 +44,11 @@ node Prop(c0 : bool; c1 : bool; c2 : bool; c3 : bool)
 let
   state0, state1, state2, state3, state4
     = WeakStrongPar(c0, c1, c2, c3);
-  
+
   c0_1 = false -> pre c0;
   c1_1 = false -> pre c1;
   state0_1 = true -> pre state0;
-  state1_1 = false -> pre state1;  
+  state1_1 = false -> pre state1;
 tel
 
 /*
@@ -67,7 +66,7 @@ invariant
   ;
 
 in current implementation:
-  
+
 invariant
   (and (and (and (and (and
     (=> (and (and state0_1_out c0_1_out) (not c2)) state1_out) -- CondAssoc
