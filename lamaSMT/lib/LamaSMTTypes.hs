@@ -11,7 +11,7 @@ import Data.Array as Arr
 import Control.Arrow ((&&&))
 
 import Language.SMTLib2 as SMT
-import Language.SMTLib2.Internals as SMT (SMTExpr(Fun))
+import Language.SMTLib2.Internals as SMT
 import SMTEnum
 
 data TypedExpr i

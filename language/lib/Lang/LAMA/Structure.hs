@@ -233,19 +233,19 @@ instance (Ident i, Eq const, Eq atom) => Eq1 (GExpr i const atom) where
 
 
 instance Show1 GProd where
-  show1 = show
+  showsPrec1 = showsPrec
 
 instance Show1 GConst where
-  show1 = show
+  showsPrec1 = showsPrec
 
 instance (Ident i, Show const) => Show1 (GConstExpr i const) where
-  show1 = show
+  showsPrec1 = showsPrec
 
 instance (Ident i, Show const) => Show1 (GAtom i const) where
-  show1 = show
+  showsPrec1 = showsPrec
   
 instance (Ident i, Show const, Show atom) => Show1 (GExpr i const atom) where
-  show1 = show
+  showsPrec1 = showsPrec
 
 instance Monoid (GFlow i expr) where
   mempty = Flow [] []
