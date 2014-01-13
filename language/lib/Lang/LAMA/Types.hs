@@ -69,7 +69,8 @@ instance (Ident i, Eq1 e) => Eq1 (Typed0 i e) where
   (Typed e1 t1) ==# (Typed e2 t2) = (e1 ==# e2) && (t1 == t2)
 
 instance (Ident i, Show1 e) => Show1 (Typed0 i e) where
-  show1 (Typed e t) = "(Typed (" ++ show1 e ++ ") (" ++ show t ++ "))"
+  showsPrec1 p (Typed e t) =
+    showParen (p > 10) $ showString "Typed" . showsPrec1 p e . showsPrec p t
 
 type Typed i e = Fix (Typed0 i e)
 
