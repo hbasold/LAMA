@@ -31,18 +31,17 @@ unProd' (ProdExpr e) = e
 unProd' e = error $ "Cannot unProd: " ++ show e
 
 type StreamPos = SMTExpr Natural
-type Stream t = SMTExpr (SMTFun StreamPos t)
+type Stream t = SMTFun StreamPos t
 data TypedStream i
   = BoolStream (Stream Bool)
   | IntStream (Stream Integer)
   | RealStream (Stream Rational)
   | EnumStream (Stream SMTEnum)
   | ProdStream (Array Int (TypedStream i))
-  deriving Show
+--  deriving Show
 
-extractStreamAnn :: Stream t -> SMTAnnotation t
-extractStreamAnn (Fun _ _ ann) = ann
-extractStreamAnn _ = error "Not a stream"
+extractStreamAnn :: SMTType t => Stream t -> SMTAnnotation Natural -> SMTAnnotation t
+extractStreamAnn = inferResAnnotation
 
 mkProdStream :: [TypedStream i] -> TypedStream i
 mkProdStream [] = error "Cannot create empty product stream"
@@ -94,8 +93,9 @@ liftBool2 :: (SMTExpr Bool -> SMTExpr Bool -> SMTExpr Bool)
 liftBool2 f (BoolExpr e1) (BoolExpr e2) = BoolExpr $ f e1 e2
 liftBool2 _ e1 e2 = error $ "liftBool2: arguments are not boolean: " ++ show e1 ++ "; " ++ show e2
 
-liftBoolL :: ([SMTExpr Bool] -> SMTExpr Bool) -> [TypedExpr i] -> TypedExpr i
-liftBoolL f es@((BoolExpr _):_) = BoolExpr . f $ map unBool es
+liftBoolL :: (SMTFunction f, SMTFunArg f ~ [SMTExpr Bool], SMTFunRes f ~ Bool) =>
+             f -> [TypedExpr i] -> TypedExpr i
+liftBoolL f es@((BoolExpr _):_) = BoolExpr . app f $ map unBool es
 liftBoolL _ es = error $ "Cannot lift bool expr for" ++ show es
 
 lift2 :: (forall a. SMTType a => SMTExpr a -> SMTExpr a -> SMTExpr a)

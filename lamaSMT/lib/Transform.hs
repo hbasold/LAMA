@@ -55,14 +55,14 @@ import TransformEnv
 -- FIXME: Make behaviour configurable, i.e. bottom can be some
 -- default value or a left open stream
 -- (atm it does the former).
-getBottom :: TypedStream i -> TypedExpr i
-getBottom (BoolStream _) = BoolExpr $ constant False
-getBottom (IntStream _) = IntExpr $ constant 0xdeadbeef
-getBottom (RealStream _) = RealExpr . constant $ fromInteger 0xdeadbeef
-getBottom (EnumStream s) =
-  let ann = extractStreamAnn s
+getBottom :: NatImplementation -> TypedStream i -> TypedExpr i
+getBottom _ (BoolStream _) = BoolExpr $ constant False
+getBottom _ (IntStream _) = IntExpr $ constant 0xdeadbeef
+getBottom _ (RealStream _) = RealExpr . constant $ fromInteger 0xdeadbeef
+getBottom natImpl (EnumStream s) =
+  let ann = extractStreamAnn s natImpl
   in EnumExpr $ constantAnn (enumBottom ann) ann
-getBottom (ProdStream strs) = ProdExpr $ fmap getBottom strs
+getBottom natImpl (ProdStream strs) = ProdExpr $ fmap (getBottom natImpl) strs
 
 -- | Transforms a LAMA program into a set of formulas which is
 -- directly declared and a set of defining functions. Those functions
@@ -152,7 +152,9 @@ enumVar :: MonadSMT m
 enumVar argAnn ann@(EnumTypeAnn _ _ _) = liftSMT (funAnn argAnn ann) >>= return . (, [])
 enumVar argAnn ann@(EnumBitAnn size _ biggestCons) =
   do v <- liftSMT (funAnn argAnn ann)
-     constr <- liftSMT $ defFunAnn argAnn unit $ \t -> bvule ((toBVExpr v) `app` t) (constantAnn biggestCons size)
+     constr <- liftSMT $
+               defFunAnn argAnn unit $
+               \t -> bvule (toBVExpr (v `app` t)) (constantAnn biggestCons size)
      return (v, [SingleDef constr])
 
 -- | Declares a node and puts the interface variables into the environment.

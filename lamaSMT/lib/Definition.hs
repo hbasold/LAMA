@@ -9,12 +9,12 @@ import LamaSMTTypes
 data Definition =
   SingleDef (Stream Bool)
   | ProdDef (Array Int Definition)
-  deriving Show
+--  deriving Show
 
 ensureDefinition :: TypedStream i -> Definition
 ensureDefinition (BoolStream s) = SingleDef s
 ensureDefinition (ProdStream ps) = ProdDef $ fmap ensureDefinition ps
-ensureDefinition s = error $ "ensureDefinition: not a boolean stream: " ++ show s
+ensureDefinition s = error $ "ensureDefinition: not a boolean stream" -- : " ++ show s
 
 assertDefinition :: MonadSMT m => (SMTExpr Bool -> SMTExpr Bool) -> StreamPos -> Definition -> m ()
 assertDefinition f i (SingleDef s) = liftSMT $ assert (f $ s `app` i)

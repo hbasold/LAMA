@@ -6,6 +6,7 @@ module SMTEnum where
 
 import Language.SMTLib2.Internals
 import Language.SMTLib2 (BitVector)
+import Language.SMTLib2.Functions (SMTFun(..))
 import qualified Data.AttoLisp as L
 import Data.Text (Text, unpack)
 import qualified Data.Bimap as Bimap
@@ -76,10 +77,11 @@ instance SMTValue SMTEnum where
          Nothing -> error $ "Unknown enum " ++ unpack c
          Just bv -> mangle bv size
 
-{-
-toBVExpr :: (Args a) => SMTExpr (SMTFun a SMTEnum) -> SMTExpr (SMTFun a BitVector)
-toBVExpr e =
-  case e of
-    Fun x argAnn (EnumBitAnn size _ _) -> Fun x argAnn size
+-- | Interpret an expression of type SMTEnum as bitvector expression
+toBVExpr :: SMTExpr SMTEnum -> SMTExpr BVType
+toBVExpr (Var n (EnumBitAnn size _ _)) = Var n size
+toBVExpr e@(App f ') =
+  case inferResAnnotation f (argAnn f) of
+    EnumBitAnn size _ _ -> App (SMTFun f size) e'
     _ -> error $ "cannot convert enum expr to bit vector expr: " ++ show e
--}
+toBVExpr e = error $ "cannot convert enum expr to bit vector expr: " ++ show e
