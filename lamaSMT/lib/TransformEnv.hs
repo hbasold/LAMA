@@ -9,8 +9,6 @@ import Lang.LAMA.Identifier
 import Lang.LAMA.Typing.TypedStructure
 import Lang.LAMA.Types
 import Language.SMTLib2 as SMT
-import Data.Unit
-
 
 import Data.Array as Arr
 import qualified Data.Map as Map
@@ -24,6 +22,7 @@ import Control.Monad.Error (ErrorT(..), MonadError(..))
 import SMTEnum
 import NatInstance
 import LamaSMTTypes
+import Internal.Monads
 
 data NodeEnv i = NodeEnv
                  { nodeEnvIn :: [TypedStream i]
@@ -86,13 +85,20 @@ lookupVar :: (MonadState (Env i) m, MonadError String m, Ident i) => i -> m (Typ
 lookupVar x = gets (vars . varEnv) >>= lookupErr ("Unknown variable " ++ identPretty x) x
 
 lookupNode :: Ident i => i -> DeclM i (NodeEnv i)
-lookupNode n = gets (nodes . varEnv) >>= lookupErr ("Unknown node " ++ identPretty n) n
+lookupNode n
+  = gets (nodes . varEnv)
+    >>= lookupErr ("Unknown node " ++ identPretty n) n
 
-lookupEnumAnn :: (MonadState (Env i) m, MonadError String m, Ident i) => i -> m (SMTAnnotation SMTEnum)
-lookupEnumAnn t = gets enumAnn >>= lookupErr ("Unknown enum " ++ identPretty t) t
+lookupEnumAnn :: (MonadState (Env i) m, MonadError String m, Ident i) =>
+                 i -> m (SMTAnnotation SMTEnum)
+lookupEnumAnn t
+  = gets enumAnn >>=
+    lookupErr ("Unknown enum " ++ identPretty t) t
 
 lookupEnumConsAnn :: Ident i => EnumConstr i -> DeclM i (SMTAnnotation SMTEnum)
-lookupEnumConsAnn x = gets enumConsAnn >>= lookupErr ("Unknown enum constructor " ++ identPretty x) x
+lookupEnumConsAnn x
+  = gets enumConsAnn
+    >>= lookupErr ("Unknown enum constructor " ++ identPretty x) x
 
 localVarEnv :: (VarEnv i -> VarEnv i) -> DeclM i a -> DeclM i a
 localVarEnv f m =
@@ -108,14 +114,23 @@ nextAutomatonIndex = state $ \env ->
   in (i, env { currAutomatonIndex = i+1 })
 
 -- | Defines a stream analogous to defFun.
-defStream :: Ident i => Type i -> (StreamPos -> TypedExpr i) -> DeclM i (TypedStream i)
+defStream :: Ident i =>
+             Type i -> (StreamPos -> TypedExpr i) -> DeclM i (TypedStream i)
 defStream ty sf = gets natImpl >>= \natAnn -> defStream' natAnn ty sf
   where
-    defStream' natAnn (GroundType BoolT) f = liftSMT . fmap BoolStream $ defFunAnn natAnn unit (unBool' . f)
-    defStream' natAnn (GroundType IntT) f = liftSMT . fmap IntStream $ defFunAnn natAnn unit (unInt . f)
-    defStream' natAnn (GroundType RealT) f = liftSMT . fmap RealStream $ defFunAnn natAnn unit (unReal . f)
+    defStream' :: Ident i =>
+                  NatImplementation -> Type i -> (StreamPos -> TypedExpr i)
+                  -> DeclM i (TypedStream i)
+    defStream' natAnn (GroundType BoolT) f
+      = liftSMT . fmap BoolStream $ defFunAnn natAnn (unBool' . f)
+    defStream' natAnn (GroundType IntT) f
+      = liftSMT . fmap IntStream $ defFunAnn natAnn (unInt . f)
+    defStream' natAnn (GroundType RealT) f
+      = liftSMT . fmap RealStream $ defFunAnn natAnn (unReal . f)
     defStream' natAnn (GroundType _) f = $notImplemented
-    defStream' natAnn (EnumType t) f = lookupEnumAnn t >>= \a -> liftSMT . fmap EnumStream $ defFunAnn natAnn a (unEnum . f)
+    defStream' natAnn (EnumType alias) f
+      = do ann <- lookupEnumAnn alias
+           liftSMT $ fmap (EnumStream ann) $ defFunAnn natAnn (unEnum . f)
     -- We have to pull the product out of a stream.
     -- If we are given a function f : StreamPos -> (Ix -> TE) = TypedExpr as above,
     -- we would like to have as result something like:
@@ -124,8 +139,9 @@ defStream ty sf = gets natImpl >>= \natAnn -> defStream' natAnn ty sf
     -- Here i is the index into the product and t,t' are time variables.
     defStream' natAnn (ProdType ts) f =
       do let u = length ts - 1
-         x <- mapM (\(ty2, i) -> defStream' natAnn ty2 ((! i) . unProd' . f)) $ zip ts [0..u]
+         x <- mapM defParts $ zip ts [0..u]
          return . ProdStream $ listArray (0,u) x
+      where defParts (ty2, i) = defStream' natAnn ty2 ((! i) . unProd' . f)
 
 -- stream :: Ident i => Type i -> DeclM i (Stream t)
 

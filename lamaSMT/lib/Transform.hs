@@ -21,7 +21,7 @@ import Lang.LAMA.Identifier
 import Lang.LAMA.Typing.TypedStructure
 import Lang.LAMA.Types
 import Language.SMTLib2 as SMT
-import Language.SMTLib2.Internals (SMTType(..))
+import Language.SMTLib2.Internals (declareType)
 import Data.Unit
 import Data.String (IsString(..))
 import Data.Array as Arr
@@ -37,32 +37,30 @@ import Data.Traversable
 import Data.Foldable (foldlM, foldrM)
 import Data.Monoid
 
-import Control.Monad (liftM)
 import Control.Monad.Trans.Class
 import Control.Monad.State (StateT(..), MonadState(..), gets)
 import Control.Monad.Error (ErrorT(..), MonadError(..))
 import Control.Monad.Reader (ReaderT(..), asks)
 import Control.Applicative (Applicative(..), (<$>))
-import Control.Arrow ((&&&), first, second)
+import Control.Arrow ((&&&), second)
 
 import SMTEnum
 import LamaSMTTypes
 import Definition
 import TransformEnv
+import Internal.Monads
 
 -- | Gets an "undefined" value for a given type of stream.
 -- The stream itself is not further analysed.
 -- FIXME: Make behaviour configurable, i.e. bottom can be some
 -- default value or a left open stream
 -- (atm it does the former).
-getBottom :: NatImplementation -> TypedStream i -> TypedExpr i
-getBottom _ (BoolStream _) = BoolExpr $ constant False
-getBottom _ (IntStream _) = IntExpr $ constant 0xdeadbeef
-getBottom _ (RealStream _) = RealExpr . constant $ fromInteger 0xdeadbeef
-getBottom natImpl (EnumStream s) =
-  let ann = extractStreamAnn s natImpl
-  in EnumExpr $ constantAnn (enumBottom ann) ann
-getBottom natImpl (ProdStream strs) = ProdExpr $ fmap (getBottom natImpl) strs
+getBottom :: TypedStream i -> TypedExpr i
+getBottom (BoolStream _)     = BoolExpr $ constant False
+getBottom (IntStream _)      = IntExpr  $ constant 0xdeadbeef
+getBottom (RealStream _)     = RealExpr . constant $ fromInteger 0xdeadbeef
+getBottom (EnumStream ann _) = EnumExpr $ constantAnn (enumBottom ann) ann
+getBottom (ProdStream strs)  = ProdExpr $ fmap getBottom strs
 
 -- | Transforms a LAMA program into a set of formulas which is
 -- directly declared and a set of defining functions. Those functions
@@ -71,7 +69,9 @@ getBottom natImpl (ProdStream strs) = ProdExpr $ fmap (getBottom natImpl) strs
 -- variables together with their defining stream. So if the defining
 -- function (see above) is called for a cycle the corresponding stream
 -- gets a value at that time (after getting the model).
-lamaSMT :: Ident i => NatImplementation -> EnumImplementation -> Program i -> ErrorT String SMT (ProgDefs, VarEnv i)
+lamaSMT :: Ident i =>
+           NatImplementation -> EnumImplementation -> Program i
+           -> ErrorT String SMT (ProgDefs, VarEnv i)
 lamaSMT natImpl' enumImpl' =
   fmap (second varEnv)
   . flip runStateT (emptyEnv natImpl' enumImpl')
@@ -119,33 +119,41 @@ declareDecls :: Ident i => Maybe (Stream Bool) -> Set i -> Declarations i -> Dec
 declareDecls activeCond excludeNodes d =
   do let (excluded, toDeclare) = Map.partitionWithKey (\n _ -> n `Set.member` excludeNodes) $ declsNode d
      defs <- mapM (uncurry $ declareNode activeCond) $ Map.toList toDeclare
-     (inp, constr1) <- declareVars $ declsInput d
-     (locs, constr2) <- declareVars $ declsLocal d
-     (states, constr3) <- declareVars $ declsState d
+     inp <- declareVars $ declsInput d
+     locs <- declareVars $ declsLocal d
+     states <- declareVars $ declsState d
      modifyVars $ mappend (inp `mappend` locs `mappend` states)
-     return (concat defs ++ constr1 ++ constr2 ++ constr3, excluded)
+     return (concat defs, excluded)
 
-declareVars :: Ident i => [Variable i] -> DeclM i (Map i (TypedStream i), [Definition])
-declareVars = fmap (first Map.fromList) . declareVarList
+declareVars :: Ident i => [Variable i] -> DeclM i (Map i (TypedStream i))
+declareVars = fmap (Map.fromList) . declareVarList
 
-declareVarList :: Ident i => [Variable i] -> DeclM i ([(i, TypedStream i)], [Definition])
-declareVarList = liftM (second concat . unzip) . mapM declareVar
+declareVarList :: Ident i => [Variable i] -> DeclM i ([(i, TypedStream i)])
+declareVarList = mapM declareVar
 
-declareVar :: Ident i => Variable i -> DeclM i ((i, TypedStream i), [Definition])
+declareVar :: Ident i => Variable i -> DeclM i ((i, TypedStream i))
 declareVar (Variable x t) =
   do natAnn <- gets natImpl
-     first (x,) <$> typedVar natAnn t
+     (x,) <$> typedVar natAnn t
   where
-    typedVar :: Ident i => SMTAnnotation Natural -> Type i -> DeclM i (TypedStream i, [Definition])
-    typedVar ann (GroundType BoolT) = liftSMT $ fmap ((, []) . BoolStream) $ funAnn ann unit
-    typedVar ann (GroundType IntT) = liftSMT $ fmap ((, []) . IntStream) $ funAnn ann unit
-    typedVar ann (GroundType RealT) = liftSMT $ fmap ((, []) . RealStream) $ funAnn ann unit
+    typedVar :: Ident i =>
+                SMTAnnotation Natural -> Type i
+                -> DeclM i (TypedStream i)
+    typedVar ann (GroundType BoolT)
+      = liftSMT $ fmap BoolStream $ funAnn ann unit
+    typedVar ann (GroundType IntT)
+      = liftSMT $ fmap IntStream $ funAnn ann unit
+    typedVar ann (GroundType RealT)
+      = liftSMT $ fmap RealStream $ funAnn ann unit
     typedVar ann (GroundType _) = $notImplemented
-    typedVar ann (EnumType et) = lookupEnumAnn et >>= fmap (first EnumStream) . enumVar ann
+    typedVar ann (EnumType et)
+      = do etAnn <- lookupEnumAnn et
+           liftSMT $ fmap (EnumStream etAnn) $ funAnn ann etAnn
     typedVar ann (ProdType ts) =
-      do (vs, constraints) <- liftM (second concat . unzip) $ mapM (typedVar ann) ts
-         return (ProdStream $ listArray (0, (length vs) - 1) vs, constraints)
-
+      do vs <- mapM (typedVar ann) ts
+         return (ProdStream $ listArray (0, (length vs) - 1) vs)
+{-
+-- | Declares a stream of type Enum, including possible extra constraints on it.
 enumVar :: MonadSMT m
            => SMTAnnotation Natural -> SMTAnnotation SMTEnum
            -> m (Stream SMTEnum, [Definition])
@@ -156,6 +164,7 @@ enumVar argAnn ann@(EnumBitAnn size _ biggestCons) =
                defFunAnn argAnn unit $
                \t -> bvule (toBVExpr (v `app` t)) (constantAnn biggestCons size)
      return (v, [SingleDef constr])
+-}
 
 -- | Declares a node and puts the interface variables into the environment.
 -- Here it becomes crucial that a node is used at most once in a program, since
@@ -166,27 +175,36 @@ enumVar argAnn ann@(EnumBitAnn size _ biggestCons) =
 -- (using getNodesInLocations). Then all nodes _except_ those found before are
 -- declared. The other nodes are deferred to be declared in the corresponding
 -- location (see declareAutomaton and declareLocations).
-declareNode :: Ident i => Maybe (Stream Bool) -> i -> Node i -> DeclM i [Definition]
+declareNode :: Ident i =>
+               Maybe (Stream Bool) -> i -> Node i -> DeclM i [Definition]
 declareNode active nName nDecl =
-  do (interface, defs) <- localVarEnv (const emptyVarEnv) $ declareNode' active nDecl
+  do (interface, defs) <- localVarEnv (const emptyVarEnv) $
+                          declareNode' active nDecl
      modifyNodes $ Map.insert nName interface
      return defs
   where
-    declareNode' :: Ident i => Maybe (Stream Bool) -> Node i -> DeclM i (NodeEnv i, [Definition])
+    declareNode' :: Ident i =>
+                    Maybe (Stream Bool) -> Node i
+                    -> DeclM i (NodeEnv i, [Definition])
     declareNode' activeCond n =
-      do let automNodes = mconcat . map getNodesInLocations . Map.elems $ nodeAutomata n
-         (declDefs, undeclaredNodes) <- declareDecls activeCond automNodes $ nodeDecls n
-         (outDecls, constr1) <- declareVarList $ nodeOutputs n
+      do let automNodes =
+               mconcat . map getNodesInLocations . Map.elems $ nodeAutomata n
+         (declDefs, undeclaredNodes) <-
+           declareDecls activeCond automNodes $ nodeDecls n
+         outDecls <- declareVarList $ nodeOutputs n
          ins <- mapM (lookupVar . varIdent) . declsInput $ nodeDecls n
          let outs = map snd outDecls
          modifyVars $ Map.union (Map.fromList outDecls)
          flowDefs <- declareFlow activeCond $ nodeFlow n
-         automDefs <- fmap concat . mapM (declareAutomaton activeCond undeclaredNodes) . Map.toList $ nodeAutomata n
+         automDefs <-
+           fmap concat .
+           mapM (declareAutomaton activeCond undeclaredNodes) .
+           Map.toList $ nodeAutomata n
          assertInits $ nodeInitial n
          precondDef <- declarePrecond activeCond $ nodeAssertion n
          varDefs <- gets varEnv
          return (NodeEnv ins outs varDefs,
-                 declDefs ++ constr1 ++ flowDefs ++ automDefs ++ [precondDef])
+                 declDefs ++ flowDefs ++ automDefs ++ [precondDef])
 
 -- | Extracts all nodes which are used inside some location.
 getNodesInLocations :: Ident i => Automaton i -> Set i
@@ -197,18 +215,22 @@ getNodesInLocations = mconcat . map getUsedLoc . automLocations
     getUsed (NodeUsage _ n _) = Set.singleton n
     getUsed _ = Set.empty
 
--- | Creates definitions for instant definitions. In case of a node usage this may
--- produce multiple definitions. If 
-declareInstantDef :: Ident i => Maybe (Stream Bool) -> InstantDefinition i -> DeclM i [Definition]
+-- | Creates definitions for instant definitions. In case of a node usage this
+-- may produce multiple definitions. If 
+declareInstantDef :: Ident i =>
+                     Maybe (Stream Bool) -> InstantDefinition i
+                     -> DeclM i [Definition]
 declareInstantDef activeCond inst@(InstantExpr x _) =
   do (res, []) <- trInstant (error "no activation condition") inst
      xStream <- lookupVar x
-     def <- declareConditionalAssign activeCond id (const $ getBottom xStream) xStream res
+     def <- declareConditionalAssign
+            activeCond id (const $ getBottom xStream) xStream res
      return [def]
 declareInstantDef activeCond inst@(NodeUsage x _ _) =
   do (outp, inpDefs) <- trInstant activeCond inst
      xStream <- lookupVar x
-     outpDef <- declareConditionalAssign activeCond id (const $ getBottom xStream) xStream outp
+     outpDef <- declareConditionalAssign
+                activeCond id (const $ getBottom xStream) xStream outp
      return $ inpDefs ++ [outpDef]
 
 -- | Translates an instant definition into a function which can be
@@ -221,7 +243,9 @@ trInstant _ (InstantExpr _ e) = return (runTransM $ trExpr e, [])
 trInstant inpActive (NodeUsage _ n es) =
   do nEnv <- lookupNode n
      let esTr = map (runTransM . trExpr) es
-     inpDefs <- mapM (\(x, e) -> declareConditionalAssign inpActive id (const $ getBottom x) x e)
+     inpDefs <- mapM (\(x, e) ->
+                       declareConditionalAssign
+                       inpActive id (const $ getBottom x) x e)
                 $ zip (nodeEnvIn nEnv) esTr
      let y = mkProdStream (nodeEnvOut nEnv)
      return (const $ appStream y, inpDefs)
@@ -288,26 +312,34 @@ declareFlow activeCond f =
 -- * defining formulas for each variables (see declareLocations)
 -- * defining the variables for the active location by using the edge conditions (mkTransitionEq)
 -- * asserting the initial location
-declareAutomaton :: Ident i => Maybe (Stream Bool) -> Map i (Node i) -> (Int, Automaton i) -> DeclM i [Definition]
+declareAutomaton :: Ident i =>
+                    Maybe (Stream Bool)
+                    -> Map i (Node i)
+                    -> (Int, Automaton i)
+                    -> DeclM i [Definition]
 declareAutomaton activeCond localNodes (_, a) =
   do automIndex <- nextAutomatonIndex
      let automName = "Autom" ++ show automIndex
          enumName = fromString $ automName ++ "States"
          stateT = EnumType enumName
-         locNames = Map.fromList . map (id &&& (locationName automName . runLocationId)) $ map getLocId (automLocations a)
+         locNames
+           = Map.fromList
+             . map (id &&& (locationName automName . runLocationId))
+             $ map getLocId (automLocations a)
          locCons = fmap EnumCons locNames
          enum = EnumDef $ Map.elems locCons
          sName = fromString $ "s" ++ (identString enumName)
          s_1Name = fromString $ "s_1" ++ (identString enumName)
      declareEnums $ Map.singleton enumName enum
-     ((s, s_1), constr) <- mkStateVars enumName
-     modifyVars (`Map.union` Map.fromList [(sName, EnumStream $ s), (s_1Name, EnumStream $ s_1)])
+     (s, s_1, eAnn) <- mkStateVars enumName
+     modifyVars (
+       `Map.union` Map.fromList [(sName, EnumStream eAnn s), (s_1Name, EnumStream eAnn s_1)])
      locDefs <- (flip runReaderT (locCons, localNodes))
                 $ declareLocations activeCond s
                 (automDefaults a) (automLocations a)
      edgeDefs <- mkTransitionEq activeCond stateT locCons sName s_1Name $ automEdges a
      assertInit (s_1Name, locConsConstExpr locCons stateT $ automInitial a)
-     return $ constr ++ locDefs ++ edgeDefs
+     return $ locDefs ++ edgeDefs
 
   where
     getLocId (Location i _) = i
@@ -326,13 +358,14 @@ declareAutomaton activeCond localNodes (_, a) =
 -- s represents the current state which is calculated
 -- at the beginning of a clock cycle. s_1 saves this
 -- state for the next cycle.
-mkStateVars :: Ident i => i -> DeclM i ((Stream SMTEnum, Stream SMTEnum), [Definition])
+mkStateVars :: Ident i =>
+               i -> DeclM i (Stream SMTEnum, Stream SMTEnum, EnumAnn)
 mkStateVars stateEnum =
-  do enumAnn <- lookupEnumAnn stateEnum
+  do stEnumAnn <- lookupEnumAnn stateEnum
      natAnn <- gets natImpl
-     (s, constr1) <- enumVar natAnn enumAnn
-     (s_1, constr2) <- enumVar natAnn enumAnn
-     return ((s, s_1), constr1 ++ constr2)
+     s <- liftSMT $ funAnn natAnn stEnumAnn
+     s_1 <- liftSMT $ funAnn natAnn stEnumAnn
+     return (s, s_1, stEnumAnn)
 
 -- | Extracts the the expressions for each variable seperated into
 -- local definitons and state transitions.
@@ -407,11 +440,14 @@ declareLocDef :: Ident i => Maybe (Stream Bool) -> Stream SMTEnum
                  -> AutomTransM i (Env i -> StreamPos -> TypedExpr i, [Definition])
 declareLocDef activeCond s defaultExpr locs =
   do (innerPat, locs') <- case defaultExpr of
-       Nothing -> case locs of (l:ls) -> (, ls) <$> uncurry (trLocInstant activeCond) l
+       Nothing -> case locs of
+         (l:ls) -> (, ls) <$> uncurry (trLocInstant activeCond) l
+         _      -> error "Empty automaton not allowed"
        Just e -> return ((runTransM $ trExpr e, []), locs)
-     foldlM (\(f, defs) (l, inst) -> trLocInstant activeCond l inst >>= \(res, defs') ->
-              mkLocationMatch s f l res >>=
-              return . (, defs ++ defs'))
+     foldlM (\(f, defs) (l, inst)
+             -> trLocInstant activeCond l inst >>= \(res, defs') ->
+             mkLocationMatch s f l res >>=
+             return . (, defs ++ defs'))
        innerPat locs'
   where
     trLocInstant :: Ident i => Maybe (Stream Bool)
@@ -429,8 +465,13 @@ trLocTransition :: Ident i => Stream SMTEnum
                       -> [(LocationId i, StateTransition i)]
                       -> AutomTransM i (Env i -> StreamPos -> TypedExpr i)
 trLocTransition s locs =
-  let (innerPat, locs') = case locs of (l:ls) -> (trLocTrans $ snd l, ls)
-  in foldlM (\f -> uncurry (mkLocationMatch s f) . second trLocTrans) innerPat locs'
+  let (innerPat, locs') = case locs of
+        (l:ls) -> (trLocTrans $ snd l, ls)
+        _      -> error "Empty automaton not allowed."
+  in foldlM (\f
+             -> uncurry (mkLocationMatch s f)
+                . second trLocTrans)
+     innerPat locs'
   where
     trLocTrans (StateTransition _ e) = runTransM $ trExpr e
 
@@ -449,8 +490,11 @@ mkLocationMatch s f l lExpr =
 
 -- | Creates a variable which is true iff the given activation
 -- condition is true and the the given location is active.
-mkLocationActivationCond :: Ident i => Maybe (Stream Bool) -> Stream SMTEnum
-                            -> LocationId i -> AutomTransM i (Stream Bool, Definition)
+mkLocationActivationCond :: Ident i =>
+                            Maybe (Stream Bool)
+                            -> Stream SMTEnum
+                            -> LocationId i
+                            -> AutomTransM i (Stream Bool, Definition)
 mkLocationActivationCond activeCond s l =
   do lCons <- lookupLocName l
      lEnum <- lift $ trEnumConsAnn lCons <$> lookupEnumConsAnn lCons
@@ -465,9 +509,14 @@ mkLocationActivationCond activeCond s l =
 -- the next location (s). This is a chain of ite for each state surrounded
 -- by a match on the last location (s_1). The definition of s_1 is just
 -- the saving of s for the next cycle.
-mkTransitionEq :: Ident i => Maybe (Stream Bool) -> Type i -> Map (LocationId i) (EnumConstr i)
-                  -> i -> i
-                  -> [Edge i] -> DeclM i [Definition]
+mkTransitionEq :: Ident i =>
+                  Maybe (Stream Bool)
+                  -> Type i
+                  -> Map (LocationId i) (EnumConstr i)
+                  -> i
+                  -> i
+                  -> [Edge i]
+                  -> DeclM i [Definition]
 mkTransitionEq activeCond locationEnumTy locationEnumConstrs s s_1 es =
   -- we reuse the translation machinery by building a match expression and
   -- translating that.
@@ -475,11 +524,17 @@ mkTransitionEq activeCond locationEnumTy locationEnumConstrs s s_1 es =
   -- source get a lower priority.
   do stateDef <- declareInstantDef activeCond
                  . InstantExpr s
-                 . mkMatch locationEnumConstrs locationEnumTy s_1 (mkTyped (AtExpr $ AtomVar s_1) locationEnumTy)
+                 . mkMatch
+                   locationEnumConstrs
+                   locationEnumTy
+                   s_1
+                   (mkTyped (AtExpr $ AtomVar s_1) locationEnumTy)
                  . Map.toList
                  $ foldr addEdge Map.empty es
      stateTr <- declareTransition activeCond
-                $ StateTransition s_1 (mkTyped (AtExpr $ AtomVar s) locationEnumTy)
+                $ StateTransition
+                  s_1
+                  (mkTyped (AtExpr $ AtomVar s) locationEnumTy)
      return $ stateDef ++ [stateTr]
   where
      addEdge (Edge h t c) m =
@@ -497,10 +552,13 @@ mkTransitionEq activeCond locationEnumTy locationEnumConstrs s s_1 es =
      extendStateExpr _ _ t c (Just e) = Just $ preserveType (Ite c t) e
 
      -- | Build match expression (pattern matches on last state s_1)
-     mkMatch :: Ord i => Map (LocationId i) (EnumConstr i) -> Type i -> i -> Expr i -> [(LocationId i, Expr i)] -> Expr i
-     mkMatch locCons locationT s_1 defaultExpr locExprs =
+     mkMatch :: Ord i =>
+                Map (LocationId i) (EnumConstr i)
+                -> Type i -> i -> Expr i -> [(LocationId i, Expr i)]
+                -> Expr i
+     mkMatch locCons locationT s_1' defaultExpr locExprs =
        mkTyped (
-         Match (mkTyped (AtExpr $ AtomVar s_1) locationT)
+         Match (mkTyped (AtExpr $ AtomVar s_1') locationT)
          $ (mkPattern locExprs) ++ (mkDefaultPattern defaultExpr))
        locationT
        where
@@ -613,18 +671,18 @@ trEnumCons :: Ident i => EnumConstr i -> TransM i (SMTExpr SMTEnum)
 trEnumCons x = lookupEnumConsAnn' x >>= return . trEnumConsAnn x
 
 applyOp :: BinOp -> TypedExpr i -> TypedExpr i -> TypedExpr i
-applyOp Or e1 e2 = liftBoolL or' [e1, e2]
-applyOp And e1 e2 = liftBoolL and' [e1, e2]
-applyOp Xor e1 e2 = liftBool2 xor e1 e2
+applyOp Or      e1 e2 = liftBoolL or'  [e1, e2]
+applyOp And     e1 e2 = liftBoolL and' [e1, e2]
+applyOp Xor     e1 e2 = liftBoolL xor  [e1, e2]
 applyOp Implies e1 e2 = liftBool2 (.=>.) e1 e2
-applyOp Equals e1 e2 = prodAll $ liftRel (.==.) e1 e2
-applyOp Less e1 e2 = liftOrd (.<.) e1 e2
-applyOp LEq e1 e2 = liftOrd (.<=.) e1 e2
+applyOp Equals  e1 e2 = prodAll $ liftRel (.==.) e1 e2
+applyOp Less    e1 e2 = liftOrd (.<.) e1 e2
+applyOp LEq     e1 e2 = liftOrd (.<=.) e1 e2
 applyOp Greater e1 e2 = liftOrd (.>.) e1 e2
-applyOp GEq e1 e2 = liftOrd (.>=.) e1 e2
-applyOp Plus e1 e2 = liftArithL plus [e1, e2]
-applyOp Minus e1 e2 = liftArith minus e1 e2
-applyOp Mul e1 e2 = liftArithL mult [e1, e2]
+applyOp GEq     e1 e2 = liftOrd (.>=.) e1 e2
+applyOp Plus    e1 e2 = liftArithL plus [e1, e2]
+applyOp Minus   e1 e2 = liftArith minus e1 e2
+applyOp Mul     e1 e2 = liftArithL mult [e1, e2]
 applyOp RealDiv e1 e2 = liftReal2 divide e1 e2
-applyOp IntDiv e1 e2 = liftInt2 div' e1 e2
-applyOp Mod e1 e2 = liftInt2 mod' e1 e2
+applyOp IntDiv  e1 e2 = liftInt2 div' e1 e2
+applyOp Mod     e1 e2 = liftInt2 mod' e1 e2

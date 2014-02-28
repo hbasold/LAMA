@@ -5,6 +5,7 @@ import Data.Array as Arr
 import Language.SMTLib2 as SMT
 
 import LamaSMTTypes
+import Internal.Monads
 
 data Definition =
   SingleDef (Stream Bool)
@@ -14,9 +15,14 @@ data Definition =
 ensureDefinition :: TypedStream i -> Definition
 ensureDefinition (BoolStream s) = SingleDef s
 ensureDefinition (ProdStream ps) = ProdDef $ fmap ensureDefinition ps
-ensureDefinition s = error $ "ensureDefinition: not a boolean stream" -- : " ++ show s
+ensureDefinition _
+  = error $ "ensureDefinition: not a boolean stream" -- : " ++ show s
 
-assertDefinition :: MonadSMT m => (SMTExpr Bool -> SMTExpr Bool) -> StreamPos -> Definition -> m ()
+assertDefinition :: MonadSMT m =>
+                    (SMTExpr Bool -> SMTExpr Bool)
+                    -> StreamPos
+                    -> Definition
+                    -> m ()
 assertDefinition f i (SingleDef s) = liftSMT $ assert (f $ s `app` i)
 assertDefinition f i (ProdDef ps) = mapM_ (assertDefinition f i) $ Arr.elems ps
 

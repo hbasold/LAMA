@@ -11,7 +11,6 @@ import Data.Array as Arr
 import Control.Arrow ((&&&))
 
 import Language.SMTLib2 as SMT
-import Language.SMTLib2.Internals as SMT
 import SMTEnum
 
 data TypedExpr i
@@ -31,17 +30,14 @@ unProd' (ProdExpr e) = e
 unProd' e = error $ "Cannot unProd: " ++ show e
 
 type StreamPos = SMTExpr Natural
-type Stream t = SMTFun StreamPos t
+type Stream t = SMTFunction StreamPos t
 data TypedStream i
   = BoolStream (Stream Bool)
   | IntStream (Stream Integer)
   | RealStream (Stream Rational)
-  | EnumStream (Stream SMTEnum)
+  | EnumStream EnumAnn (Stream SMTEnum)
   | ProdStream (Array Int (TypedStream i))
 --  deriving Show
-
-extractStreamAnn :: SMTType t => Stream t -> SMTAnnotation Natural -> SMTAnnotation t
-extractStreamAnn = inferResAnnotation
 
 mkProdStream :: [TypedStream i] -> TypedStream i
 mkProdStream [] = error "Cannot create empty product stream"
@@ -52,7 +48,7 @@ appStream :: TypedStream i -> StreamPos -> TypedExpr i
 appStream (BoolStream s) n = BoolExpr $ s `app` n
 appStream (IntStream s) n = IntExpr $ s `app` n
 appStream (RealStream s) n = RealExpr $ s `app` n
-appStream (EnumStream s) n = EnumExpr $ s `app` n
+appStream (EnumStream _ s) n = EnumExpr $ s `app` n
 appStream (ProdStream s) n = ProdExpr $ fmap (`appStream` n) s
 
 liftAssert :: TypedExpr i -> SMT ()
@@ -93,8 +89,7 @@ liftBool2 :: (SMTExpr Bool -> SMTExpr Bool -> SMTExpr Bool)
 liftBool2 f (BoolExpr e1) (BoolExpr e2) = BoolExpr $ f e1 e2
 liftBool2 _ e1 e2 = error $ "liftBool2: arguments are not boolean: " ++ show e1 ++ "; " ++ show e2
 
-liftBoolL :: (SMTFunction f, SMTFunArg f ~ [SMTExpr Bool], SMTFunRes f ~ Bool) =>
-             f -> [TypedExpr i] -> TypedExpr i
+liftBoolL :: SMTFunction [SMTExpr Bool] Bool -> [TypedExpr i] -> TypedExpr i
 liftBoolL f es@((BoolExpr _):_) = BoolExpr . app f $ map unBool es
 liftBoolL _ es = error $ "Cannot lift bool expr for" ++ show es
 
@@ -111,17 +106,22 @@ liftIte :: TypedExpr i -> TypedExpr i -> TypedExpr i -> TypedExpr i
 liftIte (BoolExpr c) = lift2 (ite c)
 liftIte _ = error "liftIte: condition is not boolean"
 
-liftArith :: (forall a. SMTArith a => SMTExpr a -> SMTExpr a -> SMTExpr a)
-              -> TypedExpr i -> TypedExpr i -> TypedExpr i
-liftArith f (IntExpr e1) (IntExpr e2) = IntExpr $ f e1 e2
-liftArith f (RealExpr e1) (RealExpr e2) = RealExpr $ f e1 e2
-liftArith _ _ _ = error "liftArith: argument types don't match or are not aritemetic types"
+liftArith :: (forall a. SMTArith a => SMTFunction (SMTExpr a, SMTExpr a) a)
+             -> TypedExpr i
+             -> TypedExpr i
+             -> TypedExpr i
+liftArith f (IntExpr e1)  (IntExpr e2)  = IntExpr  $ app f (e1, e2)
+liftArith f (RealExpr e1) (RealExpr e2) = RealExpr $ app f (e1, e2)
+liftArith _ _ _
+  = error "liftArith: argument types don't match or are not aritemetic types"
 
-liftArithL :: (forall a. SMTArith a => [SMTExpr a] -> SMTExpr a)
-              -> [TypedExpr i] -> TypedExpr i
-liftArithL f es@((IntExpr _):_) = IntExpr . f $ map unInt es
-liftArithL f es@((RealExpr _):_) = RealExpr . f $ map unReal es
-liftArithL _ _ = error "liftArithL: argument types don't match or are not arithmetic types"
+liftArithL :: (forall a. SMTArith a => SMTFunction [SMTExpr a] a)
+              -> [TypedExpr i]
+              -> TypedExpr i
+liftArithL f es@((IntExpr _):_)  = IntExpr  . app f $ map unInt  es
+liftArithL f es@((RealExpr _):_) = RealExpr . app f $ map unReal es
+liftArithL _ _
+  = error "liftArithL: argument types don't match or are not arithmetic types"
 
 liftInt2 :: (SMTExpr Integer -> SMTExpr Integer -> SMTExpr Integer)
               -> TypedExpr i -> TypedExpr i -> TypedExpr i

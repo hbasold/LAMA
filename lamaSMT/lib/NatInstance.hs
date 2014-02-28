@@ -27,18 +27,18 @@ zero' :: SMTAnnotation Natural -> SMTExpr Natural
 zero' ann = constantAnn 0 ann
 
 succ' :: SMTAnnotation Natural -> SMTExpr Natural -> SMTExpr Natural
+succ' NatInt  e = app plus [e, (constantAnn 1 NatInt)]
 succ' NatType e = (SMTConstructor (Constructor "succ")) `app` e
-succ' NatInt e = app plus [e, (constantAnn 1 NatInt)]
 
 instance SMTType Natural where
   type SMTAnnotation Natural = NatImplementation
 
   -- getSort :: t -> SMTAnnotation t -> Sort
-  getSort _ NatInt = getSort (undefined :: Integer) unit
+  getSort _ NatInt  = getSort (undefined :: Integer) unit
   getSort _ NatType = Fix $ NamedSort "Nat" []
 
   -- asDataType :: t -> SMTAnnotation t -> Maybe (String,TypeCollection)
-  asDataType _ NatInt = Nothing
+  asDataType _ NatInt  = Nothing
   asDataType _ NatType =
     Just ("Nat",
           TypeCollection { argCount = 0
@@ -60,19 +60,21 @@ instance SMTType Natural where
                    _ -> False
                }
       succCon =
-        Constr { conName = "succ"
+        Constr { conName   = "succ"
                , conFields = [predField]
                , construct =
                  \_ [predAny] f -> case castAnyValue predAny of
-                   Just (pred, ann) -> f [ProxyArg (undefined :: Natural) ann]
-                                       (pred + 1 :: Natural) ann
+                   Just (pred, ann)
+                     -> f [ProxyArg (undefined :: Natural) ann]
+                        (pred + 1 :: Natural)
+                        ann
                    _ -> error $ "Casting succ argument failed"
-               , conTest = \_ x -> case cast x of
+               , conTest   = \_ x -> case cast x of
                    Just (view -> Succ _) -> True
-                   _ -> False
+                   _                     -> False
                }
       predField = DataField { fieldName = "pred"
-                            , fieldSort = Fix (ArgumentSort 0)
+                            , fieldSort = Fix (NormalSort (NamedSort "Nat" []))
                             , fieldGet =
                               \_ x f -> case cast x of
                                 Just (view -> Succ n, ann) -> f n ann
@@ -100,8 +102,8 @@ instance SMTValue Natural where
   unmangle (ConstrValue "succ" [n] _) NatType = fmap (+1) $ unmangle n NatType
   unmangle _ _ = Nothing
 
-  mangle x NatInt = mangle (toInteger x) unit
-  mangle (view -> Zero) NatType = (ConstrValue "zero" [] Nothing)
+  mangle x                NatInt  = mangle (toInteger x) unit
+  mangle (view -> Zero)   NatType = (ConstrValue "zero" [] Nothing)
   mangle (view -> Succ n) NatType =
     (ConstrValue "succ" [mangle n NatType] Nothing)
 
@@ -109,9 +111,9 @@ instance SMTValue Natural where
 instance SMTArith Natural
 -- | only correct with NatInt!!
 instance SMTOrd Natural where
-  (.<.) x y = App (SMTOrd Lt) (x,y)
+  (.<.)  x y = App (SMTOrd Lt) (x,y)
   (.<=.) x y = App (SMTOrd Le) (x,y)
-  (.>.) x y = App (SMTOrd Gt) (x,y)
+  (.>.)  x y = App (SMTOrd Gt) (x,y)
   (.>=.) x y = App (SMTOrd Ge) (x,y)
 
 

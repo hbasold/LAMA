@@ -16,6 +16,7 @@ import Strategy
 import LamaSMTTypes
 import Definition
 import Model (Model)
+import Internal.Monads
 
 data BMC = BMC
            { bmcDepth :: Maybe Natural
@@ -34,7 +35,7 @@ instance StrategyClass BMC where
 
   check natAnn s getModel defs =
     let base = 0
-    in do baseDef <- liftSMT . defConstAnn natAnn $ constantAnn base natAnn
+    in do baseDef <- liftSMT . defConst $ constantAnn base natAnn
           check' natAnn s getModel defs (Map.singleton base baseDef) base baseDef
 
 assumeTrace :: MonadSMT m => ProgDefs -> StreamPos -> m ()
@@ -85,7 +86,7 @@ next :: (Map Natural StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (N
         -> BMC -> Map Natural StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (Natural, Model i))
 next checkCont natAnn s pastIndices i iDef =
   do let i' = succ i
-     iDef' <- liftSMT . defConstAnn natAnn $ succ' natAnn iDef
+     iDef' <- liftSMT . defConst$ succ' natAnn iDef
      let pastIndices' = Map.insert i' iDef' pastIndices
      case bmcDepth s of
        Nothing -> checkCont pastIndices' i' iDef'

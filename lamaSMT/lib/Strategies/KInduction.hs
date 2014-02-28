@@ -20,6 +20,7 @@ import LamaSMTTypes
 import Definition
 import Model (Model)
 import Strategies.BMC
+import Internal.Monads
 
 data KInduct = KInduct
                { depth :: Maybe Natural
@@ -38,8 +39,8 @@ instance StrategyClass KInduct where
 
   check natAnn s getModel defs =
     let baseK = 0
-    in do baseKDef <- liftSMT . defConstAnn natAnn $ constantAnn baseK natAnn
-          baseNDef <- liftSMT $ natVar natAnn
+    in do baseKDef <- liftSMT . defConst $ constantAnn baseK natAnn
+          baseNDef <- liftSMT $ varAnn natAnn
           assumeTrace defs baseNDef
           let s0 = InductState baseK baseKDef baseNDef (Map.singleton baseK baseKDef)
           (flip evalStateT s0) $ check' natAnn s getModel defs
@@ -68,7 +69,7 @@ check' natAnn s getModel defs =
      case rBMC of
        Just m -> return $ Just (kVal, m)
        Nothing ->
-         do n1 <- liftSMT . defConstAnn natAnn $ succ' natAnn nDef
+         do n1 <- liftSMT . defConst $ succ' natAnn nDef
             modify $ \indSt -> indSt { nDef = n1 }
             assertPrecond nDef $ invariantDef defs
             r <- checkStep defs n1
@@ -78,7 +79,7 @@ next :: KInductM (Maybe (Natural, Model i)) -> SMTAnnotation Natural -> KInduct 
 next checkCont natAnn s =
   do indState@InductState {..} <- get
      let k' = succ kVal
-     kDef' <- liftSMT . defConstAnn natAnn $ succ' natAnn kDef
+     kDef' <- liftSMT . defConst $ succ' natAnn kDef
      let pastKs' = Map.insert k' kDef' pastKs
      put $ indState { kVal = k', kDef = kDef', pastKs = pastKs' }
      case depth s of

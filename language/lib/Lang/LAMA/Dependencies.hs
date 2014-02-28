@@ -38,8 +38,8 @@ import Lang.LAMA.Typing.TypedStructure
 
 import Data.Graph.Inductive.GenShow ()
 
-fromSet :: Ord k => (k -> a) -> Set k -> Map k a
-fromSet f = Map.fromList . map (id &&& f) . Set.toList
+-- fromSet :: Ord k => (k -> a) -> Set k -> Map k a
+-- fromSet f = Map.fromList . map (id &&& f) . Set.toList
 
 -- | Context in which a variable is used. With this context state variables
 --  can be distinguished if they are use on lhs or rhs of an assignment.

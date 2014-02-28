@@ -31,12 +31,18 @@ import Transform
 import Model
 import Strategy
 import Strategies.Factory
+import Internal.Monads
 
-import Language.SMTLib2 (SMT, MonadSMT(..), SMTOption(..), setOption, withSMTSolver)
-
+import Language.SMTLib2 (SMT, SMTOption(..), setOption)
+import Language.SMTLib2.Pipe (withPipe)
 
 z3Base :: String
-z3Base = "z3 -smt2 -in"
+-- z3Base = "z3 -smt2 -in"
+z3Base = "z3"
+
+z3Debug :: String
+-- z3Base = "z3 -smt2 -in"
+z3Debug = "z3-debug"
 
 data Options = Options
   { optInput :: FilePath
@@ -190,10 +196,13 @@ runCheck progOpts = chooseSolver progOpts . checkError
 
     chooseSolver :: Options -> MaybeT SMT a -> MaybeT IO a
     chooseSolver opts =
-      let solverBase = optSolver opts ++ " " ++ (intercalate " " $ optSolverOptions opts)
-          solverCmd = (if optDebug opts then "tee debug.txt | " else "")
-                      ++ solverBase
-      in mapMaybeT $ withSMTSolver solverCmd
+      let solverCmd = if optDebug opts then z3Debug else z3Base
+      in mapMaybeT
+         $ withPipe solverCmd (["-smt2","-in"] ++ optSolverOptions opts)
+--      let -- solverBase = optSolver opts ++ " " ++ (intercalate " " $ optSolverOptions opts)
+          -- solverCmd = (if optDebug opts then "tee debug.txt | " else "")
+                      -- ++ solverBase
+  -- withPipe solverCmd []
 
 checkModel :: Ident i => Options -> Program i -> Maybe (Natural, Model i) -> IO ()
 checkModel _ _ Nothing = putStrLn "42"

@@ -8,13 +8,12 @@ import Data.Natural
 import Text.PrettyPrint hiding ((<>))
 import Data.Array as Arr
 import Data.Monoid
-import Data.Text (unpack)
 
 import Control.Monad.Reader (MonadReader(..), ReaderT(..))
 import Control.Applicative (Applicative(..), (<$>))
 
 import Language.SMTLib2 as SMT
-import Language.SMTLib2.Internals.Translation as SMT (getValue')
+-- import Language.SMTLib2.Internals.Translation as SMT (getValue')
 
 import Lang.LAMA.Identifier
 import Lang.LAMA.Typing.TypedStructure
@@ -22,6 +21,7 @@ import Lang.LAMA.Typing.TypedStructure
 import SMTEnum
 import LamaSMTTypes
 import TransformEnv
+import Internal.Monads
 
 type ValueStreamT t = Map Natural t
 data ValueStream
@@ -88,14 +88,16 @@ getVarsModel :: Map i (TypedStream i) -> ModelM (Map i ValueStream)
 getVarsModel = mapM getVarModel
 
 getVarModel :: TypedStream i -> ModelM ValueStream
-getVarModel (BoolStream s) = BoolVStream <$> getStreamValue s
-getVarModel (IntStream s) = IntVStream <$> getStreamValue s
-getVarModel (RealStream s) = RealVStream <$> getStreamValue s
-getVarModel (EnumStream s) = EnumVStream <$> getStreamValue s
-getVarModel (ProdStream s) = ProdVStream <$> mapM getVarModel s
+getVarModel (BoolStream   s) = BoolVStream <$> getStreamValue s
+getVarModel (IntStream    s) = IntVStream <$> getStreamValue s
+getVarModel (RealStream   s) = RealVStream <$> getStreamValue s
+getVarModel (EnumStream _ s) = EnumVStream <$> getStreamValue s
+getVarModel (ProdStream   s) = ProdVStream <$> mapM getVarModel s
 
 getStreamValue :: SMTValue t => Stream t -> ModelM (ValueStreamT t)
-getStreamValue s = ask >>= liftSMT . mapM (\i -> getValue' (extractStreamAnn s) $ s `app` i)
+getStreamValue s
+  = ask >>=
+    liftSMT . mapM (\i -> getValue $ s `app` i)
 
 scadeScenario :: Ident i => Program i -> [String] -> Natural -> Model i -> Doc
 scadeScenario p varPath lastIndex m =
@@ -110,7 +112,10 @@ scadeScenario p varPath lastIndex m =
     scenario inp path n i
       | i <= n =
         let setOp = text "SSM::set"
-            varSetter = map (\(x, v) -> setOp <+> (path <> (ptext $ identString x)) <+> (prettyVal i v)) inp
+            varSetter = map (\(x, v) ->
+                              setOp
+                              <+> (path <> (ptext $ identString x))
+                              <+> (prettyVal i v)) inp
             rest = scenario inp path n (i+1)
         in vcat varSetter $+$ text "SSM::cycle 1" $+$ rest
       | otherwise = mempty
@@ -119,8 +124,11 @@ scadeScenario p varPath lastIndex m =
     prettyVal i (BoolVStream s) = bool $ s Map.! i
     prettyVal i (IntVStream s) = integer $ s Map.! i
     prettyVal i (RealVStream s) = rational $ s Map.! i
-    prettyVal i (EnumVStream s) = text $ unpack $ getEnumCons $ s Map.! i
-    prettyVal i (ProdVStream s) = parens . hsep . punctuate (text ",") . map (prettyVal i) $ elems s
+    prettyVal i (EnumVStream s) = text $ getEnumCons $ s Map.! i
+    prettyVal i (ProdVStream s) = parens
+                                  . hsep
+                                  . punctuate (text ",")
+                                  . map (prettyVal i) $ elems s
 
     bool True = text "true"
     bool False = text "false"
