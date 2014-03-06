@@ -71,7 +71,11 @@ initial s = (# Fill 0 (# 0 0 0 0 0));
 invariant
   (and
     (and (< i 5) (>= i 0))
-    (=> (= (project s 0) Fill)
-        (= (project s_ 2) a2))
+    (and
+      (=> (= (project s 0) Fill)
+          (= (project s_ 2) a1))
+      (=> (= (project s 0) Sum)
+          (= (project s_ 2) a2))
+    )
   )
   ;
