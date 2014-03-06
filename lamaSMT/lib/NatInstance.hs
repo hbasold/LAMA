@@ -57,7 +57,7 @@ instance SMTType Natural where
                  \[Just sort] _ f -> f [sort] (0 :: Natural) NatType
                , conTest = \_ x -> case cast x of
                    Just (view -> Zero) -> True
-                   _ -> False
+                   _                   -> False
                }
       succCon =
         Constr { conName   = "succ"
@@ -73,13 +73,14 @@ instance SMTType Natural where
                    Just (view -> Succ _) -> True
                    _                     -> False
                }
-      predField = DataField { fieldName = "pred"
-                            , fieldSort = Fix (NormalSort (NamedSort "Nat" []))
-                            , fieldGet =
-                              \_ x f -> case cast x of
-                                Just (view -> Succ n, ann) -> f n ann
-                                _ -> error $ "Casting pred failed"
-                            }
+      predField =
+        DataField { fieldName = "pred"
+                  , fieldSort = Fix (NormalSort (NamedSort "Nat" []))
+                  , fieldGet =
+                    \_ x f -> case cast x of
+                      Just (view -> Succ n, ann) -> f n ann
+                      _                          -> error $ "Casting pred failed"
+                  }
 
   -- asValueType :: t -> SMTAnnotation t -> (forall v. SMTValue v => v -> SMTAnnotation v -> r) -> Maybe r
   asValueType x ann f = Just $ f x ann
@@ -98,9 +99,9 @@ instance SMTType Natural where
 
 instance SMTValue Natural where
   unmangle x NatInt = fmap fromInteger $ unmangle x unit
-  unmangle (ConstrValue "zero" [] _) NatType = Just $ fromInteger 0
+  unmangle (ConstrValue "zero" [] _)  NatType = Just $ fromInteger 0
   unmangle (ConstrValue "succ" [n] _) NatType = fmap (+1) $ unmangle n NatType
-  unmangle _ _ = Nothing
+  unmangle _                          _       = Nothing
 
   mangle x                NatInt  = mangle (toInteger x) unit
   mangle (view -> Zero)   NatType = (ConstrValue "zero" [] Nothing)
