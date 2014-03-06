@@ -6,7 +6,7 @@ module SMTEnum where
 
 import Data.Fix
 import Language.SMTLib2 (bvule, constantAnn)
-import Language.SMTLib2.Internals
+import Language.SMTLib2.Internals hiding (constructors)
 import qualified Data.Bimap as Bimap
 import Data.Bimap (Bimap, (!>))
 import Data.Bits.Size
