@@ -90,7 +90,7 @@ instance SMTType SMTEnum where
                  \[Just sort] _ f -> f [sort] (SMTEnum cons) ann
                , conTest = \_ x -> case cast x of
                    Just c -> c == cons
-                   _ -> False
+                   _      -> False
                }
   asDataType _ (EnumBitAnn size _ _) = asDataType (undefined :: BVType) size
 
@@ -98,7 +98,7 @@ instance SMTType SMTEnum where
   asValueType x ann f = Just $ f x ann
 
   -- getProxyArgs :: t -> SMTAnnotation t -> [ProxyArg]
-  getProxyArgs x ann = [ProxyArg x ann]
+  getProxyArgs _ _ = []
 
   -- additionalConstraints :: t -> SMTAnnotation t -> SMTExpr t -> [SMTExpr Bool]
   additionalConstraints _ (EnumBitAnn size _ highestCons) (Var i _)
