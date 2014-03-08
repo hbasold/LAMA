@@ -141,23 +141,25 @@ declareVarList = mapM declareVar
 declareVar :: Ident i => Variable i -> DeclM i ((i, TypedStream i))
 declareVar (Variable x t) =
   do natAnn <- gets natImpl
-     (x,) <$> typedVar natAnn t
+     (x,) <$> typedVar (identString x) natAnn t
   where
     typedVar :: Ident i =>
-                SMTAnnotation Natural -> Type i
+                String
+                -> SMTAnnotation Natural
+                -> Type i
                 -> DeclM i (TypedStream i)
-    typedVar ann (GroundType BoolT)
-      = liftSMT $ fmap BoolStream $ funAnn ann unit
-    typedVar ann (GroundType IntT)
-      = liftSMT $ fmap IntStream $ funAnn ann unit
-    typedVar ann (GroundType RealT)
-      = liftSMT $ fmap RealStream $ funAnn ann unit
-    typedVar ann (GroundType _) = $notImplemented
-    typedVar ann (EnumType et)
+    typedVar v ann (GroundType BoolT)
+      = liftSMT $ fmap BoolStream $ funAnnNamed v ann unit
+    typedVar v ann (GroundType IntT)
+      = liftSMT $ fmap IntStream $ funAnnNamed v ann unit
+    typedVar v ann (GroundType RealT)
+      = liftSMT $ fmap RealStream $ funAnnNamed v ann unit
+    typedVar v ann (GroundType _) = $notImplemented
+    typedVar v ann (EnumType et)
       = do etAnn <- lookupEnumAnn et
-           liftSMT $ fmap (EnumStream etAnn) $ funAnn ann etAnn
-    typedVar ann (ProdType ts) =
-      do vs <- mapM (typedVar ann) ts
+           liftSMT $ fmap (EnumStream etAnn) $ funAnnNamed v ann etAnn
+    typedVar v ann (ProdType ts) =
+      do vs <- mapM (typedVar (v ++ "_comp") ann) ts
          return (ProdStream $ listArray (0, (length vs) - 1) vs)
 {-
 -- | Declares a stream of type Enum, including possible extra constraints on it.
@@ -350,21 +352,23 @@ declareAutomaton activeCond localNodes (_, a) =
            $ map getLocId (automLocations a)
          locCons   = fmap EnumCons locNames
          enum      = EnumDef $ Map.elems locCons
-         actName   = fromString $ "act" ++ (identString enumName)
-         selName   = fromString $ "sel" ++ (identString enumName)
+         actName   = "act" ++ automName
+         actId     = fromString actName
+         selName   = "sel" ++ automName
+         selId     = fromString selName
      declareEnums $ Map.singleton enumName enum
-     (act, sel, eAnn) <- mkStateVars enumName
+     (act, sel, eAnn) <- mkStateVars actName selName enumName
      modifyVars ( `Map.union` Map.fromList
-                  [(actName, EnumStream eAnn act),
-                   (selName, EnumStream eAnn sel)
+                  [(actId, EnumStream eAnn act),
+                   (selId, EnumStream eAnn sel)
                   ]
                 )
      locDefs <- (flip runReaderT (locCons, localNodes))
                 $ declareLocations activeCond act
                 (automDefaults a) (automLocations a)
-     edgeDefs <- mkTransitionEq activeCond stateT locCons actName selName
+     edgeDefs <- mkTransitionEq activeCond stateT locCons actId selId
                  $ automEdges a
-     assertInit (selName, locConsConstExpr locCons stateT $ automInitial a)
+     assertInit (selId, locConsConstExpr locCons stateT $ automInitial a)
      return $ locDefs ++ edgeDefs
 
   where
@@ -390,12 +394,15 @@ declareAutomaton activeCond localNodes (_, a) =
 -- at the beginning of a clock cycle. sel saves this
 -- state for the next cycle.
 mkStateVars :: Ident i =>
-               i -> DeclM i (Stream SMTEnum, Stream SMTEnum, EnumAnn)
-mkStateVars stateEnum =
+               String
+               -> String
+               -> i
+               -> DeclM i (Stream SMTEnum, Stream SMTEnum, EnumAnn)
+mkStateVars actName selName stateEnum =
   do stEnumAnn <- lookupEnumAnn stateEnum
      natAnn <- gets natImpl
-     act <- liftSMT $ funAnn natAnn stEnumAnn
-     sel <- liftSMT $ funAnn natAnn stEnumAnn
+     act <- liftSMT $ funAnnNamed actName natAnn stEnumAnn
+     sel <- liftSMT $ funAnnNamed selName natAnn stEnumAnn
      return (act, sel, stEnumAnn)
 
 -- | Extracts the the expressions for each variable seperated into
