@@ -75,8 +75,8 @@ instance SMTType Natural where
         DataField { fieldName = "pred"
                   , fieldSort = Fix (NormalSort (NamedSort "Nat" []))
                   , fieldGet  =
-                    \_ x f -> case cast x of
-                      Just (view -> Succ n) -> f n NatType
+                    \_ x f -> flip f NatType $ case cast x of
+                      Just (view -> Succ n) -> n
                       _                     -> error $ "Casting pred failed"
                   }
 
