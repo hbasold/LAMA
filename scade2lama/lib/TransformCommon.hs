@@ -56,12 +56,12 @@ checkNode = getUserOperator $ \o ->
      nodeTranslated <- packageHasNode n
      if nodeTranslated
        then (n,) . nodeRetType <$> lookupNode n
-       else return (n, opRetType o)
+       else return (n, opRetType $ S.userOpReturns o)
   where
     lookupNode nName = gets nodes >>= lookupErr ("Unknown node " ++ L.identPretty nName) nName
     nodeRetType = L.mkProductT . map L.varType . L.nodeOutputs
 
-    opRetType (S.UserOpDecl { S.userOpReturns = rets }) = L.mkProductT . concat $ map unrollTypes rets
+    opRetType rets = L.mkProductT . concat $ map unrollTypes rets
       where
         unrollTypes (S.VarDecl { S.varNames = vars, S.varType = t }) =
           let t' = trTypeExpr t
@@ -199,6 +199,7 @@ trOpApply (S.PrefixOp (S.PrefixPath p)) es =
      x' <- liftM fromString . newVar $ L.identString x
      tellNode x' p
      return (x', es, t)
+trOpApply (S.PrefixOp (S.PrefixBinOp op)) es = $notImplemented
 trOpApply (S.PrefixParamOp prefix es1) es2 = $notImplemented
 trOpApply (S.IteratorOp iter op e) es = $notImplemented
 trOpApply (S.ActivateOp op (S.ActivateDefault clock defaultExpr)) es = $notImplemented

@@ -59,8 +59,8 @@ trSimpleEquation lhsIds expr = do
                 defFlow = L.Flow [] [L.StateTransition x expr']
             in return $ (baseEq $ Right (initFlow, defFlow)) { trEqAsState = Set.singleton x }
       _ -> throwError $ "Cannot pattern match in state equation"
-    NodeExpr rhs ->
-      mkLocalAssigns ids (Right rhs) >>= \(a, v) ->
+    NodeExpr nodeRhs ->
+      mkLocalAssigns ids (Right nodeRhs) >>= \(a, v) ->
       return $ (baseEq $ Left $ L.Flow a []) { trEqLocalVars = maybeToList v }
 
 trLhsId :: S.LHSId -> Maybe L.SimpIdent
