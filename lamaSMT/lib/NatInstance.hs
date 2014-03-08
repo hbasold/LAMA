@@ -48,14 +48,14 @@ instance SMTType Natural where
         DataType { dataTypeName = "Nat"
                  , dataTypeConstructors = [zeroCon, succCon]
                  , dataTypeGetUndefined =
-                   \_ f -> f (undefined :: Natural) NatType
+                   \_ f -> f (error "undefined Natural" :: Natural) NatType
                  }
       zeroCon =
-        Constr { conName = "zero"
+        Constr { conName   = "zero"
                , conFields = []
                , construct =
                  \[Just sort] _ f -> f [sort] (0 :: Natural) NatType
-               , conTest = \_ x -> case cast x of
+               , conTest   = \_ x -> case cast x of
                    Just (view -> Zero) -> True
                    _                   -> False
                }
@@ -65,9 +65,7 @@ instance SMTType Natural where
                , construct =
                  \_ [predAny] f -> case castAnyValue predAny of
                    Just (pred, ann)
-                     -> f [ProxyArg (undefined :: Natural) ann]
-                        (pred + 1 :: Natural)
-                        ann
+                     -> f [] (pred + 1 :: Natural) ann
                    _ -> error $ "Casting succ argument failed"
                , conTest   = \_ x -> case cast x of
                    Just (view -> Succ _) -> True
@@ -76,17 +74,17 @@ instance SMTType Natural where
       predField =
         DataField { fieldName = "pred"
                   , fieldSort = Fix (NormalSort (NamedSort "Nat" []))
-                  , fieldGet =
+                  , fieldGet  =
                     \_ x f -> case cast x of
-                      Just (view -> Succ n, ann) -> f n ann
-                      _                          -> error $ "Casting pred failed"
+                      Just (view -> Succ n) -> f n NatType
+                      _                     -> error $ "Casting pred failed"
                   }
 
   -- asValueType :: t -> SMTAnnotation t -> (forall v. SMTValue v => v -> SMTAnnotation v -> r) -> Maybe r
   asValueType x ann f = Just $ f x ann
 
   -- getProxyArgs :: t -> SMTAnnotation t -> [ProxyArg]
-  getProxyArgs x ann = [ProxyArg x ann]
+  getProxyArgs _ _ = []
 
   -- additionalConstraints :: t -> SMTAnnotation t -> SMTExpr t -> [SMTExpr Bool]
   additionalConstraints _ NatInt x@(Var _ _)  = [x .>=. (zero' NatInt)]
