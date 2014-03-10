@@ -5,7 +5,7 @@
 module SMTEnum where
 
 import Data.Fix
-import Language.SMTLib2 (bvule, constantAnn)
+import Language.SMTLib2 (bvule, constantAnn, app)
 import Language.SMTLib2.Internals hiding (constructors)
 import qualified Data.Bimap as Bimap
 import Data.Bimap (Bimap, (!>))
@@ -101,10 +101,17 @@ instance SMTType SMTEnum where
   getProxyArgs _ _ = []
 
   -- additionalConstraints :: t -> SMTAnnotation t -> SMTExpr t -> [SMTExpr Bool]
-  additionalConstraints _ (EnumBitAnn size _ highestCons) (Var i _)
-    = [bvule (Var i size :: SMTExpr BVType) (constantAnn highestCons size)]
-  additionalConstraints _ (EnumBitAnn _ _ _)  _ = []
-  additionalConstraints _ (EnumTypeAnn _ _ _) _ = []
+  additionalConstraints _ (EnumTypeAnn _ _ _)             = Nothing
+  additionalConstraints _ (EnumBitAnn size _ highestCons) = Just bitConstr
+    where
+      bitConstr (Var i _)            = [bvule
+                                        (Var i size :: SMTExpr BVType)
+                                        (constantAnn highestCons size)]
+      bitConstr (App (SMTFun i _) e) = [bvule
+                                        (SMTFun i (size :: SMTAnnotation BVType)
+                                         `app` e)
+                                        (constantAnn highestCons size)]
+      bitConstr _                    = []
 
   -- annotationFromSort :: t -> Sort -> SMTAnnotation t
   annotationFromSort _ (Fix (NamedSort alias []))
@@ -132,14 +139,3 @@ instance SMTValue SMTEnum where
     case Bimap.lookup c cons of
          Nothing -> error $ "Unknown enum constructor " ++ c
          Just bv -> mangle bv size
-
--- | Interpret an expression of type SMTEnum as bitvector expression
-{-
-toBVExpr :: SMTExpr SMTEnum -> SMTExpr BVType
-toBVExpr (Var n (EnumBitAnn size _ _)) = Var n size
-toBVExpr e@(App f ') =
-  case inferResAnnotation f (argAnn f) of
-    EnumBitAnn size _ _ -> App (SMTFun f size) e'
-    _ -> error $ "cannot convert enum expr to bit vector expr: " ++ show e
-toBVExpr e = error $ "cannot convert enum expr to bit vector expr: " ++ show e
--}

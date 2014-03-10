@@ -94,9 +94,11 @@ instance SMTType Natural where
   getProxyArgs _ _ = []
 
   -- additionalConstraints :: t -> SMTAnnotation t -> SMTExpr t -> [SMTExpr Bool]
-  additionalConstraints _ NatInt x@(Var _ _)  = [x .>=. (zero' NatInt)]
-  additionalConstraints _ NatInt _            = []
-  additionalConstraints _ NatType _           = []
+  additionalConstraints _ NatInt  = Just intConstr
+    where
+      intConstr x@(Var _ _)  = [x .>=. (zero' NatInt)]
+      intConstr _            = []
+  additionalConstraints _ NatType = Nothing
 
   -- annotationFromSort :: t -> Sort -> SMTAnnotation t
   annotationFromSort _ (Fix (NamedSort "Nat" [])) = NatType
