@@ -28,7 +28,50 @@ zero' ann = constantAnn 0 ann
 
 succ' :: SMTAnnotation Natural -> SMTExpr Natural -> SMTExpr Natural
 succ' NatInt  e = app plus [e, (constantAnn 1 NatInt)]
-succ' NatType e = (SMTConstructor (Constructor "succ")) `app` e
+succ' NatType e =
+  (SMTConstructor $ Constructor [] datatypeNat succConstructor) `app` e
+
+zeroConstructor :: Constr
+zeroConstructor =
+  Constr { conName   = "zero"
+         , conFields = []
+         , construct =
+           \[Just sort] _ f -> f [sort] (0 :: Natural) NatType
+         , conTest   = \_ x -> case cast x of
+             Just (view -> Zero) -> True
+             _                   -> False
+         }
+
+succConstructor :: Constr
+succConstructor =
+  Constr { conName   = "succ"
+         , conFields = [predField]
+         , construct =
+           \_ [predAny] f -> case castAnyValue predAny of
+             Just (pred, ann)
+               -> f [] (pred + 1 :: Natural) ann
+             _ -> error $ "Casting succ argument failed"
+         , conTest   = \_ x -> case cast x of
+             Just (view -> Succ _) -> True
+             _                     -> False
+         }
+  where
+    predField =
+      DataField { fieldName = "pred"
+                , fieldSort = Fix (NormalSort (NamedSort "Nat" []))
+                , fieldGet  =
+                  \_ x f -> flip f NatType $ case cast x of
+                    Just (view -> Succ n) -> n
+                    _                     -> error $ "Casting pred failed"
+                }
+
+datatypeNat :: DataType
+datatypeNat =
+  DataType { dataTypeName = "Nat"
+           , dataTypeConstructors = [zeroConstructor, succConstructor]
+           , dataTypeGetUndefined =
+             \_ f -> f (error "undefined Natural" :: Natural) NatType
+           }
 
 instance SMTType Natural where
   type SMTAnnotation Natural = NatImplementation
@@ -42,43 +85,7 @@ instance SMTType Natural where
   asDataType _ NatType =
     Just ("Nat",
           TypeCollection { argCount = 0
-                         , dataTypes = [dtNat] })
-    where
-      dtNat =
-        DataType { dataTypeName = "Nat"
-                 , dataTypeConstructors = [zeroCon, succCon]
-                 , dataTypeGetUndefined =
-                   \_ f -> f (error "undefined Natural" :: Natural) NatType
-                 }
-      zeroCon =
-        Constr { conName   = "zero"
-               , conFields = []
-               , construct =
-                 \[Just sort] _ f -> f [sort] (0 :: Natural) NatType
-               , conTest   = \_ x -> case cast x of
-                   Just (view -> Zero) -> True
-                   _                   -> False
-               }
-      succCon =
-        Constr { conName   = "succ"
-               , conFields = [predField]
-               , construct =
-                 \_ [predAny] f -> case castAnyValue predAny of
-                   Just (pred, ann)
-                     -> f [] (pred + 1 :: Natural) ann
-                   _ -> error $ "Casting succ argument failed"
-               , conTest   = \_ x -> case cast x of
-                   Just (view -> Succ _) -> True
-                   _                     -> False
-               }
-      predField =
-        DataField { fieldName = "pred"
-                  , fieldSort = Fix (NormalSort (NamedSort "Nat" []))
-                  , fieldGet  =
-                    \_ x f -> flip f NatType $ case cast x of
-                      Just (view -> Succ n) -> n
-                      _                     -> error $ "Casting pred failed"
-                  }
+                         , dataTypes = [datatypeNat] })
 
   -- asValueType :: t -> SMTAnnotation t -> (forall v. SMTValue v => v -> SMTAnnotation v -> r) -> Maybe r
   asValueType x ann f = Just $ f x ann
