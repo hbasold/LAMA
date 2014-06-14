@@ -18,7 +18,6 @@ import Data.Foldable (forM_, foldlM, foldl)
 import Lang.LAMA.Identifier
 import qualified Data.Map as Map
 import Data.Map (Map)
-import Data.Graph.Inductive.GenShow ()
 import Control.Monad (void, when, MonadPlus(..))
 import Control.Monad.Trans.Maybe
 import Control.Monad.IO.Class
