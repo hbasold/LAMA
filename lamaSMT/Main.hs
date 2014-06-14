@@ -204,11 +204,16 @@ runCheck progOpts = chooseSolver progOpts . checkError
                       -- ++ solverBase
   -- withPipe solverCmd []
 
-checkModel :: Ident i => Options -> Program i -> Maybe (Natural, Model i) -> IO ()
-checkModel _ _ Nothing = putStrLn "42"
-checkModel opts prog (Just (lastIndex, m)) =
+checkModel :: Ident i =>
+           Options
+           -> Program i
+           -> (StrategyResult i)
+           -> IO ()
+checkModel _ _ Success = putStrLn "42"
+checkModel opts prog (Failure lastIndex m) =
   do putStrLn ":-("
      when (optDumpModel opts) (putStrLn . render $ prettyModel m)
      case optScenarioFile opts of
        Nothing -> return ()
        Just f -> writeFile f $ render $ scadeScenario prog (optTopNodePath opts) lastIndex m
+checkModel opts prog (Unknown what hints) = return ()

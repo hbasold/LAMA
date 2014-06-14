@@ -60,22 +60,29 @@ data InductState = InductState
 type KInductM = StateT InductState SMTErr
 
 check' :: SMTAnnotation Natural
-          -> KInduct -> (Map Natural StreamPos -> SMT (Model i))
-          -> ProgDefs -> KInductM (Maybe (Natural, Model i))
+       -> KInduct
+       -> (Map Natural StreamPos -> SMT (Model i))
+       -> ProgDefs
+       -> KInductM i (StrategyResult i)
 check' natAnn s getModel defs =
   do InductState{..} <- get
      liftIO $ when (printProgress s) (putStrLn $ "Depth " ++ show kVal)
      rBMC <- bmcStep getModel defs pastKs kDef
      case rBMC of
-       Just m -> return $ Just (kVal, m)
+       Just m -> return $ Failure kVal m
        Nothing ->
          do n1 <- liftSMT . defConst $ succ' natAnn nDef
             modify $ \indSt -> indSt { nDef = n1 }
             assertPrecond nDef $ invariantDef defs
             r <- checkStep defs n1
-            if r then return Nothing else next (check' natAnn s getModel defs) natAnn s
+            if r
+               then return Success
+               else next (check' natAnn s getModel defs) natAnn s
 
-next :: KInductM (Maybe (Natural, Model i)) -> SMTAnnotation Natural -> KInduct -> KInductM (Maybe (Natural, Model i))
+next :: KInductM i (StrategyResult i)
+     -> SMTAnnotation Natural
+     -> KInduct
+     -> KInductM i (StrategyResult i)
 next checkCont natAnn s =
   do indState@InductState {..} <- get
      let k' = succ kVal
