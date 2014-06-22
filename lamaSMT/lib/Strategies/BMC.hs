@@ -84,9 +84,11 @@ assertPrecond = assertDefinition id
 checkInvariant :: MonadSMT m => SMTExpr Natural -> Definition -> m Bool
 checkInvariant i p = liftSMT $ assertDefinition not' i p >> liftM not checkSat
 
-checkGetModel :: MonadSMT m
-                 => (Map Natural StreamPos -> SMT (Model i)) -> Map Natural StreamPos
-                 -> Bool -> m (Maybe (Model i))
+checkGetModel :: MonadSMT m =>
+              (Map Natural StreamPos -> SMT (Model i))
+              -> Map Natural StreamPos
+              -> Bool
+              -> m (Maybe (Model i))
 checkGetModel getModel indices r = liftSMT $
   if r then return Nothing else fmap Just $ getModel indices
 

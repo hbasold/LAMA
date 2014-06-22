@@ -32,8 +32,9 @@ data NodeEnv i = NodeEnv
 
 data VarEnv i = VarEnv
                 { nodes :: Map i (NodeEnv i)
-                  -- | Maps names of variables to a SMT expression for using that variable
                 , vars :: Map i (TypedStream i)
+                  -- ^ Maps names of variables to a SMT expression for using
+                  -- that variable
                 }
 
 data Env i = Env

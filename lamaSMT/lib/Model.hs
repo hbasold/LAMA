@@ -99,16 +99,38 @@ getStreamValue s
   = ask >>=
     liftSMT . mapM (\i -> getValue $ s `app` i)
 
-scadeScenario :: Ident i => Program i -> [String] -> Natural -> Model i -> Doc
-scadeScenario p varPath lastIndex m =
+scadeScenario :: Ident i =>
+              Program i -> [String] -> Model i -> Doc
+scadeScenario p varPath m =
   let progInputNames = map varIdent . declsInput $ progDecls p
       progInputs = (Map.fromList $ zip progInputNames (repeat ()))
+      lastIndex = case fmap fst . Map.minView . modelVars $ m of
+        Nothing -> 0
+        Just s -> getLastIndex s
       inputTraces = Map.toList $ (modelVars m) `Map.intersection` progInputs
       path = case varPath of
         [] -> mempty
         _ -> (hcat $ punctuate (text "::") $ map text varPath) <> text ("/")
   in scenario inputTraces path lastIndex 0
   where
+    -- | Retrieves the last defined index of a given stream
+    getLastIndex :: ValueStream -> Natural
+    getLastIndex (BoolVStream s) = highestIndex s
+    getLastIndex (IntVStream s)  = highestIndex s
+    getLastIndex (RealVStream s) = highestIndex s
+    getLastIndex (EnumVStream s) = highestIndex s
+     -- abuses that products are non-empty
+    getLastIndex (ProdVStream a) = getLastIndex (a ! 0)
+
+    -- | Usese that streams are given by maps and so we can use findMax to
+    -- get the highest defined index.
+    highestIndex :: ValueStreamT t -> Natural
+    highestIndex s
+      | Map.null s = 0
+      | otherwise  = fst $ Map.findMax s
+
+    -- | Creates a Doc for all indices i..n from inp, setting the variables
+    -- under path.
     scenario inp path n i
       | i <= n =
         let setOp = text "SSM::set"
