@@ -61,15 +61,18 @@ prettyNodeModel m = braces . nest 2 $
 
 prettyStream :: ValueStream -> Doc
 prettyStream (BoolVStream s) = prettyStreamVals s
-prettyStream (IntVStream s) = prettyStreamVals s
+prettyStream (IntVStream s)  = prettyStreamVals s
 prettyStream (RealVStream s) = prettyStreamVals s
 prettyStream (EnumVStream s) = prettyStreamVals s
-prettyStream (ProdVStream s) = parens . hcat . punctuate comma . fmap prettyStream $ Arr.elems s
+prettyStream (ProdVStream s)
+             = parens . hcat . punctuate comma . fmap prettyStream $ Arr.elems s
 
 prettyStreamVals :: Show t => ValueStreamT t -> Doc
-prettyStreamVals = cat . punctuate (char ',')
-               . map (\(n, v) -> (integer $ toInteger n) <+> text "->" <+> text (show v))
-               . Map.toList
+prettyStreamVals
+        = cat . punctuate (char ',')
+          . map (\(n, v) ->
+                (integer $ toInteger n) <+> text "->" <+> text (show v))
+          . Map.toList
 
 getModel :: VarEnv i -> Map Natural StreamPos -> SMT (Model i)
 getModel env = runReaderT (getModel' env)
@@ -89,7 +92,7 @@ getVarsModel = mapM getVarModel
 
 getVarModel :: TypedStream i -> ModelM ValueStream
 getVarModel (BoolStream   s) = BoolVStream <$> getStreamValue s
-getVarModel (IntStream    s) = IntVStream <$> getStreamValue s
+getVarModel (IntStream    s) = IntVStream  <$> getStreamValue s
 getVarModel (RealStream   s) = RealVStream <$> getStreamValue s
 getVarModel (EnumStream _ s) = EnumVStream <$> getStreamValue s
 getVarModel (ProdStream   s) = ProdVStream <$> mapM getVarModel s
