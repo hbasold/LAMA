@@ -16,6 +16,12 @@ import TransformEnv
 import Model
 
 type SMTErr = ErrorT String SMT
+data Hint i = Hint { hintDescr :: String, hintModel :: Model i }
+type Hints i = [Hint i]
+data StrategyResult i =
+     Success
+     | Failure Natural (Model i)
+     | Unknown String (Hints i)
 
 data Strategy = forall s. StrategyClass s => Strategy s
 
@@ -25,9 +31,14 @@ class StrategyClass s where
   check :: SMTAnnotation Natural
            -> s
            -> (Map Natural StreamPos -> SMT (Model i))
-           -> ProgDefs -> SMTErr (Maybe (Natural, Model i))
+           -> ProgDefs
+           -> SMTErr (StrategyResult i)
 
-checkWithModel :: SMTAnnotation Natural -> Strategy -> ProgDefs -> VarEnv i -> SMTErr (Maybe (Natural, Model i))
+checkWithModel :: SMTAnnotation Natural
+               -> Strategy
+               -> ProgDefs
+               -> VarEnv i
+               -> SMTErr (StrategyResult i)
 checkWithModel natAnn (Strategy s) d env = check natAnn s (getModel env) d
 
 readOptions' :: String -> Strategy -> Strategy

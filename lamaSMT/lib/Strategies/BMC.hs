@@ -43,9 +43,12 @@ assumeTrace defs iDef =
   assertDefs iDef (flowDef defs) >>
   assertPrecond iDef (precondition defs)
 
-bmcStep :: MonadSMT m
-             => (Map Natural StreamPos -> SMT (Model i))
-             -> ProgDefs -> Map Natural StreamPos -> StreamPos -> m (Maybe (Model i))
+bmcStep :: MonadSMT m =>
+        (Map Natural StreamPos -> SMT (Model i))
+        -> ProgDefs
+        -> Map Natural StreamPos
+        -> StreamPos
+        -> m (Maybe (Model i))
 bmcStep getModel defs pastIndices iDef =
   do assumeTrace defs iDef
      let invs = invariantDef defs
@@ -53,14 +56,20 @@ bmcStep getModel defs pastIndices iDef =
        $ checkInvariant iDef invs >>=
        checkGetModel getModel pastIndices
 
-check' :: SMTAnnotation Natural -> BMC -> (Map Natural StreamPos -> SMT (Model i))
-          -> ProgDefs -> Map Natural StreamPos -> Natural -> StreamPos -> SMTErr (Maybe (Natural, Model i))
+check' :: SMTAnnotation Natural
+       -> BMC
+       -> (Map Natural StreamPos -> SMT (Model i))
+       -> ProgDefs
+       -> Map Natural StreamPos
+       -> Natural
+       -> StreamPos
+       -> SMTErr (StrategyResult i)
 check' natAnn s getModel defs pastIndices i iDef =
   do liftIO $ when (bmcPrintProgress s) (putStrLn $ "Depth " ++ show i)
      r <- bmcStep getModel defs pastIndices iDef
      case r of
        Nothing -> next (check' natAnn s getModel defs) natAnn s pastIndices i iDef
-       Just m -> return $ Just (i, m)
+       Just m -> return $ Failure i m
 
 assertDefs :: MonadSMT m => SMTExpr Natural -> [Definition] -> m ()
 assertDefs i = mapM_ (assertDef i)
@@ -75,15 +84,25 @@ assertPrecond = assertDefinition id
 checkInvariant :: MonadSMT m => SMTExpr Natural -> Definition -> m Bool
 checkInvariant i p = liftSMT $ assertDefinition not' i p >> liftM not checkSat
 
-checkGetModel :: MonadSMT m
-                 => (Map Natural StreamPos -> SMT (Model i)) -> Map Natural StreamPos
-                 -> Bool -> m (Maybe (Model i))
+checkGetModel :: MonadSMT m =>
+              (Map Natural StreamPos -> SMT (Model i))
+              -> Map Natural StreamPos
+              -> Bool
+              -> m (Maybe (Model i))
 checkGetModel getModel indices r = liftSMT $
   if r then return Nothing else fmap Just $ getModel indices
 
-next :: (Map Natural StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (Natural, Model i)))
+next :: (Map Natural StreamPos
+             -> Natural
+             -> SMTExpr Natural
+             -> SMTErr (StrategyResult i)
+        )
         -> SMTAnnotation Natural
-        -> BMC -> Map Natural StreamPos -> Natural -> SMTExpr Natural -> SMTErr (Maybe (Natural, Model i))
+        -> BMC
+        -> Map Natural StreamPos
+        -> Natural
+        -> SMTExpr Natural
+        -> SMTErr (StrategyResult i)
 next checkCont natAnn s pastIndices i iDef =
   do let i' = succ i
      iDef' <- liftSMT . defConst$ succ' natAnn iDef
@@ -93,4 +112,4 @@ next checkCont natAnn s pastIndices i iDef =
        Just l ->
          if i' < l
          then checkCont pastIndices' i' iDef'
-         else return Nothing
+         else return Success

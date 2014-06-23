@@ -10,7 +10,7 @@ if [ -z "$4" ]; then
 else
   d="$4";
 fi
-strategy="-s $3 -o depth=$d -o progress"
+strategy="-s $3 -o depth=$d -o progress -o hints"
 
 timefmt="%U user\n%S system\n%E elapsed\n%P CPU\n%Xkb text + %Dkb data -> %Kkb total + %Mkb max\n%I inputs + %O outputs\n%F major + %R minor pagefaults\n%W swaps"
 
