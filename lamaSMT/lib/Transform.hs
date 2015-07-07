@@ -84,11 +84,11 @@ declProgram p =
      putConstants (progConstantDefinitions p)
      declareEnums (progEnumDefinitions p)
      (declDefs, _) <- declareDecls Nothing Set.empty (progDecls p)
-     flowDefs <- declareFlow Nothing (progFlow p)
-     assertInits (progInitial p)
-     precondDef <- declarePrecond Nothing (progAssertion p)
-     invarDef <- declareInvariant Nothing (progInvariant p)
-     return $ ProgDefs (declDefs ++ flowDefs) precondDef invarDef
+     --flowDefs <- declareFlow Nothing (progFlow p)
+     --assertInits (progInitial p)
+     --precondDef <- declarePrecond Nothing (progAssertion p)
+     --invarDef <- declareInvariant Nothing (progInvariant p)
+     return $ ProgDefs (declDefs{- ++ flowDefs-}) (head declDefs) (head declDefs)-- precondDef invarDef
 
 -- | Declares common types etc.
 -- At the moment just Natural is defined.
@@ -125,42 +125,42 @@ declareDecls activeCond excludeNodes d =
   do let (excluded, toDeclare)
            = Map.partitionWithKey (\n _ -> n `Set.member` excludeNodes)
              $ declsNode d
-     defs <- mapM (uncurry $ declareNode activeCond) $ Map.toList toDeclare
+     --defs <- mapM (uncurry $ declareNode activeCond) $ Map.toList toDeclare
      inp <- declareVars $ declsInput d
      locs <- declareVars $ declsLocal d
      states <- declareVars $ declsState d
      modifyVars $ mappend (inp `mappend` locs `mappend` states)
-     return (concat defs, excluded)
+     return ({-concat defs-}[], excluded)
 
-declareVars :: Ident i => [Variable i] -> DeclM i (Map i (TypedStream i))
+declareVars :: Ident i => [Variable i] -> DeclM i (Map i (TypedExpr i))
 declareVars = fmap (Map.fromList) . declareVarList
 
-declareVarList :: Ident i => [Variable i] -> DeclM i ([(i, TypedStream i)])
+declareVarList :: Ident i => [Variable i] -> DeclM i ([(i, TypedExpr i)])
 declareVarList = mapM declareVar
 
-declareVar :: Ident i => Variable i -> DeclM i ((i, TypedStream i))
+declareVar :: Ident i => Variable i -> DeclM i ((i, TypedExpr i))
 declareVar (Variable x t) =
-  do natAnn <- gets natImpl
-     (x,) <$> typedVar (identString x) natAnn t
+  --do natAnn <- gets natImpl
+     (x,) <$> typedVar (identString x) t
   where
     typedVar :: Ident i =>
                 String
-                -> SMTAnnotation Natural
+                -- -> SMTAnnotation Natural
                 -> Type i
-                -> DeclM i (TypedStream i)
-    typedVar v ann (GroundType BoolT)
-      = liftSMT $ fmap BoolStream $ funAnnNamed v ann unit
-    typedVar v ann (GroundType IntT)
-      = liftSMT $ fmap IntStream $ funAnnNamed v ann unit
-    typedVar v ann (GroundType RealT)
-      = liftSMT $ fmap RealStream $ funAnnNamed v ann unit
-    typedVar v ann (GroundType _) = $notImplemented
-    typedVar v ann (EnumType et)
+                -> DeclM i (TypedExpr i)
+    typedVar v (GroundType BoolT)
+      = liftSMT $ fmap BoolExpr $ varNamed v
+    typedVar v (GroundType IntT)
+      = liftSMT $ fmap IntExpr $ varNamed v
+    typedVar v (GroundType RealT)
+      = liftSMT $ fmap RealExpr $ varNamed v
+    typedVar v (GroundType _) = $notImplemented
+    typedVar v (EnumType et)
       = do etAnn <- lookupEnumAnn et
-           liftSMT $ fmap (EnumStream etAnn) $ funAnnNamed v ann etAnn
-    typedVar v ann (ProdType ts) =
-      do vs <- mapM (typedVar (v ++ "_comp") ann) ts
-         return (ProdStream $ listArray (0, (length vs) - 1) vs)
+           liftSMT $ fmap EnumExpr $ varNamedAnn v etAnn
+    typedVar v (ProdType ts) =
+      do vs <- mapM (typedVar (v ++ "_comp")) ts
+         return (ProdExpr $ listArray (0, (length vs) - 1) vs)
 {-
 -- | Declares a stream of type Enum, including possible extra constraints on it.
 enumVar :: MonadSMT m
@@ -184,7 +184,7 @@ enumVar argAnn ann@(EnumBitAnn size _ biggestCons) =
 -- (using getNodesInLocations). Then all nodes _except_ those found before are
 -- declared. The other nodes are deferred to be declared in the corresponding
 -- location (see declareAutomaton and declareLocations).
-declareNode :: Ident i =>
+{-declareNode :: Ident i =>
                Maybe (Stream Bool) -> i -> Node i -> DeclM i [Definition]
 declareNode active nName nDecl =
   do (interface, defs) <- localVarEnv (const emptyVarEnv) $
@@ -785,3 +785,4 @@ applyOp Mul     e1 e2 = liftArithL mult [e1, e2]
 applyOp RealDiv e1 e2 = liftReal2 divide e1 e2
 applyOp IntDiv  e1 e2 = liftInt2 div' e1 e2
 applyOp Mod     e1 e2 = liftInt2 mod' e1 e2
+-}

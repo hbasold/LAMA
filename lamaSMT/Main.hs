@@ -169,9 +169,10 @@ run opts@Options{..} file inp = do
   liftIO $ when optDumpLama (print p)
   model <- runCheck opts
     ( (liftSMT $ mapM_ setOption optSMTOpts) >>
-      lamaSMT optNatImpl optEnumImpl p >>=
-      (uncurry $ checkWithModel optNatImpl optStrategy) )
-  liftIO $ checkModel opts p model
+      lamaSMT optNatImpl optEnumImpl p) {- >>=
+      (uncurry $ checkWithModel optNatImpl optStrategy) ) -}
+  --liftIO $ checkModel opts p model
+  liftIO $ putStr "Test"
 
 checkErrors :: Either Error a -> MaybeT IO a
 checkErrors r = case r of

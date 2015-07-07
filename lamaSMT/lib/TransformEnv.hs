@@ -25,14 +25,14 @@ import LamaSMTTypes
 import Internal.Monads
 
 data NodeEnv i = NodeEnv
-                 { nodeEnvIn :: [TypedStream i]
-                 , nodeEnvOut :: [TypedStream i]
+                 { nodeEnvIn :: [TypedExpr i]
+                 , nodeEnvOut :: [TypedExpr i]
                  , nodeEnvVars :: VarEnv i
                  }
 
 data VarEnv i = VarEnv
                 { nodes :: Map i (NodeEnv i)
-                , vars :: Map i (TypedStream i)
+                , vars :: Map i (TypedExpr i)
                   -- ^ Maps names of variables to a SMT expression for using
                   -- that variable
                 }
@@ -74,7 +74,7 @@ modifyVarEnv f = modify $ \env -> env { varEnv = f $ varEnv env }
 modifyNodes :: (Map i (NodeEnv i) -> Map i (NodeEnv i)) -> DeclM i ()
 modifyNodes f = modifyVarEnv $ (\env -> env { nodes = f $ nodes env })
 
-modifyVars :: (Map i (TypedStream i) -> Map i (TypedStream i)) -> DeclM i ()
+modifyVars :: (Map i (TypedExpr i) -> Map i (TypedExpr i)) -> DeclM i ()
 modifyVars f = modifyVarEnv $ (\env -> env { vars = f $ vars env })
 
 lookupErr :: (MonadError e m, Ord k) => e -> k -> Map k v -> m v
@@ -82,7 +82,7 @@ lookupErr err k m = case Map.lookup k m of
   Nothing -> throwError err
   Just v -> return v
 
-lookupVar :: (MonadState (Env i) m, MonadError String m, Ident i) => i -> m (TypedStream i)
+lookupVar :: (MonadState (Env i) m, MonadError String m, Ident i) => i -> m (TypedExpr i)
 lookupVar x = gets (vars . varEnv) >>= lookupErr ("Unknown variable " ++ identPretty x) x
 
 lookupNode :: Ident i => i -> DeclM i (NodeEnv i)

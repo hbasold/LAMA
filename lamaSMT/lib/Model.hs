@@ -87,20 +87,21 @@ getNodeModel :: NodeEnv i -> ModelM (NodeModel i)
 getNodeModel (NodeEnv i o e) =
   NodeModel <$> mapM getVarModel i <*> mapM getVarModel o <*> getModel' e
 
-getVarsModel :: Map i (TypedStream i) -> ModelM (Map i ValueStream)
+getVarsModel :: Map i (TypedExpr i) -> ModelM (Map i ValueStream)
 getVarsModel = mapM getVarModel
 
-getVarModel :: TypedStream i -> ModelM ValueStream
-getVarModel (BoolStream   s) = BoolVStream <$> getStreamValue s
-getVarModel (IntStream    s) = IntVStream  <$> getStreamValue s
-getVarModel (RealStream   s) = RealVStream <$> getStreamValue s
-getVarModel (EnumStream _ s) = EnumVStream <$> getStreamValue s
-getVarModel (ProdStream   s) = ProdVStream <$> mapM getVarModel s
+--TODO
+getVarModel :: TypedExpr i -> ModelM ValueStream
+getVarModel (BoolExpr s) = BoolVStream <$> getStreamValue s
+getVarModel (IntExpr  s) = IntVStream  <$> getStreamValue s
+getVarModel (RealExpr s) = RealVStream <$> getStreamValue s
+getVarModel (EnumExpr s) = EnumVStream <$> getStreamValue s
+getVarModel (ProdExpr s) = ProdVStream <$> mapM getVarModel s
 
-getStreamValue :: SMTValue t => Stream t -> ModelM (ValueStreamT t)
+getStreamValue :: SMTValue t => SMTExpr t -> ModelM (ValueStreamT t)
 getStreamValue s
   = ask >>=
-    liftSMT . mapM (\i -> getValue $ s `app` i)
+    liftSMT . mapM (\i -> getValue $ s)
 
 scadeScenario :: Ident i =>
               Program i -> [String] -> Model i -> Doc
