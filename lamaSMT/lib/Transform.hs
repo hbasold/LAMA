@@ -85,7 +85,7 @@ declProgram p =
      declareEnums (progEnumDefinitions p)
      (declDefs, _) <- declareDecls Nothing Set.empty (progDecls p)
      --flowDefs <- declareFlow Nothing (progFlow p)
-     --assertInits (progInitial p)
+     assertInits (progInitial p)
      --precondDef <- declarePrecond Nothing (progAssertion p)
      --invarDef <- declareInvariant Nothing (progInvariant p)
      return $ ProgDefs (declDefs{- ++ flowDefs-}) (head declDefs) (head declDefs)-- precondDef invarDef
@@ -655,6 +655,7 @@ mkTransitionEq activeCond locationEnumTy locationEnumConstrs act sel es =
                     -> Expr i
      locConsExpr locNames t loc
        = mkTyped (AtExpr $ AtomEnum ((Map.!) locNames loc)) t
+-}
 
 assertInits :: Ident i => StateInit i -> DeclM i ()
 assertInits = mapM_ assertInit . Map.toList
@@ -664,9 +665,10 @@ assertInit (x, e) =
   do natAnn <- gets natImpl
      x' <- lookupVar x
      e' <- trConstExpr e
-     let def = liftRel (.==.) (x' `appStream` (zero' natAnn)) e'
+     let def = liftRel (.==.) x' e'
      liftSMT $ liftAssert def
 
+{-
 -- | Creates a definition for a precondition p. If an activation condition c
 -- is given, the resulting condition is (=> c p).
 declarePrecond :: Ident i => Maybe (Stream Bool) -> Expr i -> DeclM i Definition
@@ -683,6 +685,7 @@ declarePrecond activeCond e =
 declareInvariant :: Ident i =>
                     Maybe (Stream Bool) -> Expr i -> DeclM i Definition
 declareInvariant = declarePrecond
+-}
 
 trConstExpr :: Ident i => ConstExpr i -> DeclM i (TypedExpr i)
 trConstExpr (untyped -> Const c)
@@ -694,6 +697,7 @@ trConstExpr (untyped -> ConstProd (Prod cs)) =
 
 type TransM i = ReaderT (StreamPos, Env i) (Either String)
 
+{-
 doAppStream :: TypedStream i -> TransM i (TypedExpr i)
 doAppStream s = askStreamPos >>= return . appStream s
 
@@ -702,8 +706,9 @@ runTransM :: TransM i a -> Env i -> StreamPos -> a
 runTransM m e n = case runReaderT m (n, e) of
   Left err -> error err
   Right r -> r
+-}
 
-lookupVar' :: Ident i => i -> TransM i (TypedStream i)
+lookupVar' :: Ident i => i -> TransM i (TypedExpr i)
 lookupVar' x =
   do vs <- asks $ vars . varEnv . snd
      case Map.lookup x vs of
@@ -716,6 +721,7 @@ lookupEnumConsAnn' t
   = asks (enumConsAnn . snd)
     >>= lookupErr ("Unknown enum constructor " ++ identPretty t) t
 
+{-
 askStreamPos :: TransM i StreamPos
 askStreamPos = asks fst
 
@@ -761,6 +767,7 @@ trEnumMatch x pats =
       trEnumCons e >>= \y ->
       return $ liftRel (.==.) c (EnumExpr y)
     trEnumHead _ BottomPattern = return . BoolExpr $ constant True
+-}
 
 trEnumConsAnn :: Ident i =>
                  EnumConstr i -> SMTAnnotation SMTEnum -> SMTExpr SMTEnum
@@ -769,6 +776,7 @@ trEnumConsAnn x = constantAnn (SMTEnum . fromString $ identString x)
 trEnumCons :: Ident i => EnumConstr i -> TransM i (SMTExpr SMTEnum)
 trEnumCons x = lookupEnumConsAnn' x >>= return . trEnumConsAnn x
 
+{-
 applyOp :: BinOp -> TypedExpr i -> TypedExpr i -> TypedExpr i
 applyOp Or      e1 e2 = liftBoolL or'  [e1, e2]
 applyOp And     e1 e2 = liftBoolL and' [e1, e2]
