@@ -8,22 +8,22 @@ import LamaSMTTypes
 import Internal.Monads
 
 data Definition =
-  SingleDef (Stream Bool)
+  SingleDef (SMTFunction (SMTExpr Bool) Bool)
   | ProdDef (Array Int Definition)
---  deriving Show
+  deriving Show
 
-ensureDefinition :: TypedStream i -> Definition
-ensureDefinition (BoolStream s) = SingleDef s
-ensureDefinition (ProdStream ps) = ProdDef $ fmap ensureDefinition ps
+ensureDefinition :: TypedFunc i -> Definition
+ensureDefinition (BoolFunc s) = SingleDef s
+ensureDefinition (ProdFunc ps) = ProdDef $ fmap ensureDefinition ps
 ensureDefinition _
-  = error $ "ensureDefinition: not a boolean stream" -- : " ++ show s
+  = error $ "ensureDefinition: not a boolean function" -- : " ++ show s
 
 assertDefinition :: MonadSMT m =>
                     (SMTExpr Bool -> SMTExpr Bool)
                     -> StreamPos
                     -> Definition
                     -> m ()
-assertDefinition f i (SingleDef s) = liftSMT $ assert (f $ s `app` i)
+assertDefinition f i (SingleDef s) = do return ()--liftSMT $ assert (f $ s `app` i)
 assertDefinition f i (ProdDef ps) = mapM_ (assertDefinition f i) $ Arr.elems ps
 
 data ProgDefs = ProgDefs

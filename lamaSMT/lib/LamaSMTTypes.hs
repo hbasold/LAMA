@@ -29,6 +29,43 @@ unProd' :: TypedExpr i -> Array Int (TypedExpr i)
 unProd' (ProdExpr e) = e
 unProd' e = error $ "Cannot unProd: " ++ show e
 
+data TypedFunc i
+  = BoolFunc (SMTFunction (SMTExpr Bool) Bool)
+  | IntFunc (SMTFunction (SMTExpr Bool) Integer)
+  | RealFunc (SMTFunction (SMTExpr Bool) Rational)
+  | EnumFunc EnumAnn (SMTFunction (SMTExpr Bool) SMTEnum)
+  | ProdFunc (Array Int (TypedFunc i))
+  deriving Show
+
+mkProdFunc :: [TypedFunc i] -> TypedFunc i
+mkProdFunc [] = error "Cannot create empty product stream"
+mkProdFunc [s] = s
+mkProdFunc sts = ProdFunc . uncurry listArray $ ((0,) . pred . length &&& id) sts
+
+appFunc :: TypedFunc i -> SMTExpr Bool -> TypedExpr i
+appFunc (BoolFunc f) arg = BoolExpr $ f `app` arg
+appFunc (IntFunc f) arg = IntExpr $ f `app` arg
+appFunc (RealFunc f) arg = RealExpr $ f `app` arg
+appFunc (EnumFunc _ f) arg = EnumExpr $ f `app` arg
+appFunc (ProdFunc f) arg = ProdExpr $ fmap (`appFunc` arg) f
+
+{-instance (SMTExpr i) => Args (TypedExpr i) where
+  type ArgAnnotation (TypedExpr i) = SMTAnnotation i
+  foldExprs f = f
+  foldsExprs f = f
+  extractArgAnnotation (BoolExpr expr) = extractAnnotation expr
+  toArgs _ (x:xs) = do
+    r <- entype gcast x
+    return (r,xs)
+  toArgs _ [] = Nothing
+  fromArgs x = [UntypedExpr x]
+  getSorts (_::SMTExpr a) ann = [getSort (undefined::a) ann]
+  getArgAnnotation u (s:rest) = (annotationFromSort (getUndef u) s,rest)
+  getArgAnnotation _ [] = error "smtlib2: To few sorts provided."
+  showsArgs = showExpr-}
+
+------------------------------
+
 type StreamPos = SMTExpr Natural
 type Stream t = SMTFunction StreamPos t
 data TypedStream i
@@ -37,7 +74,7 @@ data TypedStream i
   | RealStream (Stream Rational)
   | EnumStream EnumAnn (Stream SMTEnum)
   | ProdStream (Array Int (TypedStream i))
---  deriving Show
+  deriving Show
 
 mkProdStream :: [TypedStream i] -> TypedStream i
 mkProdStream [] = error "Cannot create empty product stream"

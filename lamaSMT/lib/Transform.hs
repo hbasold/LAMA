@@ -15,6 +15,8 @@
 
 module Transform where
 
+import Debug.Trace
+
 import Development.Placeholders
 
 import Lang.LAMA.Identifier
@@ -86,9 +88,9 @@ declProgram p =
      (declDefs, _) <- declareDecls Nothing Set.empty (progDecls p)
      --flowDefs <- declareFlow Nothing (progFlow p)
      assertInits (progInitial p)
-     --precondDef <- declarePrecond Nothing (progAssertion p)
-     --invarDef <- declareInvariant Nothing (progInvariant p)
-     return $ ProgDefs (declDefs{- ++ flowDefs-}) (head declDefs) (head declDefs)-- precondDef invarDef
+     precondDef <- declarePrecond Nothing (progAssertion p)
+     invarDef <- declareInvariant Nothing (progInvariant p)
+     return $ ProgDefs (declDefs{- ++ flowDefs-}) precondDef invarDef
 
 -- | Declares common types etc.
 -- At the moment just Natural is defined.
@@ -668,24 +670,22 @@ assertInit (x, e) =
      let def = liftRel (.==.) x' e'
      liftSMT $ liftAssert def
 
-{-
 -- | Creates a definition for a precondition p. If an activation condition c
 -- is given, the resulting condition is (=> c p).
-declarePrecond :: Ident i => Maybe (Stream Bool) -> Expr i -> DeclM i Definition
+declarePrecond :: Ident i => Maybe (SMTFunction (SMTExpr Bool) Bool) -> Expr i -> DeclM i Definition
 declarePrecond activeCond e =
   do env <- get
      d <- case activeCond of
-       Nothing -> defStream boolT $ \t -> runTransM (trExpr e) env t
-       Just c -> defStream boolT $
-                 \t -> (flip (flip runTransM env) t)
-                       (trExpr e >>= \e' ->
-                         return $ liftBool2 (.=>.) (BoolExpr $ c `app` t) e')
-     return $ ensureDefinition d
+       Nothing -> defFunc boolT $ \a -> runTransM (trExpr e) env a
+       Just c -> defFunc boolT $
+                 \a -> (flip (flip runTransM env) a)
+		       (trExpr e >>= \e' ->
+                         return $ liftBool2 (.=>.) (BoolExpr $ c `app` a) e')
+     return $ trace ("Precond " ++ show d) $ ensureDefinition d
 
 declareInvariant :: Ident i =>
-                    Maybe (Stream Bool) -> Expr i -> DeclM i Definition
+                    Maybe (SMTFunction (SMTExpr Bool) Bool) -> Expr i -> DeclM i Definition
 declareInvariant = declarePrecond
--}
 
 trConstExpr :: Ident i => ConstExpr i -> DeclM i (TypedExpr i)
 trConstExpr (untyped -> Const c)
@@ -695,18 +695,18 @@ trConstExpr (untyped -> ConstEnum x)
 trConstExpr (untyped -> ConstProd (Prod cs)) =
   ProdExpr . listArray (0, length cs - 1) <$> mapM trConstExpr cs
 
-type TransM i = ReaderT (StreamPos, Env i) (Either String)
+type TransM i = ReaderT (SMTExpr Bool, Env i) (Either String)
 
 {-
 doAppStream :: TypedStream i -> TransM i (TypedExpr i)
 doAppStream s = askStreamPos >>= return . appStream s
+-}
 
 -- beware: uses error
-runTransM :: TransM i a -> Env i -> StreamPos -> a
-runTransM m e n = case runReaderT m (n, e) of
+runTransM :: TransM i a -> Env i -> SMTExpr Bool -> a
+runTransM m e a = case runReaderT m (a, e) of
   Left err -> error err
   Right r -> r
--}
 
 lookupVar' :: Ident i => i -> TransM i (TypedExpr i)
 lookupVar' x =
@@ -724,6 +724,7 @@ lookupEnumConsAnn' t
 {-
 askStreamPos :: TransM i StreamPos
 askStreamPos = asks fst
+-}
 
 -- we do no further type checks since this
 -- has been done beforehand.
@@ -732,8 +733,7 @@ trExpr expr = case untyped expr of
   AtExpr (AtomConst c) -> return $ trConstant c
   AtExpr (AtomVar x)   ->
     do s <- lookupVar' x
-       n <- askStreamPos
-       return $ s `appStream` n
+       return s
   AtExpr (AtomEnum x)  -> EnumExpr <$> trEnumCons x
   LogNot e             -> lift1Bool not' <$> trExpr e
   Expr2 op e1 e2       -> applyOp op <$> trExpr e1 <*> trExpr e2
@@ -741,9 +741,8 @@ trExpr expr = case untyped expr of
   ProdCons (Prod es)   -> (ProdExpr . listArray (0, (length es) - 1))
                           <$> mapM trExpr es
   Project x i          ->
-    do (ProdStream s) <- lookupVar' x
-       n <- askStreamPos
-       return $ (s ! fromEnum i) `appStream` n
+    do (ProdExpr s) <- lookupVar' x
+       return $ (s ! fromEnum i)
   Match e pats         -> trExpr e >>= flip trPattern pats
 
 trPattern :: Ident i => TypedExpr i -> [Pattern i] -> TransM i (TypedExpr i)
@@ -767,7 +766,6 @@ trEnumMatch x pats =
       trEnumCons e >>= \y ->
       return $ liftRel (.==.) c (EnumExpr y)
     trEnumHead _ BottomPattern = return . BoolExpr $ constant True
--}
 
 trEnumConsAnn :: Ident i =>
                  EnumConstr i -> SMTAnnotation SMTEnum -> SMTExpr SMTEnum
@@ -776,7 +774,6 @@ trEnumConsAnn x = constantAnn (SMTEnum . fromString $ identString x)
 trEnumCons :: Ident i => EnumConstr i -> TransM i (SMTExpr SMTEnum)
 trEnumCons x = lookupEnumConsAnn' x >>= return . trEnumConsAnn x
 
-{-
 applyOp :: BinOp -> TypedExpr i -> TypedExpr i -> TypedExpr i
 applyOp Or      e1 e2 = liftBoolL or'  [e1, e2]
 applyOp And     e1 e2 = liftBoolL and' [e1, e2]
@@ -793,4 +790,3 @@ applyOp Mul     e1 e2 = liftArithL mult [e1, e2]
 applyOp RealDiv e1 e2 = liftReal2 divide e1 e2
 applyOp IntDiv  e1 e2 = liftInt2 div' e1 e2
 applyOp Mod     e1 e2 = liftInt2 mod' e1 e2
--}
