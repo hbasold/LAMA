@@ -8,7 +8,7 @@ import LamaSMTTypes
 import Internal.Monads
 
 data Definition =
-  SingleDef (SMTFunction (SMTExpr Bool) Bool)
+  SingleDef (SMTFunction [SMTExpr Bool] Bool)
   | ProdDef (Array Int Definition)
   deriving Show
 

@@ -672,7 +672,7 @@ assertInit (x, e) =
 
 -- | Creates a definition for a precondition p. If an activation condition c
 -- is given, the resulting condition is (=> c p).
-declarePrecond :: Ident i => Maybe (SMTFunction (SMTExpr Bool) Bool) -> Expr i -> DeclM i Definition
+declarePrecond :: Ident i => Maybe (SMTFunction [SMTExpr Bool] Bool) -> Expr i -> DeclM i Definition
 declarePrecond activeCond e =
   do env <- get
      d <- case activeCond of
@@ -684,7 +684,7 @@ declarePrecond activeCond e =
      return $ trace ("Precond " ++ show d) $ ensureDefinition d
 
 declareInvariant :: Ident i =>
-                    Maybe (SMTFunction (SMTExpr Bool) Bool) -> Expr i -> DeclM i Definition
+                    Maybe (SMTFunction [SMTExpr Bool] Bool) -> Expr i -> DeclM i Definition
 declareInvariant = declarePrecond
 
 trConstExpr :: Ident i => ConstExpr i -> DeclM i (TypedExpr i)
@@ -695,7 +695,7 @@ trConstExpr (untyped -> ConstEnum x)
 trConstExpr (untyped -> ConstProd (Prod cs)) =
   ProdExpr . listArray (0, length cs - 1) <$> mapM trConstExpr cs
 
-type TransM i = ReaderT (SMTExpr Bool, Env i) (Either String)
+type TransM i = ReaderT ([SMTExpr Bool], Env i) (Either String)
 
 {-
 doAppStream :: TypedStream i -> TransM i (TypedExpr i)
@@ -703,7 +703,7 @@ doAppStream s = askStreamPos >>= return . appStream s
 -}
 
 -- beware: uses error
-runTransM :: TransM i a -> Env i -> SMTExpr Bool -> a
+runTransM :: TransM i a -> Env i -> [SMTExpr Bool] -> a
 runTransM m e a = case runReaderT m (a, e) of
   Left err -> error err
   Right r -> r

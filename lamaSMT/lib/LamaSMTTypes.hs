@@ -30,10 +30,10 @@ unProd' (ProdExpr e) = e
 unProd' e = error $ "Cannot unProd: " ++ show e
 
 data TypedFunc i
-  = BoolFunc (SMTFunction (SMTExpr Bool) Bool)
-  | IntFunc (SMTFunction (SMTExpr Bool) Integer)
-  | RealFunc (SMTFunction (SMTExpr Bool) Rational)
-  | EnumFunc EnumAnn (SMTFunction (SMTExpr Bool) SMTEnum)
+  = BoolFunc (SMTFunction [SMTExpr Bool] Bool)
+  | IntFunc (SMTFunction [SMTExpr Bool] Integer)
+  | RealFunc (SMTFunction [SMTExpr Bool] Rational)
+  | EnumFunc EnumAnn (SMTFunction [SMTExpr Bool] SMTEnum)
   | ProdFunc (Array Int (TypedFunc i))
   deriving Show
 
@@ -42,7 +42,7 @@ mkProdFunc [] = error "Cannot create empty product stream"
 mkProdFunc [s] = s
 mkProdFunc sts = ProdFunc . uncurry listArray $ ((0,) . pred . length &&& id) sts
 
-appFunc :: TypedFunc i -> SMTExpr Bool -> TypedExpr i
+appFunc :: TypedFunc i -> [SMTExpr Bool] -> TypedExpr i
 appFunc (BoolFunc f) arg = BoolExpr $ f `app` arg
 appFunc (IntFunc f) arg = IntExpr $ f `app` arg
 appFunc (RealFunc f) arg = RealExpr $ f `app` arg

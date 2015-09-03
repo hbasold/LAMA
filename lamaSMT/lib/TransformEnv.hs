@@ -19,6 +19,7 @@ import Data.Traversable
 import Control.Monad.State (StateT(..), MonadState(..), modify, gets)
 import Control.Monad.Error (ErrorT(..), MonadError(..))
 
+import Unit
 import SMTEnum
 import NatInstance
 import LamaSMTTypes
@@ -146,7 +147,7 @@ defStream ty sf = gets natImpl >>= \natAnn -> defStream' natAnn ty sf
 
 -- | Defines a function instead of streams
 defFunc :: Ident i =>
-             Type i -> (SMTExpr Bool -> TypedExpr i) -> DeclM i (TypedFunc i)
+             Type i -> ([SMTExpr Bool] -> TypedExpr i) -> DeclM i (TypedFunc i)
 defFunc (GroundType BoolT) f = liftSMT . fmap BoolFunc $
                                 defFun (unBool' . f)
 defFunc (GroundType IntT) f = liftSMT . fmap IntFunc $
