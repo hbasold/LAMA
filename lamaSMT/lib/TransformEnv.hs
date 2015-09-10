@@ -15,6 +15,7 @@ import qualified Data.Map as Map
 import Data.Map (Map)
 import Prelude hiding (mapM)
 import Data.Traversable
+import Data.List (replicate)
 
 import Control.Monad.State (StateT(..), MonadState(..), modify, gets)
 import Control.Monad.Error (ErrorT(..), MonadError(..))
@@ -147,28 +148,28 @@ defStream ty sf = gets natImpl >>= \natAnn -> defStream' natAnn ty sf
 
 -- | Defines a function instead of streams
 defFunc :: Ident i =>
-             Type i -> ([SMTExpr Bool] -> TypedExpr i) -> DeclM i (TypedFunc i)
-defFunc (GroundType BoolT) f = liftSMT . fmap BoolFunc $
-                                defFun (unBool' . f)
-defFunc (GroundType IntT) f = liftSMT . fmap IntFunc $
-                                defFun (unInt . f)
-defFunc (GroundType RealT) f = liftSMT . fmap RealFunc $
-                               defFun (unReal . f)
-defFunc (GroundType _) f = $notImplemented
-defFunc (EnumType alias) f = do ann <- lookupEnumAnn alias
-                                liftSMT $ fmap (EnumFunc ann) $
-                                 defFun (unEnum . f)
+             Int -> Type i -> ([SMTExpr Bool] -> TypedExpr i) -> DeclM i (TypedFunc i)
+defFunc i (GroundType BoolT) f = liftSMT . fmap BoolFunc $
+                                defFunAnn (replicate i ()) (unBool' . f)
+defFunc i (GroundType IntT) f = liftSMT . fmap IntFunc $
+                                defFunAnn (replicate i ()) (unInt . f)
+defFunc i (GroundType RealT) f = liftSMT . fmap RealFunc $
+                               defFunAnn (replicate i ()) (unReal . f)
+defFunc i (GroundType _) f = $notImplemented
+defFunc i (EnumType alias) f = do ann <- lookupEnumAnn alias
+                                  liftSMT $ fmap (EnumFunc ann) $
+                                   defFunAnn (replicate i ()) (unEnum . f)
 -- We have to pull the product out of a stream.
 -- If we are given a function f : FuncPos -> (Ix -> TE) = TypedExpr as above,
 -- we would like to have as result something like:
 -- g : Ix -> (FuncPos -> TE)
 -- g(i)(t) = defFunc(λt'.f(t')(i))(t)
 -- Here i is the index into the product and t,t' are time variables.
-defFunc (ProdType ts) f =
+defFunc i (ProdType ts) f =
   do let u = length ts - 1
      x <- mapM defParts $ zip ts [0..u]
      return . ProdFunc $ listArray (0,u) x
-  where defParts (ty2, i) = defFunc ty2 ((! i) . unProd' . f)
+  where defParts (ty2, i) = defFunc i ty2 ((! i) . unProd' . f)
 
 -- stream :: Ident i => Type i -> DeclM i (Stream t)
 

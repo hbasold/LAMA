@@ -31,7 +31,7 @@ import Data.Array as Arr
 import Data.Natural
 import NatInstance
 import qualified Data.Set as Set
-import Data.Set (Set)
+import Data.Set (Set, union, unions)
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Prelude hiding (mapM)
@@ -42,7 +42,7 @@ import Data.Monoid
 import Control.Monad.Trans.Class
 import Control.Monad.State (StateT(..), MonadState(..), gets)
 import Control.Monad.Error (ErrorT(..), MonadError(..))
-import Control.Monad.Reader (ReaderT(..), asks)
+import Control.Monad.Reader (ReaderT(..), ask, asks)
 import Control.Applicative (Applicative(..), (<$>))
 import Control.Arrow ((&&&), second)
 
@@ -676,9 +676,9 @@ declarePrecond :: Ident i => Maybe (SMTFunction [SMTExpr Bool] Bool) -> Expr i -
 declarePrecond activeCond e =
   do env <- get
      d <- case activeCond of
-       Nothing -> defFunc boolT $ \a -> runTransM (trExpr e) env a
-       Just c -> defFunc boolT $
-                 \a -> (flip (flip runTransM env) a)
+       Nothing -> defFunc (Set.size $ getArgSet e) boolT $ \a -> runTransM (trExpr e) env (zip (Set.toList $ getArgSet e) a)
+       Just c -> defFunc (Set.size $ getArgSet e) boolT $
+                 \a -> (flip (flip runTransM env) (zip (Set.toList $ getArgSet e) a))
 		       (trExpr e >>= \e' ->
                          return $ liftBool2 (.=>.) (BoolExpr $ c `app` a) e')
      return $ trace ("Precond " ++ show d) $ ensureDefinition d
@@ -695,7 +695,7 @@ trConstExpr (untyped -> ConstEnum x)
 trConstExpr (untyped -> ConstProd (Prod cs)) =
   ProdExpr . listArray (0, length cs - 1) <$> mapM trConstExpr cs
 
-type TransM i = ReaderT ([SMTExpr Bool], Env i) (Either String)
+type TransM i = ReaderT ([(i, SMTExpr Bool)], Env i) (Either String)
 
 {-
 doAppStream :: TypedStream i -> TransM i (TypedExpr i)
@@ -703,7 +703,7 @@ doAppStream s = askStreamPos >>= return . appStream s
 -}
 
 -- beware: uses error
-runTransM :: TransM i a -> Env i -> [SMTExpr Bool] -> a
+runTransM :: TransM i a -> Env i -> [(i, SMTExpr Bool)] -> a
 runTransM m e a = case runReaderT m (a, e) of
   Left err -> error err
   Right r -> r
@@ -726,14 +726,29 @@ askStreamPos :: TransM i StreamPos
 askStreamPos = asks fst
 -}
 
+getArgSet :: Ident i => Expr i -> Set i
+getArgSet expr = case untyped expr of
+  AtExpr (AtomConst c) -> Set.empty
+  AtExpr (AtomVar x)   -> Set.singleton x
+  AtExpr (AtomEnum x)  -> Set.empty
+  LogNot e             -> getArgSet e
+  Expr2 op e1 e2       -> Set.union (getArgSet e1) (getArgSet e2)
+  Ite c e1 e2          -> Set.unions [getArgSet c, getArgSet e1, getArgSet e2]
+  ProdCons (Prod es)   -> foldr (union . getArgSet) Set.empty es
+  Project x i          -> Set.empty
+  Match e pats         -> getArgSet e
+
+
 -- we do no further type checks since this
 -- has been done beforehand.
 trExpr :: Ident i => Expr i -> TransM i (TypedExpr i)
 trExpr expr = case untyped expr of
   AtExpr (AtomConst c) -> return $ trConstant c
-  AtExpr (AtomVar x)   ->
-    do s <- lookupVar' x
-       return s
+  AtExpr (AtomVar x)   -> do
+                            s <- ask
+                            case lookup x (fst s) of
+                              Nothing -> throwError $ "No argument binding for " ++ identPretty x
+                              Just n -> return $ BoolExpr n
   AtExpr (AtomEnum x)  -> EnumExpr <$> trEnumCons x
   LogNot e             -> lift1Bool not' <$> trExpr e
   Expr2 op e1 e2       -> applyOp op <$> trExpr e1 <*> trExpr e2
