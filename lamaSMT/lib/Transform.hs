@@ -52,17 +52,17 @@ import Definition
 import TransformEnv
 import Internal.Monads
 
--- | Gets an "undefined" value for a given type of stream.
--- The stream itself is not further analysed.
+-- | Gets an "undefined" value for a given type of expression.
+-- The expression itself is not further analysed.
 -- FIXME: Make behaviour configurable, i.e. bottom can be some
 -- default value or a left open stream
 -- (atm it does the former).
-getBottom :: TypedStream i -> TypedExpr i
-getBottom (BoolStream _)     = BoolExpr $ constant False
-getBottom (IntStream _)      = IntExpr  $ constant 0xdeadbeef
-getBottom (RealStream _)     = RealExpr . constant $ fromInteger 0xdeadbeef
-getBottom (EnumStream ann _) = EnumExpr $ constantAnn (enumBottom ann) ann
-getBottom (ProdStream strs)  = ProdExpr $ fmap getBottom strs
+getBottom :: TypedExpr i -> TypedExpr i
+getBottom (BoolExpr _)     = BoolExpr $ constant False
+getBottom (IntExpr _)      = IntExpr  $ constant 0xdeadbeef
+getBottom (RealExpr _)     = RealExpr . constant $ fromInteger 0xdeadbeef
+getBottom (EnumExpr e) = EnumExpr e --evtl. TODO
+getBottom (ProdExpr strs)  = ProdExpr $ fmap getBottom strs
 
 -- | Transforms a LAMA program into a set of formulas which is
 -- directly declared and a set of defining functions. Those functions
@@ -86,7 +86,7 @@ declProgram p =
      putConstants (progConstantDefinitions p)
      declareEnums (progEnumDefinitions p)
      (declDefs, _) <- declareDecls Nothing Set.empty (progDecls p)
-     --flowDefs <- declareFlow Nothing (progFlow p)
+     flowDefs <- declareFlow Nothing (progFlow p)
      assertInits (progInitial p)
      precondDef <- declarePrecond Nothing (progAssertion p)
      invarDef <- declareInvariant Nothing (progInvariant p)
@@ -225,42 +225,43 @@ getNodesInLocations = mconcat . map getUsedLoc . automLocations
     getUsedLoc (Location _ flow) = mconcat . map getUsed $ flowDefinitions flow
     getUsed (NodeUsage _ n _) = Set.singleton n
     getUsed _ = Set.empty
+-}
 
 -- | Creates definitions for instant definitions. In case of a node usage this
 -- may produce multiple definitions. If 
 declareInstantDef :: Ident i =>
-                     Maybe (Stream Bool)
+                     Maybe (SMTExpr Bool)
                      -> InstantDefinition i
                      -> DeclM i [Definition]
-declareInstantDef activeCond inst@(InstantExpr x _) =
+declareInstantDef activeCond inst@(InstantExpr x e) =
   do (res, []) <- trInstant (error "no activation condition") inst
-     xStream <- lookupVar x
+     xVar <- lookupVar x
      def <- declareConditionalAssign
-            activeCond id (const $ getBottom xStream) xStream res
+            activeCond (getBottom xVar) xVar (getArgSet e) res
      return [def]
-declareInstantDef activeCond inst@(NodeUsage x _ _) =
+{-declareInstantDef activeCond inst@(NodeUsage x _ _) =
   do (outp, inpDefs) <- trInstant activeCond inst
-     xStream         <- lookupVar x
+     xVar         <- lookupVar x
      outpDef         <- declareConditionalAssign
-                        activeCond id (const $ getBottom xStream) xStream outp
+                        activeCond id (getBottom xVar) xVar (getArgSet x) outp
      return $ inpDefs ++ [outpDef]
+-}
 
 -- | Translates an instant definition into a function which can be
 -- used to further refine this instant (e.g. wrap it into an ite).
 -- This may also return definitions of the parameters of a node.
 -- The activation condition is only used for the inputs of a node.
-trInstant :: Ident i => Maybe (Stream Bool) -> InstantDefinition i ->
-             DeclM i (Env i -> StreamPos -> TypedExpr i, [Definition])
+trInstant :: Ident i => Maybe (SMTExpr Bool) -> InstantDefinition i -> DeclM i (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i, [Definition])
 trInstant _ (InstantExpr _ e) = return (runTransM $ trExpr e, [])
-trInstant inpActive (NodeUsage _ n es) =
+{-trInstant inpActive (NodeUsage _ n es) =
   do nEnv <- lookupNode n
      let esTr = map (runTransM . trExpr) es
-         y    = mkProdStream (nodeEnvOut nEnv)
+         y    = mkProdFunc (nodeEnvOut nEnv)
      inpDefs  <- mapM (\(x, e) ->
                         declareConditionalAssign
                         inpActive id (const $ getBottom x) x e)
                  $ zip (nodeEnvIn nEnv) esTr
-     return (const $ appStream y, inpDefs)
+     return (const $ appFunc y, inpDefs)
 
 -- | Creates a declaration for a state transition.
 -- If an activation condition c is given, the declaration boils down to
@@ -277,6 +278,7 @@ declareTransition activeCond (StateTransition x e) =
          xApp    = appStream xStream
          e'      = runTransM $ trExpr e
      declareConditionalAssign activeCond succAnn xApp xStream e'
+-}
 
 -- | Creates a declaration for an assignment. Depending on the
 -- activation condition the given expression or a default expression
@@ -284,51 +286,52 @@ declareTransition activeCond (StateTransition x e) =
 -- stream of /x/ which will be defined, can be specified by modPos
 -- (see declareDef).
 declareConditionalAssign :: Ident i =>
-                            Maybe (Stream Bool)
-                            -> (StreamPos -> StreamPos)
-                            -> (StreamPos -> TypedExpr i)
-                            -> TypedStream i
-                            -> (Env i -> StreamPos -> TypedExpr i)
+                            Maybe (SMTExpr Bool)
+                            -> TypedExpr i
+                            -> TypedExpr i
+                            -> Set i
+                            -> (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i)
                             -> DeclM i Definition
-declareConditionalAssign activeCond modPos defaultStream x ef =
+declareConditionalAssign activeCond defaultExpr x al ef =
   case activeCond of
-    Nothing -> declareDef modPos x ef
+    Nothing -> declareDef x al ef
     Just c  ->
-      declareDef modPos x (\env t ->
-                            mkConditionalStream t c (ef env) defaultStream)
+      declareDef x al ef
+      --declareDef modPos x (mkConditionalExpr c e defaultExpr)
   where
     -- | Takes a condition and the corresponding branches which may depend
     -- on the current time and builds an expression which takes the corresponding
     -- branch depending on the condition (if c then s_1(n) else s_2(n)).
-    mkConditionalStream n c s1 s2 =
-      let c' = BoolExpr $ c `app` n
-      in liftIte c' (s1 n) (s2 n)
+    mkConditionalExpr c s1 s2 =
+      let c' = BoolExpr $ c
+      in liftIte c' s1 s2
 
 -- | Creates a definition for a given variable. Whereby a function to
 -- manipulate the stream position at which it is defined is used (normally
 -- id or succ' to define instances or state transitions).
 -- The second argument /x/ is the stream to be defined and the last
 -- argument (/ef/) is a function that generates the defining expression.
-declareDef :: Ident i => (StreamPos -> StreamPos) -> TypedStream i ->
-              (Env i -> StreamPos -> TypedExpr i) -> DeclM i Definition
-declareDef f x ef =
+declareDef :: Ident i => TypedExpr i -> Set i ->
+              (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i) -> DeclM i Definition
+declareDef x as ef =
   do env         <- get
-     let defType = streamDefType x
-     d           <- defStream defType
-                    $ \t -> liftRel (.==.) (x `appStream` (f t)) (ef env t)
+     let defType = varDefType x
+     d           <- defFunc (1 + Set.size as) defType
+                    $ \a -> liftRel (.==.) (BoolExpr $ head a) $ ef env $ zip (Set.toList as) (tail a)
      return $ ensureDefinition d
   where
-    streamDefType (ProdStream ts) = ProdType . fmap streamDefType $ Arr.elems ts
-    streamDefType _               = boolT
+    varDefType (ProdExpr ts) = ProdType . fmap varDefType $ Arr.elems ts
+    varDefType _               = boolT
 
-declareFlow :: Ident i => Maybe (Stream Bool) -> Flow i -> DeclM i [Definition]
+declareFlow :: Ident i => Maybe (SMTExpr Bool) -> Flow i -> DeclM i [Definition]
 declareFlow activeCond f =
   do defDefs        <- fmap concat
                        . mapM (declareInstantDef activeCond)
                        $ flowDefinitions f
-     transitionDefs <- mapM (declareTransition activeCond) $ flowTransitions f
-     return $ defDefs ++ transitionDefs
+     --transitionDefs <- mapM (declareTransition activeCond) $ flowTransitions f
+     return $ defDefs-- ++ transitionDefs
 
+{-
 -- | Declares an automaton by
 -- * defining an enum for the locations
 -- * defining two variables which hold the active location (see mkStateVars)
