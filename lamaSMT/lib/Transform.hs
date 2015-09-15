@@ -119,7 +119,7 @@ declareEnum (t, EnumDef cs) =
         liftSMT (declareType (undefined :: SMTEnum) ann) >> return (t, ann)
 
 declareDecls :: Ident i =>
-                Maybe (Stream Bool)
+                Maybe (SMTFunction [SMTExpr Bool] Bool)
                 -> Set i
                 -> Declarations i
                 -> DeclM i ([Definition], Map i (Node i))
@@ -230,7 +230,7 @@ getNodesInLocations = mconcat . map getUsedLoc . automLocations
 -- | Creates definitions for instant definitions. In case of a node usage this
 -- may produce multiple definitions. If 
 declareInstantDef :: Ident i =>
-                     Maybe (SMTExpr Bool)
+                     Maybe (SMTFunction [SMTExpr Bool] Bool)
                      -> InstantDefinition i
                      -> DeclM i [Definition]
 declareInstantDef activeCond inst@(InstantExpr x e) =
@@ -251,7 +251,7 @@ declareInstantDef activeCond inst@(InstantExpr x e) =
 -- used to further refine this instant (e.g. wrap it into an ite).
 -- This may also return definitions of the parameters of a node.
 -- The activation condition is only used for the inputs of a node.
-trInstant :: Ident i => Maybe (SMTExpr Bool) -> InstantDefinition i -> DeclM i (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i, [Definition])
+trInstant :: Ident i => Maybe (SMTFunction [SMTExpr Bool] Bool) -> InstantDefinition i -> DeclM i (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i, [Definition])
 trInstant _ (InstantExpr _ e) = return (runTransM $ trExpr e, [])
 {-trInstant inpActive (NodeUsage _ n es) =
   do nEnv <- lookupNode n
@@ -286,7 +286,7 @@ declareTransition activeCond (StateTransition x e) =
 -- stream of /x/ which will be defined, can be specified by modPos
 -- (see declareDef).
 declareConditionalAssign :: Ident i =>
-                            Maybe (SMTExpr Bool)
+                            Maybe (SMTFunction [SMTExpr Bool] Bool)
                             -> TypedExpr i
                             -> TypedExpr i
                             -> Set i
@@ -323,7 +323,7 @@ declareDef x as ef =
     varDefType (ProdExpr ts) = ProdType . fmap varDefType $ Arr.elems ts
     varDefType _               = boolT
 
-declareFlow :: Ident i => Maybe (SMTExpr Bool) -> Flow i -> DeclM i [Definition]
+declareFlow :: Ident i => Maybe (SMTFunction [SMTExpr Bool] Bool) -> Flow i -> DeclM i [Definition]
 declareFlow activeCond f =
   do defDefs        <- fmap concat
                        . mapM (declareInstantDef activeCond)
