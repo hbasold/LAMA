@@ -186,8 +186,8 @@ enumVar argAnn ann@(EnumBitAnn size _ biggestCons) =
 -- (using getNodesInLocations). Then all nodes _except_ those found before are
 -- declared. The other nodes are deferred to be declared in the corresponding
 -- location (see declareAutomaton and declareLocations).
-{-declareNode :: Ident i =>
-               Maybe (Stream Bool) -> i -> Node i -> DeclM i [Definition]
+declareNode :: Ident i =>
+               Maybe (SMTFunction [SMTExpr Bool] Bool) -> i -> Node i -> DeclM i [Definition]
 declareNode active nName nDecl =
   do (interface, defs) <- localVarEnv (const emptyVarEnv) $
                           declareNode' active nDecl
@@ -195,7 +195,7 @@ declareNode active nName nDecl =
      return defs
   where
     declareNode' :: Ident i =>
-                    Maybe (Stream Bool) -> Node i
+                    Maybe (SMTFunction [SMTExpr Bool] Bool) -> Node i
                     -> DeclM i (NodeEnv i, [Definition])
     declareNode' activeCond n =
       do let automNodes =
@@ -204,18 +204,18 @@ declareNode active nName nDecl =
            declareDecls activeCond automNodes $ nodeDecls n
          outDecls <- declareVarList $ nodeOutputs n
          ins <- mapM (lookupVar . varIdent) . declsInput $ nodeDecls n
-         let outs = map snd outDecls
+         let outs = Map.fromList outDecls
          modifyVars $ Map.union (Map.fromList outDecls)
          flowDefs <- declareFlow activeCond $ nodeFlow n
-         automDefs <-
-           fmap concat .
-           mapM (declareAutomaton activeCond undeclaredNodes) .
-           Map.toList $ nodeAutomata n
+         --automDefs <-
+         --  fmap concat .
+         --  mapM (declareAutomaton activeCond undeclaredNodes) .
+         --  Map.toList $ nodeAutomata n
          assertInits $ nodeInitial n
          precondDef <- declarePrecond activeCond $ nodeAssertion n
          varDefs <- gets varEnv
          return (NodeEnv ins outs varDefs,
-                 declDefs ++ flowDefs ++ automDefs ++ [precondDef])
+                 declDefs ++ flowDefs ++ {-automDefs ++ -}[precondDef])
 
 -- | Extracts all nodes which are used inside some location.
 getNodesInLocations :: Ident i => Automaton i -> Set i
@@ -225,7 +225,6 @@ getNodesInLocations = mconcat . map getUsedLoc . automLocations
     getUsedLoc (Location _ flow) = mconcat . map getUsed $ flowDefinitions flow
     getUsed (NodeUsage _ n _) = Set.singleton n
     getUsed _ = Set.empty
--}
 
 -- | Creates definitions for instant definitions. In case of a node usage this
 -- may produce multiple definitions. If 

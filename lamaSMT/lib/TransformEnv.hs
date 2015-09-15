@@ -28,7 +28,7 @@ import Internal.Monads
 
 data NodeEnv i = NodeEnv
                  { nodeEnvIn :: [TypedExpr i]
-                 , nodeEnvOut :: [TypedExpr i]
+                 , nodeEnvOut :: Map i (TypedExpr i)
                  , nodeEnvVars :: VarEnv i
                  }
 
