@@ -37,10 +37,10 @@ data TypedFunc i
   | ProdFunc (Array Int (TypedFunc i))
   deriving Show
 
-mkProdFunc :: [TypedFunc i] -> TypedFunc i
-mkProdFunc [] = error "Cannot create empty product stream"
-mkProdFunc [s] = s
-mkProdFunc sts = ProdFunc . uncurry listArray $ ((0,) . pred . length &&& id) sts
+mkProdExpr :: [TypedExpr i] -> TypedExpr i
+mkProdExpr [] = error "Cannot create empty product expression"
+mkProdExpr [s] = s
+mkProdExpr sts = ProdExpr . uncurry listArray $ ((0,) . pred . length &&& id) sts
 
 appFunc :: TypedFunc i -> [SMTExpr Bool] -> TypedExpr i
 appFunc (BoolFunc f) arg = BoolExpr $ f `app` arg

@@ -127,7 +127,7 @@ declareDecls activeCond excludeNodes d =
   do let (excluded, toDeclare)
            = Map.partitionWithKey (\n _ -> n `Set.member` excludeNodes)
              $ declsNode d
-     --defs <- mapM (uncurry $ declareNode activeCond) $ Map.toList toDeclare
+     defs <- mapM (uncurry $ declareNode activeCond) $ Map.toList toDeclare
      inp <- declareVars $ declsInput d
      locs <- declareVars $ declsLocal d
      states <- declareVars $ declsState d
@@ -215,7 +215,7 @@ declareNode active nName nDecl =
          precondDef <- declarePrecond activeCond $ nodeAssertion n
          varDefs <- gets varEnv
          return (NodeEnv ins outs varDefs,
-                 declDefs ++ flowDefs ++ {-automDefs ++ -}[precondDef])
+                 declDefs ++ flowDefs ++{- automDefs ++-} [precondDef])
 
 -- | Extracts all nodes which are used inside some location.
 getNodesInLocations :: Ident i => Automaton i -> Set i
@@ -238,13 +238,13 @@ declareInstantDef activeCond inst@(InstantExpr x e) =
      def <- declareConditionalAssign
             activeCond (getBottom xVar) xVar (getArgSet e) res
      return [def]
-{-declareInstantDef activeCond inst@(NodeUsage x _ _) =
+declareInstantDef activeCond inst@(NodeUsage x n _) =
   do (outp, inpDefs) <- trInstant activeCond inst
-     xVar         <- lookupVar x
+     xVar            <- lookupVar x
+     nEnv            <- lookupNode n
      outpDef         <- declareConditionalAssign
-                        activeCond id (getBottom xVar) xVar (getArgSet x) outp
+                        activeCond (getBottom xVar) xVar (Map.keysSet $ nodeEnvOut nEnv) outp
      return $ inpDefs ++ [outpDef]
--}
 
 -- | Translates an instant definition into a function which can be
 -- used to further refine this instant (e.g. wrap it into an ite).
@@ -252,16 +252,27 @@ declareInstantDef activeCond inst@(InstantExpr x e) =
 -- The activation condition is only used for the inputs of a node.
 trInstant :: Ident i => Maybe (SMTFunction [SMTExpr Bool] Bool) -> InstantDefinition i -> DeclM i (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i, [Definition])
 trInstant _ (InstantExpr _ e) = return (runTransM $ trExpr e, [])
-{-trInstant inpActive (NodeUsage _ n es) =
+trInstant inpActive (NodeUsage _ n es) =
   do nEnv <- lookupNode n
      let esTr = map (runTransM . trExpr) es
-         y    = mkProdFunc (nodeEnvOut nEnv)
-     inpDefs  <- mapM (\(x, e) ->
+         y    = runTransM $ trOutput $ nodeEnvOut nEnv
+     inpDefs  <- mapM (\(x, eTr, e) ->
                         declareConditionalAssign
-                        inpActive id (const $ getBottom x) x e)
-                 $ zip (nodeEnvIn nEnv) esTr
-     return (const $ appFunc y, inpDefs)
+                        inpActive (getBottom x) x (getArgSet e) eTr)
+                 $ zip3 (nodeEnvIn nEnv) esTr es
+     return (y, inpDefs)
 
+trOutput :: Ident i => Map i (TypedExpr i) -> TransM i (TypedExpr i)
+trOutput map = do
+                 s <- ask
+                 outList <- mapM (trOutput' s) (Map.toList map)
+                 return $ mkProdExpr outList
+               where
+                 trOutput' s (i, te) = case lookup i (fst s) of
+                                       Nothing -> throwError $ "No argument binding for " ++ identPretty i
+                                       Just n -> return $ BoolExpr n
+
+{-
 -- | Creates a declaration for a state transition.
 -- If an activation condition c is given, the declaration boils down to
 -- x' = (ite c e x) where e is the defining expression. Otherwise it is just
@@ -683,7 +694,7 @@ declarePrecond activeCond e =
                  \a -> (flip (flip runTransM env) (zip (Set.toList $ getArgSet e) a))
 		       (trExpr e >>= \e' ->
                          return $ liftBool2 (.=>.) (BoolExpr $ c `app` a) e')
-     return $ trace ("Precond " ++ show d) $ ensureDefinition d
+     return $ ensureDefinition d
 
 declareInvariant :: Ident i =>
                     Maybe (SMTFunction [SMTExpr Bool] Bool) -> Expr i -> DeclM i Definition
