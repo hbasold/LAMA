@@ -272,23 +272,18 @@ trOutput map = do
                                        Nothing -> throwError $ "No argument binding for " ++ identPretty i
                                        Just n -> return $ BoolExpr n
 
-{-
 -- | Creates a declaration for a state transition.
 -- If an activation condition c is given, the declaration boils down to
 -- x' = (ite c e x) where e is the defining expression. Otherwise it is just
 -- x' = e.
 declareTransition :: Ident i =>
-                     Maybe (Stream Bool)
+                     Maybe (SMTFunction [SMTExpr Bool] Bool)
                      -> StateTransition i
                      -> DeclM i Definition
 declareTransition activeCond (StateTransition x e) =
-  do xStream     <- lookupVar x
-     natAnn      <- gets natImpl
-     let succAnn = succ' natAnn
-         xApp    = appStream xStream
-         e'      = runTransM $ trExpr e
-     declareConditionalAssign activeCond succAnn xApp xStream e'
--}
+  do xVar     <- lookupVar x
+     let e'      = runTransM $ trExpr e
+     declareConditionalAssign activeCond (getBottom xVar) xVar (getArgSet e) e'
 
 -- | Creates a declaration for an assignment. Depending on the
 -- activation condition the given expression or a default expression
@@ -338,8 +333,8 @@ declareFlow activeCond f =
   do defDefs        <- fmap concat
                        . mapM (declareInstantDef activeCond)
                        $ flowDefinitions f
-     --transitionDefs <- mapM (declareTransition activeCond) $ flowTransitions f
-     return $ defDefs-- ++ transitionDefs
+     transitionDefs <- mapM (declareTransition activeCond) $ flowTransitions f
+     return $ defDefs ++ transitionDefs
 
 {-
 -- | Declares an automaton by
