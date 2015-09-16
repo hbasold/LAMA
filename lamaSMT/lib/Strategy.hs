@@ -10,9 +10,6 @@ import Control.Monad.Error
 
 import Language.SMTLib2
 
-import Debug.Trace
-import Lang.LAMA.Identifier
-
 import LamaSMTTypes
 import Definition
 import TransformEnv
@@ -31,18 +28,18 @@ data Strategy = forall s. StrategyClass s => Strategy s
 class StrategyClass s where
   defaultStrategyOpts :: s
   readOption :: String -> s -> s
-  check :: Ident i => SMTAnnotation Natural
+  check :: SMTAnnotation Natural
            -> s
-           -> VarEnv i
-           -> ProgDefs i
+           -> (Map Natural StreamPos -> SMT (Model i))
+           -> ProgDefs
            -> SMTErr (StrategyResult i)
 
-checkWithModel :: Ident i => SMTAnnotation Natural
+checkWithModel :: SMTAnnotation Natural
                -> Strategy
-               -> ProgDefs i
+               -> ProgDefs
                -> VarEnv i
                -> SMTErr (StrategyResult i)
-checkWithModel natAnn (Strategy s) d env = trace (show env) $ check natAnn s env d
+checkWithModel natAnn (Strategy s) d env = check natAnn s (getModel env) d
 
 readOptions' :: String -> Strategy -> Strategy
 readOptions' o (Strategy s) = Strategy $ readOption o s
