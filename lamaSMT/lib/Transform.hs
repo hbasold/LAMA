@@ -90,7 +90,7 @@ declProgram p =
      assertInits (progInitial p)
      precondDef <- declarePrecond Nothing (progAssertion p)
      invarDef <- declareInvariant Nothing (progInvariant p)
-     return $ ProgDefs (declDefs{- ++ flowDefs-}) precondDef invarDef
+     return $ ProgDefs (declDefs ++ flowDefs) precondDef invarDef
 
 -- | Declares common types etc.
 -- At the moment just Natural is defined.
@@ -132,7 +132,7 @@ declareDecls activeCond excludeNodes d =
      locs <- declareVars $ declsLocal d
      states <- declareVars $ declsState d
      modifyVars $ mappend (inp `mappend` locs `mappend` states)
-     return ({-concat defs-}[], excluded)
+     return (concat defs, excluded)
 
 declareVars :: Ident i => [Variable i] -> DeclM i (Map i (TypedExpr i))
 declareVars = fmap (Map.fromList) . declareVarList
