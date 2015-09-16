@@ -45,6 +45,7 @@ data Env i = Env
            , enumConsAnn :: Map (EnumConstr i) (SMTAnnotation SMTEnum)
            , varEnv :: VarEnv i
            , currAutomatonIndex :: Integer
+           , varList :: [SMTExpr Bool]
            , natImpl :: NatImplementation
            , enumImpl :: EnumImplementation
            }
@@ -53,7 +54,7 @@ emptyVarEnv :: VarEnv i
 emptyVarEnv = VarEnv Map.empty Map.empty
 
 emptyEnv :: NatImplementation -> EnumImplementation -> Env i
-emptyEnv = Env Map.empty Map.empty Map.empty emptyVarEnv 0
+emptyEnv = Env Map.empty Map.empty Map.empty emptyVarEnv 0 []
 
 type DeclM i = StateT (Env i) (ErrorT String SMT)
 
@@ -61,6 +62,10 @@ putConstants :: Ident i => Map i (Constant i) -> DeclM i ()
 putConstants cs =
   let cs' = fmap trConstant cs
   in modify $ \env -> env { constants = cs' }
+
+addVar :: Ident i => TypedExpr i -> DeclM i ()
+addVar var =
+  modify $ \env -> env { varList = (varList env) ++ [unBool' var] }
 
 putEnumAnn :: Ident i => Map i (SMTAnnotation SMTEnum) -> DeclM i ()
 putEnumAnn eAnns =

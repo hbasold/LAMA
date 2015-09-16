@@ -30,16 +30,16 @@ class StrategyClass s where
   readOption :: String -> s -> s
   check :: SMTAnnotation Natural
            -> s
-           -> (Map Natural StreamPos -> SMT (Model i))
+           -> Env i
            -> ProgDefs
            -> SMTErr (StrategyResult i)
 
 checkWithModel :: SMTAnnotation Natural
                -> Strategy
                -> ProgDefs
-               -> VarEnv i
+               -> Env i
                -> SMTErr (StrategyResult i)
-checkWithModel natAnn (Strategy s) d env = check natAnn s (getModel env) d
+checkWithModel natAnn (Strategy s) d env = check natAnn s env d
 
 readOptions' :: String -> Strategy -> Strategy
 readOptions' o (Strategy s) = Strategy $ readOption o s

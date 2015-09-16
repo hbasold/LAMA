@@ -73,10 +73,9 @@ getBottom (ProdExpr strs)  = ProdExpr $ fmap getBottom strs
 -- gets a value at that time (after getting the model).
 lamaSMT :: Ident i =>
            NatImplementation -> EnumImplementation -> Program i
-           -> ErrorT String SMT (ProgDefs, VarEnv i)
+           -> ErrorT String SMT (ProgDefs, Env i)
 lamaSMT natImpl' enumImpl' =
-  fmap (second varEnv)
-  . flip runStateT (emptyEnv natImpl' enumImpl')
+  flip runStateT (emptyEnv natImpl' enumImpl')
   . declProgram
 
 -- | Declare the formulas which define a LAMA program.
@@ -128,9 +127,9 @@ declareDecls activeCond excludeNodes d =
            = Map.partitionWithKey (\n _ -> n `Set.member` excludeNodes)
              $ declsNode d
      defs <- mapM (uncurry $ declareNode activeCond) $ Map.toList toDeclare
-     inp <- declareVars $ declsInput d
-     locs <- declareVars $ declsLocal d
-     states <- declareVars $ declsState d
+     inp <- trace "inp" $ declareVars $ declsInput d
+     locs <- trace "locs" $ declareVars $ declsLocal d
+     states <- trace "states" $ declareVars $ declsState d
      modifyVars $ mappend (inp `mappend` locs `mappend` states)
      return (concat defs, excluded)
 
@@ -142,12 +141,12 @@ declareVarList = mapM declareVar
 
 declareVar :: Ident i => Variable i -> DeclM i ((i, TypedExpr i))
 declareVar (Variable x t) =
-  --do natAnn <- gets natImpl
-     (x,) <$> typedVar (identString x) t
+  do v    <- typedVar (identString x) t
+     addVar v
+     return (x, v)
   where
     typedVar :: Ident i =>
                 String
-                -- -> SMTAnnotation Natural
                 -> Type i
                 -> DeclM i (TypedExpr i)
     typedVar v (GroundType BoolT)
@@ -202,7 +201,7 @@ declareNode active nName nDecl =
                mconcat . map getNodesInLocations . Map.elems $ nodeAutomata n
          (declDefs, undeclaredNodes) <-
            declareDecls activeCond automNodes $ nodeDecls n
-         outDecls <- declareVarList $ nodeOutputs n
+         outDecls <- trace "outDecls" $ declareVarList $ nodeOutputs n
          ins <- mapM (lookupVar . varIdent) . declsInput $ nodeDecls n
          let outs = Map.fromList outDecls
          modifyVars $ Map.union (Map.fromList outDecls)
@@ -323,7 +322,7 @@ declareDef x as ef =
      let defType = varDefType x
      d           <- defFunc (1 + Set.size as) defType
                     $ \a -> liftRel (.==.) (BoolExpr $ head a) $ ef env $ zip (Set.toList as) (tail a)
-     return $ ensureDefinition d
+     return $ ensureDefinition [1, 2] d
   where
     varDefType (ProdExpr ts) = ProdType . fmap varDefType $ Arr.elems ts
     varDefType _               = boolT
@@ -689,7 +688,7 @@ declarePrecond activeCond e =
                  \a -> (flip (flip runTransM env) (zip (Set.toList $ getArgSet e) a))
 		       (trExpr e >>= \e' ->
                          return $ liftBool2 (.=>.) (BoolExpr $ c `app` a) e')
-     return $ ensureDefinition d
+     return $ ensureDefinition [1, 2] d
 
 declareInvariant :: Ident i =>
                     Maybe (SMTFunction [SMTExpr Bool] Bool) -> Expr i -> DeclM i Definition
