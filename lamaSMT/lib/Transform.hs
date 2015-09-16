@@ -73,14 +73,14 @@ getBottom (ProdExpr strs)  = ProdExpr $ fmap getBottom strs
 -- gets a value at that time (after getting the model).
 lamaSMT :: Ident i =>
            NatImplementation -> EnumImplementation -> Program i
-           -> ErrorT String SMT (ProgDefs, VarEnv i)
+           -> ErrorT String SMT (ProgDefs i, VarEnv i)
 lamaSMT natImpl' enumImpl' =
   fmap (second varEnv)
   . flip runStateT (emptyEnv natImpl' enumImpl')
   . declProgram
 
 -- | Declare the formulas which define a LAMA program.
-declProgram :: Ident i => Program i -> DeclM i ProgDefs
+declProgram :: Ident i => Program i -> DeclM i (ProgDefs i)
 declProgram p =
   do preamble
      putConstants (progConstantDefinitions p)
@@ -90,7 +90,7 @@ declProgram p =
      assertInits (progInitial p)
      precondDef <- declarePrecond Nothing (progAssertion p)
      invarDef <- declareInvariant Nothing (progInvariant p)
-     return $ ProgDefs (declDefs{- ++ flowDefs-}) precondDef invarDef
+     return $ ProgDefs (declDefs ++ flowDefs) precondDef invarDef
 
 -- | Declares common types etc.
 -- At the moment just Natural is defined.
@@ -122,7 +122,7 @@ declareDecls :: Ident i =>
                 Maybe (SMTFunction [SMTExpr Bool] Bool)
                 -> Set i
                 -> Declarations i
-                -> DeclM i ([Definition], Map i (Node i))
+                -> DeclM i ([Definition i], Map i (Node i))
 declareDecls activeCond excludeNodes d =
   do let (excluded, toDeclare)
            = Map.partitionWithKey (\n _ -> n `Set.member` excludeNodes)
@@ -132,7 +132,7 @@ declareDecls activeCond excludeNodes d =
      locs <- declareVars $ declsLocal d
      states <- declareVars $ declsState d
      modifyVars $ mappend (inp `mappend` locs `mappend` states)
-     return ({-concat defs-}[], excluded)
+     return (concat defs, excluded)
 
 declareVars :: Ident i => [Variable i] -> DeclM i (Map i (TypedExpr i))
 declareVars = fmap (Map.fromList) . declareVarList
@@ -187,7 +187,7 @@ enumVar argAnn ann@(EnumBitAnn size _ biggestCons) =
 -- declared. The other nodes are deferred to be declared in the corresponding
 -- location (see declareAutomaton and declareLocations).
 declareNode :: Ident i =>
-               Maybe (SMTFunction [SMTExpr Bool] Bool) -> i -> Node i -> DeclM i [Definition]
+               Maybe (SMTFunction [SMTExpr Bool] Bool) -> i -> Node i -> DeclM i [Definition i]
 declareNode active nName nDecl =
   do (interface, defs) <- localVarEnv (const emptyVarEnv) $
                           declareNode' active nDecl
@@ -196,7 +196,7 @@ declareNode active nName nDecl =
   where
     declareNode' :: Ident i =>
                     Maybe (SMTFunction [SMTExpr Bool] Bool) -> Node i
-                    -> DeclM i (NodeEnv i, [Definition])
+                    -> DeclM i (NodeEnv i, [Definition i])
     declareNode' activeCond n =
       do let automNodes =
                mconcat . map getNodesInLocations . Map.elems $ nodeAutomata n
@@ -231,7 +231,7 @@ getNodesInLocations = mconcat . map getUsedLoc . automLocations
 declareInstantDef :: Ident i =>
                      Maybe (SMTFunction [SMTExpr Bool] Bool)
                      -> InstantDefinition i
-                     -> DeclM i [Definition]
+                     -> DeclM i [Definition i]
 declareInstantDef activeCond inst@(InstantExpr x e) =
   do (res, []) <- trInstant (error "no activation condition") inst
      xVar <- lookupVar x
@@ -250,7 +250,7 @@ declareInstantDef activeCond inst@(NodeUsage x n _) =
 -- used to further refine this instant (e.g. wrap it into an ite).
 -- This may also return definitions of the parameters of a node.
 -- The activation condition is only used for the inputs of a node.
-trInstant :: Ident i => Maybe (SMTFunction [SMTExpr Bool] Bool) -> InstantDefinition i -> DeclM i (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i, [Definition])
+trInstant :: Ident i => Maybe (SMTFunction [SMTExpr Bool] Bool) -> InstantDefinition i -> DeclM i (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i, [Definition i])
 trInstant _ (InstantExpr _ e) = return (runTransM $ trExpr e, [])
 trInstant inpActive (NodeUsage _ n es) =
   do nEnv <- lookupNode n
@@ -279,7 +279,7 @@ trOutput map = do
 declareTransition :: Ident i =>
                      Maybe (SMTFunction [SMTExpr Bool] Bool)
                      -> StateTransition i
-                     -> DeclM i Definition
+                     -> DeclM i (Definition i)
 declareTransition activeCond (StateTransition x e) =
   do xVar     <- lookupVar x
      let e'      = runTransM $ trExpr e
@@ -296,7 +296,7 @@ declareConditionalAssign :: Ident i =>
                             -> TypedExpr i
                             -> Set i
                             -> (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i)
-                            -> DeclM i Definition
+                            -> DeclM i (Definition i)
 declareConditionalAssign activeCond defaultExpr x al ef =
   case activeCond of
     Nothing -> declareDef x al ef
@@ -317,18 +317,18 @@ declareConditionalAssign activeCond defaultExpr x al ef =
 -- The second argument /x/ is the stream to be defined and the last
 -- argument (/ef/) is a function that generates the defining expression.
 declareDef :: Ident i => TypedExpr i -> Set i ->
-              (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i) -> DeclM i Definition
+              (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i) -> DeclM i (Definition i)
 declareDef x as ef =
   do env         <- get
      let defType = varDefType x
      d           <- defFunc (1 + Set.size as) defType
                     $ \a -> liftRel (.==.) (BoolExpr $ head a) $ ef env $ zip (Set.toList as) (tail a)
-     return $ ensureDefinition d
+     return $ ensureDefinition (Set.toList as) d
   where
     varDefType (ProdExpr ts) = ProdType . fmap varDefType $ Arr.elems ts
     varDefType _               = boolT
 
-declareFlow :: Ident i => Maybe (SMTFunction [SMTExpr Bool] Bool) -> Flow i -> DeclM i [Definition]
+declareFlow :: Ident i => Maybe (SMTFunction [SMTExpr Bool] Bool) -> Flow i -> DeclM i [Definition i]
 declareFlow activeCond f =
   do defDefs        <- fmap concat
                        . mapM (declareInstantDef activeCond)
@@ -680,7 +680,7 @@ assertInit (x, e) =
 
 -- | Creates a definition for a precondition p. If an activation condition c
 -- is given, the resulting condition is (=> c p).
-declarePrecond :: Ident i => Maybe (SMTFunction [SMTExpr Bool] Bool) -> Expr i -> DeclM i Definition
+declarePrecond :: Ident i => Maybe (SMTFunction [SMTExpr Bool] Bool) -> Expr i -> DeclM i (Definition i)
 declarePrecond activeCond e =
   do env <- get
      d <- case activeCond of
@@ -689,10 +689,10 @@ declarePrecond activeCond e =
                  \a -> (flip (flip runTransM env) (zip (Set.toList $ getArgSet e) a))
 		       (trExpr e >>= \e' ->
                          return $ liftBool2 (.=>.) (BoolExpr $ c `app` a) e')
-     return $ ensureDefinition d
+     return $ ensureDefinition (Set.toList $ getArgSet e)d
 
 declareInvariant :: Ident i =>
-                    Maybe (SMTFunction [SMTExpr Bool] Bool) -> Expr i -> DeclM i Definition
+                    Maybe (SMTFunction [SMTExpr Bool] Bool) -> Expr i -> DeclM i (Definition i)
 declareInvariant = declarePrecond
 
 trConstExpr :: Ident i => ConstExpr i -> DeclM i (TypedExpr i)

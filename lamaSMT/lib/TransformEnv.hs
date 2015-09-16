@@ -31,6 +31,7 @@ data NodeEnv i = NodeEnv
                  , nodeEnvOut :: Map i (TypedExpr i)
                  , nodeEnvVars :: VarEnv i
                  }
+  deriving Show
 
 data VarEnv i = VarEnv
                 { nodes :: Map i (NodeEnv i)
@@ -38,6 +39,7 @@ data VarEnv i = VarEnv
                   -- ^ Maps names of variables to a SMT expression for using
                   -- that variable
                 }
+  deriving Show
 
 data Env i = Env
            { constants :: Map i (TypedExpr i)

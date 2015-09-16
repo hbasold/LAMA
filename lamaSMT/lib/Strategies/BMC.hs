@@ -12,10 +12,13 @@ import Control.Monad (when, liftM)
 
 import Language.SMTLib2
 
+import Lang.LAMA.Identifier
+
 import Strategy
 import LamaSMTTypes
 import Definition
-import Model (Model)
+import Model (Model, getModel)
+import TransformEnv
 import Internal.Monads
 
 data BMC = BMC
@@ -33,55 +36,56 @@ instance StrategyClass BMC where
     s { bmcPrintProgress = True }
   readOption o _ = error $ "Invalid BMC option: " ++ o
 
-  check natAnn s getModel defs =
+  check natAnn s env defs =
     let base = 0
     in do baseDef <- liftSMT . defConst $ constantAnn base natAnn
-          check' natAnn s getModel defs (Map.singleton base baseDef) base baseDef
+          check' natAnn s env defs (Map.singleton base baseDef) base baseDef
 
-assumeTrace :: MonadSMT m => ProgDefs -> StreamPos -> m ()
-assumeTrace defs iDef =
-  assertDefs iDef (flowDef defs) >>
-  assertPrecond iDef (precondition defs)
+assumeTrace :: (Ident i, MonadSMT m) => ProgDefs i -> VarEnv i -> m ()
+assumeTrace defs env =
+  assertDefs env (flowDef defs) >>
+  assertPrecond env (precondition defs)
 
-bmcStep :: MonadSMT m =>
-        (Map Natural StreamPos -> SMT (Model i))
-        -> ProgDefs
+bmcStep :: (Ident i, MonadSMT m) =>
+        VarEnv i   
+        -> ProgDefs i
         -> Map Natural StreamPos
         -> StreamPos
         -> m (Maybe (Model i))
-bmcStep getModel defs pastIndices iDef =
-  do assumeTrace defs iDef
+bmcStep env defs pastIndices iDef =
+  do assumeTrace defs env
      let invs = invariantDef defs
      liftSMT . stack
-       $ checkInvariant iDef invs >>=
-       checkGetModel getModel pastIndices
+       $ checkInvariant env invs >>=
+       checkGetModel (getModel env) pastIndices
 
-check' :: SMTAnnotation Natural
+check' :: Ident i =>
+       SMTAnnotation Natural
        -> BMC
-       -> (Map Natural StreamPos -> SMT (Model i))
-       -> ProgDefs
+       -> VarEnv i
+       -> ProgDefs i
        -> Map Natural StreamPos
        -> Natural
        -> StreamPos
        -> SMTErr (StrategyResult i)
-check' natAnn s getModel defs pastIndices i iDef =
+check' natAnn s env defs pastIndices i iDef =
   do liftIO $ when (bmcPrintProgress s) (putStrLn $ "Depth " ++ show i)
-     r <- bmcStep getModel defs pastIndices iDef
+     r <- bmcStep env defs pastIndices iDef
      case r of
-       Nothing -> next (check' natAnn s getModel defs) natAnn s pastIndices i iDef
+       Nothing -> next (check' natAnn s env defs) natAnn s pastIndices i iDef
        Just m -> return $ Failure i m
 
-assertDefs :: MonadSMT m => SMTExpr Natural -> [Definition] -> m ()
+assertDefs :: (Ident i, MonadSMT m) => VarEnv i -> [Definition i] -> m ()
 assertDefs i = mapM_ (assertDef i)
 
-assertDef :: MonadSMT m => SMTExpr Natural -> Definition -> m ()
+assertDef :: (Ident i, MonadSMT m) => VarEnv i -> Definition i -> m ()
 assertDef = assertDefinition id
 
-assertPrecond :: MonadSMT m => SMTExpr Natural -> Definition -> m ()
+assertPrecond :: (Ident i, MonadSMT m) => VarEnv i -> Definition i -> m ()
 assertPrecond = assertDefinition id
 
 -- | Returns true, if the invariant holds
-checkInvariant :: MonadSMT m => SMTExpr Natural -> Definition -> m Bool
+checkInvariant :: (Ident i, MonadSMT m) => VarEnv i -> Definition i -> m Bool
 checkInvariant i p = liftSMT $ assertDefinition not' i p >> liftM not checkSat
 
 checkGetModel :: MonadSMT m =>
