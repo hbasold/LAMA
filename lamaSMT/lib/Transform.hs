@@ -34,6 +34,8 @@ import qualified Data.Set as Set
 import Data.Set (Set, union, unions)
 import qualified Data.Map as Map
 import Data.Map (Map)
+import qualified Data.List as List
+import Data.List (zip4)
 import Prelude hiding (mapM)
 import Data.Traversable
 import Data.Foldable (foldlM, foldrM)
@@ -234,15 +236,19 @@ declareInstantDef :: Ident i =>
 declareInstantDef activeCond inst@(InstantExpr x e) =
   do (res, []) <- trInstant (error "no activation condition") inst
      xVar <- lookupVar x
+     let args = getArgSet e
+     argsE <- mapM lookupVar $ Set.toList args
+     argsN <- mapM getN argsE
      def <- declareConditionalAssign
-            activeCond (getBottom xVar) xVar (getArgSet e) res
+            activeCond (getBottom xVar) xVar args argsN res
      return [def]
 declareInstantDef activeCond inst@(NodeUsage x n _) =
   do (outp, inpDefs) <- trInstant activeCond inst
      xVar            <- lookupVar x
      nEnv            <- lookupNode n
+     outN            <- mapM getN $ nodeEnvOut nEnv
      outpDef         <- declareConditionalAssign
-                        activeCond (getBottom xVar) xVar (Map.keysSet $ nodeEnvOut nEnv) outp
+                        activeCond (getBottom xVar) xVar (Map.keysSet $ nodeEnvOut nEnv) (Map.elems outN) outp
      return $ inpDefs ++ [outpDef]
 
 -- | Translates an instant definition into a function which can be
@@ -255,10 +261,13 @@ trInstant inpActive (NodeUsage _ n es) =
   do nEnv <- lookupNode n
      let esTr = map (runTransM . trExpr) es
          y    = runTransM $ trOutput $ nodeEnvOut nEnv
-     inpDefs  <- mapM (\(x, eTr, e) ->
+         ins = map (Set.toList . getArgSet) es
+     insE <- mapM (mapM lookupVar) ins
+     insN <- mapM (mapM getN) insE
+     inpDefs  <- mapM (\(x, n, e, eTr) ->
                         declareConditionalAssign
-                        inpActive (getBottom x) x (getArgSet e) eTr)
-                 $ zip3 (nodeEnvIn nEnv) esTr es
+                        inpActive (getBottom x) x (getArgSet e) n eTr)
+                 $ zip4 (nodeEnvIn nEnv) insN es esTr
      return (y, inpDefs)
 
 trOutput :: Ident i => Map i (TypedExpr i) -> TransM i (TypedExpr i)
@@ -282,7 +291,7 @@ declareTransition :: Ident i =>
 declareTransition activeCond (StateTransition x e) =
   do xVar     <- lookupVar x
      let e'      = runTransM $ trExpr e
-     declareConditionalAssign activeCond (getBottom xVar) xVar (getArgSet e) e'
+     declareConditionalAssign activeCond (getBottom xVar) xVar (getArgSet e) [] e'
 
 -- | Creates a declaration for an assignment. Depending on the
 -- activation condition the given expression or a default expression
@@ -294,13 +303,14 @@ declareConditionalAssign :: Ident i =>
                             -> TypedExpr i
                             -> TypedExpr i
                             -> Set i
+                            -> [Int]
                             -> (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i)
                             -> DeclM i Definition
-declareConditionalAssign activeCond defaultExpr x al ef =
+declareConditionalAssign activeCond defaultExpr x al ns ef =
   case activeCond of
-    Nothing -> declareDef x al ef
+    Nothing -> declareDef x al ns ef
     Just c  ->
-      declareDef x al ef
+      declareDef x al ns ef
       --declareDef modPos x (mkConditionalExpr c e defaultExpr)
   where
     -- | Takes a condition and the corresponding branches which may depend
@@ -315,14 +325,15 @@ declareConditionalAssign activeCond defaultExpr x al ef =
 -- id or succ' to define instances or state transitions).
 -- The second argument /x/ is the stream to be defined and the last
 -- argument (/ef/) is a function that generates the defining expression.
-declareDef :: Ident i => TypedExpr i -> Set i ->
+declareDef :: Ident i => TypedExpr i -> Set i -> [Int] ->
               (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i) -> DeclM i Definition
-declareDef x as ef =
+declareDef x as ns ef =
   do env         <- get
      let defType = varDefType x
+     xN          <- getN x
      d           <- defFunc (1 + Set.size as) defType
                     $ \a -> liftRel (.==.) (BoolExpr $ head a) $ ef env $ zip (Set.toList as) (tail a)
-     return $ ensureDefinition [1, 2] d
+     return $ ensureDefinition ([xN] ++ ns) d
   where
     varDefType (ProdExpr ts) = ProdType . fmap varDefType $ Arr.elems ts
     varDefType _               = boolT
@@ -681,14 +692,17 @@ assertInit (x, e) =
 -- is given, the resulting condition is (=> c p).
 declarePrecond :: Ident i => Maybe (SMTFunction [SMTExpr Bool] Bool) -> Expr i -> DeclM i Definition
 declarePrecond activeCond e =
-  do env <- get
-     d <- case activeCond of
-       Nothing -> defFunc (Set.size $ getArgSet e) boolT $ \a -> runTransM (trExpr e) env (zip (Set.toList $ getArgSet e) a)
-       Just c -> defFunc (Set.size $ getArgSet e) boolT $
-                 \a -> (flip (flip runTransM env) (zip (Set.toList $ getArgSet e) a))
+  do env      <- get
+     let args = getArgSet e
+     argsE    <- mapM lookupVar $ Set.toList args
+     argsN    <- mapM getN argsE
+     d        <- case activeCond of
+       Nothing -> defFunc (Set.size $ args) boolT $ \a -> runTransM (trExpr e) env (zip (Set.toList $ args) a)
+       Just c -> defFunc (Set.size $ args) boolT $
+                 \a -> (flip (flip runTransM env) (zip (Set.toList $ args) a))
 		       (trExpr e >>= \e' ->
                          return $ liftBool2 (.=>.) (BoolExpr $ c `app` a) e')
-     return $ ensureDefinition [1, 2] d
+     return $ ensureDefinition argsN d
 
 declareInvariant :: Ident i =>
                     Maybe (SMTFunction [SMTExpr Bool] Bool) -> Expr i -> DeclM i Definition
@@ -741,10 +755,9 @@ getArgSet expr = case untyped expr of
   LogNot e             -> getArgSet e
   Expr2 op e1 e2       -> Set.union (getArgSet e1) (getArgSet e2)
   Ite c e1 e2          -> Set.unions [getArgSet c, getArgSet e1, getArgSet e2]
-  ProdCons (Prod es)   -> foldr (union . getArgSet) Set.empty es
+  ProdCons (Prod es)   -> foldr (Set.union . getArgSet) Set.empty es
   Project x i          -> Set.empty
   Match e pats         -> getArgSet e
-
 
 -- we do no further type checks since this
 -- has been done beforehand.

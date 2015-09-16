@@ -11,6 +11,8 @@ import Lang.LAMA.Types
 import Language.SMTLib2 as SMT
 
 import Data.Array as Arr
+import qualified Data.List as List
+import Data.List (elemIndex)
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Prelude hiding (mapM)
@@ -66,6 +68,12 @@ putConstants cs =
 addVar :: Ident i => TypedExpr i -> DeclM i ()
 addVar var =
   modify $ \env -> env { varList = (varList env) ++ [unBool' var] }
+
+getN :: TypedExpr i -> DeclM i Int
+getN x = do vars <- gets varList
+            return $ case List.elemIndex (unBool' x) vars of
+                          Nothing -> error $ "Could not be found in list of     variables: " ++ show x
+                          Just n -> n
 
 putEnumAnn :: Ident i => Map i (SMTAnnotation SMTEnum) -> DeclM i ()
 putEnumAnn eAnns =
