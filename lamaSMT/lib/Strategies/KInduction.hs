@@ -54,15 +54,14 @@ instance StrategyClass KInduct where
   check indOpts env defs =
     let baseK = 0
         vars  = varList env
-    in do fresh <- freshVars vars
-          nf0   <- freshVars vars
-          nf1   <- freshVars vars
-          nf2   <- freshVars vars
-          --assumeTrace defs (vars, fresh)
-          let s0 = InductState baseK nf0 nf1 nf2
+    in do k1  <- freshVars vars
+          n0  <- freshVars vars
+          n1  <- freshVars vars
+          assumeTrace defs (n0, n1)
+          let s0 = InductState baseK (vars, k1) (n0, n1)
           (r, hints) <- runWriterT
                 $ (flip evalStateT s0)
-                $ check' indOpts (getModel $ varEnv env) defs (vars, fresh)
+                $ check' indOpts (getModel $ varEnv env) defs
           case r of
                Unknown what h -> return $ Unknown what (h ++ hints)
                _ -> return r
@@ -77,10 +76,9 @@ checkStep defs vars =
 
 -- | Holds current depth k and definitions of last k and n
 data InductState = InductState
-                   { kVal :: Natural
-                   , n0   :: [SMTExpr Bool]
-                   , n1   :: [SMTExpr Bool]
-                   , n2   :: [SMTExpr Bool] }
+                   { kVal  :: Natural
+                   , kDefs :: ([SMTExpr Bool], [SMTExpr Bool])
+                   , nDefs :: ([SMTExpr Bool], [SMTExpr Bool]) }
 type KInductM i = StateT InductState (WriterT (Hints i) SMTErr)
 
 -- | Checks the program against its invariant. If the invariant
@@ -91,21 +89,19 @@ type KInductM i = StateT InductState (WriterT (Hints i) SMTErr)
 check' :: KInduct
        -> (Map Natural StreamPos -> SMT (Model i))
        -> ProgDefs
-       -> ([SMTExpr Bool], [SMTExpr Bool])
        -> KInductM i (StrategyResult i)
-check' indOpts getModel defs vars =
+check' indOpts getModel defs =
   do InductState{..} <- get
      liftIO $ when (printProgress indOpts) (putStrLn $ "Depth " ++ show kVal)
-     rBMC <- bmcStep getModel defs vars
+     rBMC <- bmcStep getModel defs kDefs
      case rBMC of
        False -> return $ Failure kVal
        True ->
-         do {-nf0 <- freshVars $ fst vars
-            nf1 <- freshVars $ fst vars
-            nf2 <- freshVars $ fst vars
-            modify $ \indSt -> indSt { n0 = nf0, n1 = nf1, n2 = nf2 }-}
-            assumeTrace defs (n0, n1)
+         do let n0 = fst nDefs
+                n1 = snd nDefs
+            n2 <- freshVars n1
             assertPrecond (n0, n1) $ invariantDef defs
+            modify $ \indSt -> indSt { nDefs = (n1, n2) }
             indSuccess <- liftSMT . stack $
               do r <- checkStep defs (n1, n2)
                  --h <- retrieveHints (getModel pastKs) indOpts kVal r
@@ -126,10 +122,10 @@ check' indOpts getModel defs vars =
   where
     cont k' =
       do indState@InductState{..} <- get
-         --kDef' <- liftSMT . defConst $ succ' natAnn kDef
-         --let pastKs' = Map.insert k' kDef' pastKs
-         put $ indState { kVal = k' }--, kDef = kDef', pastKs = pastKs' }
-         check' indOpts getModel defs vars
+         let k1 = snd kDefs
+         k2 <- freshVars k1
+         put $ indState { kVal = k', kDefs = (k1, k2) }
+         check' indOpts getModel defs
 
 -- | If requested, gets a model for the induction step
 retrieveHints :: SMT (Model i)
