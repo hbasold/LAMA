@@ -8,26 +8,28 @@ import LamaSMTTypes
 import Internal.Monads
 
 data Definition =
-  SingleDef [Int] (SMTFunction [SMTExpr Bool] Bool)
+  SingleDef [Int] Bool (SMTFunction [SMTExpr Bool] Bool)
   | ProdDef (Array Int Definition)
   deriving Show
 
-ensureDefinition :: [Int] -> TypedFunc i -> Definition
-ensureDefinition argN (BoolFunc s) = SingleDef argN s
-ensureDefinition argN (ProdFunc ps) = ProdDef $ fmap (ensureDefinition argN) ps
-ensureDefinition argN _
+ensureDefinition :: [Int] -> Bool -> TypedFunc i -> Definition
+ensureDefinition argN succ (BoolFunc s) = SingleDef argN succ s
+ensureDefinition argN succ (ProdFunc ps) = ProdDef $ fmap (ensureDefinition argN succ) ps
+ensureDefinition argN succ _
   = error $ "ensureDefinition: not a boolean function" -- : " ++ show s
 
 assertDefinition :: MonadSMT m =>
                     (SMTExpr Bool -> SMTExpr Bool)
-                    -> [SMTExpr Bool]
+                    -> ([SMTExpr Bool], [SMTExpr Bool])
                     -> Definition
                     -> m ()
-assertDefinition f i (SingleDef argN s) = liftSMT $ assert (f $ s `app` (lookupArgs argN i))
+assertDefinition f i (SingleDef argN succ s) = liftSMT $ assert (f $ s `app` (lookupArgs argN succ i))
 assertDefinition f i (ProdDef ps) = mapM_ (assertDefinition f i) $ Arr.elems ps
 
-lookupArgs :: [Int] -> [SMTExpr Bool] -> [SMTExpr Bool]
-lookupArgs argN vars = map ((!!) vars) argN
+lookupArgs :: [Int] -> Bool -> ([SMTExpr Bool], [SMTExpr Bool])
+               -> [SMTExpr Bool]
+lookupArgs argN True vars = [(snd vars) !! (head argN)] ++ (map ((!!) (fst vars)) $ tail argN)
+lookupArgs argN False vars = map ((!!) (fst vars)) argN
 
 data ProgDefs = ProgDefs
                 { flowDef :: [Definition]

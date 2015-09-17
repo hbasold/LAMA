@@ -240,7 +240,7 @@ declareInstantDef activeCond inst@(InstantExpr x e) =
      argsE <- mapM lookupVar $ Set.toList args
      argsN <- mapM getN argsE
      def <- declareConditionalAssign
-            activeCond (getBottom xVar) xVar args argsN res
+            activeCond (getBottom xVar) xVar args argsN False res
      return [def]
 declareInstantDef activeCond inst@(NodeUsage x n _) =
   do (outp, inpDefs) <- trInstant activeCond inst
@@ -248,7 +248,7 @@ declareInstantDef activeCond inst@(NodeUsage x n _) =
      nEnv            <- lookupNode n
      outN            <- mapM getN $ nodeEnvOut nEnv
      outpDef         <- declareConditionalAssign
-                        activeCond (getBottom xVar) xVar (Map.keysSet $ nodeEnvOut nEnv) (Map.elems outN) outp
+                        activeCond (getBottom xVar) xVar (Map.keysSet $ nodeEnvOut nEnv) (Map.elems outN) False outp
      return $ inpDefs ++ [outpDef]
 
 -- | Translates an instant definition into a function which can be
@@ -266,7 +266,7 @@ trInstant inpActive (NodeUsage _ n es) =
      insN <- mapM (mapM getN) insE
      inpDefs  <- mapM (\(x, n, e, eTr) ->
                         declareConditionalAssign
-                        inpActive (getBottom x) x (getArgSet e) n eTr)
+                        inpActive (getBottom x) x (getArgSet e) n False eTr)
                  $ zip4 (nodeEnvIn nEnv) insN es esTr
      return (y, inpDefs)
 
@@ -291,7 +291,10 @@ declareTransition :: Ident i =>
 declareTransition activeCond (StateTransition x e) =
   do xVar     <- lookupVar x
      let e'      = runTransM $ trExpr e
-     declareConditionalAssign activeCond (getBottom xVar) xVar (getArgSet e) [] e'
+         args    = getArgSet e
+     argsE <- mapM lookupVar $ Set.toList args
+     argsN <- mapM getN argsE
+     declareConditionalAssign activeCond (getBottom xVar) xVar args argsN True e'
 
 -- | Creates a declaration for an assignment. Depending on the
 -- activation condition the given expression or a default expression
@@ -304,13 +307,14 @@ declareConditionalAssign :: Ident i =>
                             -> TypedExpr i
                             -> Set i
                             -> [Int]
+                            -> Bool
                             -> (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i)
                             -> DeclM i Definition
-declareConditionalAssign activeCond defaultExpr x al ns ef =
+declareConditionalAssign activeCond defaultExpr x al ns succ ef =
   case activeCond of
-    Nothing -> declareDef x al ns ef
+    Nothing -> declareDef x al ns succ ef
     Just c  ->
-      declareDef x al ns ef
+      declareDef x al ns succ ef
       --declareDef modPos x (mkConditionalExpr c e defaultExpr)
   where
     -- | Takes a condition and the corresponding branches which may depend
@@ -325,15 +329,15 @@ declareConditionalAssign activeCond defaultExpr x al ns ef =
 -- id or succ' to define instances or state transitions).
 -- The second argument /x/ is the stream to be defined and the last
 -- argument (/ef/) is a function that generates the defining expression.
-declareDef :: Ident i => TypedExpr i -> Set i -> [Int] ->
+declareDef :: Ident i => TypedExpr i -> Set i -> [Int] -> Bool ->
               (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i) -> DeclM i Definition
-declareDef x as ns ef =
+declareDef x as ns succ ef =
   do env         <- get
      let defType = varDefType x
      xN          <- getN x
      d           <- defFunc (1 + Set.size as) defType
                     $ \a -> liftRel (.==.) (BoolExpr $ head a) $ ef env $ zip (Set.toList as) (tail a)
-     return $ ensureDefinition ([xN] ++ ns) d
+     return $ ensureDefinition ([xN] ++ ns) succ d
   where
     varDefType (ProdExpr ts) = ProdType . fmap varDefType $ Arr.elems ts
     varDefType _               = boolT
@@ -702,7 +706,7 @@ declarePrecond activeCond e =
                  \a -> (flip (flip runTransM env) (zip (Set.toList $ args) a))
 		       (trExpr e >>= \e' ->
                          return $ liftBool2 (.=>.) (BoolExpr $ c `app` a) e')
-     return $ ensureDefinition argsN d
+     return $ ensureDefinition argsN False d
 
 declareInvariant :: Ident i =>
                     Maybe (SMTFunction [SMTExpr Bool] Bool) -> Expr i -> DeclM i Definition

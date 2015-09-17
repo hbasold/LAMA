@@ -36,53 +36,52 @@ instance StrategyClass BMC where
 
   check natAnn s env defs =
     let base = 0
+        vars = varList env
     in do baseDef <- liftSMT . defConst $ constantAnn base natAnn
-          check' natAnn s env defs (Map.singleton base baseDef) base baseDef
+          fresh <- freshVars vars
+          check' s (getModel $ varEnv env) defs base (vars, fresh)
 
-assumeTrace :: MonadSMT m => ProgDefs -> [SMTExpr Bool] -> m ()
+assumeTrace :: MonadSMT m => ProgDefs -> ([SMTExpr Bool], [SMTExpr Bool]) -> m ()
 assumeTrace defs args =
   assertDefs args (flowDef defs) >>
   assertPrecond args (precondition defs)
 
 bmcStep :: MonadSMT m =>
-        Env i
+        (Map Natural StreamPos -> SMT (Model i))
         -> ProgDefs
-        -> Map Natural StreamPos
-        -> StreamPos
-        -> m (Maybe (Model i))
-bmcStep env defs pastIndices iDef =
-  do assumeTrace defs $ varList env
+        -> ([SMTExpr Bool], [SMTExpr Bool])
+        -> m (Bool)
+bmcStep getModel defs vars =
+  do assumeTrace defs vars
      let invs = invariantDef defs
      liftSMT . stack
-       $ checkInvariant (varList env) invs >>=
-       checkGetModel (getModel $ varEnv env) pastIndices
+       $ checkInvariant vars invs-- >>=
+       --checkGetModel getModel pastIndices
 
-check' :: SMTAnnotation Natural
-       -> BMC
-       -> Env i
+check' :: BMC
+       -> (Map Natural StreamPos -> SMT (Model i))
        -> ProgDefs
-       -> Map Natural StreamPos
        -> Natural
-       -> StreamPos
+       -> ([SMTExpr Bool], [SMTExpr Bool])
        -> SMTErr (StrategyResult i)
-check' natAnn s env defs pastIndices i iDef =
+check' s getModel defs i vars =
   do liftIO $ when (bmcPrintProgress s) (putStrLn $ "Depth " ++ show i)
-     r <- bmcStep env defs pastIndices iDef
+     r <- bmcStep getModel defs vars
      case r of
-       Nothing -> next (check' natAnn s env defs) natAnn s pastIndices i iDef
-       Just m -> return $ Failure i m
+       True -> next (check' s getModel defs) s i vars
+       False -> return $ Failure i 
 
-assertDefs :: MonadSMT m => [SMTExpr Bool] -> [Definition] -> m ()
+assertDefs :: MonadSMT m => ([SMTExpr Bool], [SMTExpr Bool]) -> [Definition] -> m ()
 assertDefs i = mapM_ (assertDef i)
 
-assertDef :: MonadSMT m => [SMTExpr Bool] -> Definition -> m ()
+assertDef :: MonadSMT m => ([SMTExpr Bool], [SMTExpr Bool]) -> Definition -> m ()
 assertDef = assertDefinition id
 
-assertPrecond :: MonadSMT m => [SMTExpr Bool] -> Definition -> m ()
+assertPrecond :: MonadSMT m => ([SMTExpr Bool], [SMTExpr Bool]) -> Definition -> m ()
 assertPrecond = assertDefinition id
 
 -- | Returns true, if the invariant holds
-checkInvariant :: MonadSMT m => [SMTExpr Bool] -> Definition -> m Bool
+checkInvariant :: MonadSMT m => ([SMTExpr Bool], [SMTExpr Bool]) -> Definition -> m Bool
 checkInvariant i p = liftSMT $ assertDefinition not' i p >> liftM not checkSat
 
 checkGetModel :: MonadSMT m =>
@@ -93,24 +92,24 @@ checkGetModel :: MonadSMT m =>
 checkGetModel getModel indices r = liftSMT $
   if r then return Nothing else fmap Just $ getModel indices
 
-next :: (Map Natural StreamPos
-             -> Natural
-             -> SMTExpr Natural
+next :: (Natural
+             -> ([SMTExpr Bool], [SMTExpr Bool])
              -> SMTErr (StrategyResult i)
         )
-        -> SMTAnnotation Natural
         -> BMC
-        -> Map Natural StreamPos
         -> Natural
-        -> SMTExpr Natural
+        -> ([SMTExpr Bool], [SMTExpr Bool])
         -> SMTErr (StrategyResult i)
-next checkCont natAnn s pastIndices i iDef =
-  do let i' = succ i
-     iDef' <- liftSMT . defConst$ succ' natAnn iDef
-     let pastIndices' = Map.insert i' iDef' pastIndices
-     case bmcDepth s of
-       Nothing -> checkCont pastIndices' i' iDef'
+next checkCont s i vars =
+  let i' = succ i
+  in case bmcDepth s of
+       Nothing -> do vars' <- freshVars $ snd vars
+                     checkCont i' (snd vars, vars')
        Just l ->
          if i' < l
-         then checkCont pastIndices' i' iDef'
+         then do vars' <- freshVars $ snd vars
+                 checkCont i' (snd vars, vars')
          else return Success
+
+freshVars :: [SMTExpr Bool] -> SMTErr [SMTExpr Bool]
+freshVars vars = liftSMT $ mapM (\v -> var) vars

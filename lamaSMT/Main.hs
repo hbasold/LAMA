@@ -205,13 +205,14 @@ runCheck progOpts = chooseSolver progOpts . checkError
                       -- ++ solverBase
   -- withPipe solverCmd []
 
+{-
 checkModel :: Ident i =>
            Options
            -> Program i
            -> (StrategyResult i)
            -> IO ()
 checkModel _ _ Success = putStrLn "42"
-checkModel opts prog (Failure lastIndex m) =
+checkModel opts prog (Failure lastIndexm) =
   do putStrLn ":-("
      putStrLn $ "Found counterexample at depth " ++ show lastIndex
      when (optDumpModel opts) (putStrLn . render $ prettyModel m)
@@ -231,6 +232,7 @@ checkModel opts prog (Unknown what hints) =
                  . render
                  $ scadeScenario prog (optTopNodePath opts) (hintModel h))
                hints
+-}
 
 prettyHints :: Ident i => Hints i -> Doc
 prettyHints = vcat . map prettyHint
