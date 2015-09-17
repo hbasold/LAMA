@@ -28,8 +28,7 @@ data Strategy = forall s. StrategyClass s => Strategy s
 class StrategyClass s where
   defaultStrategyOpts :: s
   readOption :: String -> s -> s
-  check :: SMTAnnotation Natural
-           -> s
+  check :: s
            -> Env i
            -> ProgDefs
            -> SMTErr (StrategyResult i)
@@ -39,7 +38,7 @@ checkWithModel :: SMTAnnotation Natural
                -> ProgDefs
                -> Env i
                -> SMTErr (StrategyResult i)
-checkWithModel natAnn (Strategy s) d env = check natAnn s env d
+checkWithModel natAnn (Strategy s) d env = check s env d
 
 readOptions' :: String -> Strategy -> Strategy
 readOptions' o (Strategy s) = Strategy $ readOption o s

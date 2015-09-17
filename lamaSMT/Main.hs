@@ -171,8 +171,7 @@ run opts@Options{..} file inp = do
     ( (liftSMT $ mapM_ setOption optSMTOpts) >>
       lamaSMT optNatImpl optEnumImpl p >>=
       (uncurry $ checkWithModel optNatImpl optStrategy) )
-  --liftIO $ checkModel opts p model
-  liftIO $ putStr "Test"
+  liftIO $ checkModel opts p model
 
 checkErrors :: Either Error a -> MaybeT IO a
 checkErrors r = case r of
@@ -205,20 +204,20 @@ runCheck progOpts = chooseSolver progOpts . checkError
                       -- ++ solverBase
   -- withPipe solverCmd []
 
-{-
 checkModel :: Ident i =>
            Options
            -> Program i
            -> (StrategyResult i)
            -> IO ()
 checkModel _ _ Success = putStrLn "42"
-checkModel opts prog (Failure lastIndexm) =
+checkModel opts prog (Failure lastIndex) =
   do putStrLn ":-("
      putStrLn $ "Found counterexample at depth " ++ show lastIndex
-     when (optDumpModel opts) (putStrLn . render $ prettyModel m)
+{-     when (optDumpModel opts) (putStrLn . render $ prettyModel m)
      case optScenarioFile opts of
        Nothing -> return ()
        Just f -> writeFile f $ render $ scadeScenario prog (optTopNodePath opts) m
+-}
 checkModel opts prog (Unknown what hints) =
   do putStrLn ":-("
      putStrLn what
@@ -232,7 +231,6 @@ checkModel opts prog (Unknown what hints) =
                  . render
                  $ scadeScenario prog (optTopNodePath opts) (hintModel h))
                hints
--}
 
 prettyHints :: Ident i => Hints i -> Doc
 prettyHints = vcat . map prettyHint

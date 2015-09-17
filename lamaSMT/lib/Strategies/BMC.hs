@@ -1,5 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
-module Strategies.BMC (BMC, assumeTrace, checkInvariant, bmcStep, assertPrecond) where
+module Strategies.BMC (BMC, assumeTrace, checkInvariant, bmcStep, assertPrecond, freshVars) where
 
 import Data.Natural
 import NatInstance
@@ -34,11 +34,10 @@ instance StrategyClass BMC where
     s { bmcPrintProgress = True }
   readOption o _ = error $ "Invalid BMC option: " ++ o
 
-  check natAnn s env defs =
+  check s env defs =
     let base = 0
         vars = varList env
-    in do baseDef <- liftSMT . defConst $ constantAnn base natAnn
-          fresh <- freshVars vars
+    in do fresh <- freshVars vars
           check' s (getModel $ varEnv env) defs base (vars, fresh)
 
 assumeTrace :: MonadSMT m => ProgDefs -> ([SMTExpr Bool], [SMTExpr Bool]) -> m ()
@@ -111,5 +110,5 @@ next checkCont s i vars =
                  checkCont i' (snd vars, vars')
          else return Success
 
-freshVars :: [SMTExpr Bool] -> SMTErr [SMTExpr Bool]
+freshVars :: MonadSMT m =>[SMTExpr Bool] -> m [SMTExpr Bool]
 freshVars vars = liftSMT $ mapM (\v -> var) vars

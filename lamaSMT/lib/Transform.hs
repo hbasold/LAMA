@@ -15,8 +15,6 @@
 
 module Transform where
 
-import Debug.Trace
-
 import Development.Placeholders
 
 import Lang.LAMA.Identifier
@@ -129,9 +127,9 @@ declareDecls activeCond excludeNodes d =
            = Map.partitionWithKey (\n _ -> n `Set.member` excludeNodes)
              $ declsNode d
      defs <- mapM (uncurry $ declareNode activeCond) $ Map.toList toDeclare
-     inp <- trace "inp" $ declareVars $ declsInput d
-     locs <- trace "locs" $ declareVars $ declsLocal d
-     states <- trace "states" $ declareVars $ declsState d
+     inp <- declareVars $ declsInput d
+     locs <- declareVars $ declsLocal d
+     states <- declareVars $ declsState d
      modifyVars $ mappend (inp `mappend` locs `mappend` states)
      return (concat defs, excluded)
 
@@ -203,7 +201,7 @@ declareNode active nName nDecl =
                mconcat . map getNodesInLocations . Map.elems $ nodeAutomata n
          (declDefs, undeclaredNodes) <-
            declareDecls activeCond automNodes $ nodeDecls n
-         outDecls <- trace "outDecls" $ declareVarList $ nodeOutputs n
+         outDecls <- declareVarList $ nodeOutputs n
          ins <- mapM (lookupVar . varIdent) . declsInput $ nodeDecls n
          let outs = Map.fromList outDecls
          modifyVars $ Map.union (Map.fromList outDecls)
