@@ -2,11 +2,16 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+
 module LamaSMTTypes where
 
 import Data.Natural
 import NatInstance ()
 import Data.Array as Arr
+import Data.Typeable
 
 import Control.Arrow ((&&&))
 
@@ -19,7 +24,15 @@ data TypedExpr i
   | RealExpr { unReal :: SMTExpr Rational }
   | EnumExpr { unEnum :: SMTExpr SMTEnum }
   | ProdExpr { unProd :: Array Int (TypedExpr i) }
-  deriving (Eq, Show)
+  deriving (Ord, Typeable, Eq, Show)
+
+data TypedAnnotation
+  = BoolAnnotation { anBool :: ArgAnnotation (SMTExpr Bool) }
+  | IntAnnotation { anInt :: ArgAnnotation (SMTExpr Integer) }
+  | RealAnnotation { anReal :: ArgAnnotation (SMTExpr Rational) }
+  | EnumAnnotation { anEnum :: ArgAnnotation (SMTExpr SMTEnum) }
+  -- | ProdAnnotation { anProd :: ArgAnnotation a }
+  deriving (Typeable, Show, Ord, Eq)
 
 unBool' :: TypedExpr i -> SMTExpr Bool
 unBool' (BoolExpr e) = e
@@ -49,20 +62,24 @@ appFunc (RealFunc f) arg = RealExpr $ f `app` arg
 appFunc (EnumFunc _ f) arg = EnumExpr $ f `app` arg
 appFunc (ProdFunc f) arg = ProdExpr $ fmap (`appFunc` arg) f
 
-{-instance (SMTExpr i) => Args (TypedExpr i) where
-  type ArgAnnotation (TypedExpr i) = SMTAnnotation i
-  foldExprs f = f
-  foldsExprs f = f
-  extractArgAnnotation (BoolExpr expr) = extractAnnotation expr
-  toArgs _ (x:xs) = do
-    r <- entype gcast x
-    return (r,xs)
-  toArgs _ [] = Nothing
-  fromArgs x = [UntypedExpr x]
-  getSorts (_::SMTExpr a) ann = [getSort (undefined::a) ann]
-  getArgAnnotation u (s:rest) = (annotationFromSort (getUndef u) s,rest)
-  getArgAnnotation _ [] = error "smtlib2: To few sorts provided."
-  showsArgs = showExpr-}
+instance Typeable i => Args (TypedExpr i) where
+  type ArgAnnotation (TypedExpr a) = TypedAnnotation
+  foldExprs f s ~(BoolExpr x) (BoolAnnotation ann) = do
+    (ns, res) <- foldExprs f s x ann
+    return (ns, BoolExpr res)
+  foldsExprs f s lst (BoolAnnotation ann) = do
+    (ns, ress, res) <- foldsExprs f s (fmap (\(x,p) -> (case x of BoolExpr x' -> x',p)) lst) ann
+    return (ns, fmap BoolExpr ress, BoolExpr res)
+  extractArgAnnotation (BoolExpr x) = BoolAnnotation $ extractArgAnnotation x
+  toArgs (BoolAnnotation ann) exprs = do
+    (res, rest) <- toArgs ann exprs
+    return (BoolExpr res, rest)
+  fromArgs (BoolExpr xs) = fromArgs xs
+  getSorts (_::TypedExpr x) (BoolAnnotation ann) = error "lamasmt: no getSorts for TypedExpr"--getSorts (undefined::x) $ extractArgAnnotation ann
+  getArgAnnotation _ _ = error "lamasmt: getArgAnnotation undefined for TypedExpr"
+  showsArgs n p (BoolExpr x) = let (showx,nn) = showsArgs n 11 x
+                               in (showParen (p>10) $
+                                   showString "BoolExpr " . showx,nn)
 
 ------------------------------
 
