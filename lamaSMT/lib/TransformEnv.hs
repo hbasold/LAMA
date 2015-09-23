@@ -29,20 +29,20 @@ import LamaSMTTypes
 import Internal.Monads
 
 data NodeEnv i = NodeEnv
-                 { nodeEnvIn :: [TypedExpr i]
-                 , nodeEnvOut :: Map i (TypedExpr i)
+                 { nodeEnvIn :: [TypedExpr]
+                 , nodeEnvOut :: Map i (TypedExpr)
                  , nodeEnvVars :: VarEnv i
                  }
 
 data VarEnv i = VarEnv
                 { nodes :: Map i (NodeEnv i)
-                , vars :: Map i (TypedExpr i)
+                , vars :: Map i (TypedExpr)
                   -- ^ Maps names of variables to a SMT expression for using
                   -- that variable
                 }
 
 data Env i = Env
-           { constants :: Map i (TypedExpr i)
+           { constants :: Map i (TypedExpr)
            , enumAnn :: Map i (SMTAnnotation SMTEnum)
            , enumConsAnn :: Map (EnumConstr i) (SMTAnnotation SMTEnum)
            , varEnv :: VarEnv i
@@ -65,11 +65,11 @@ putConstants cs =
   let cs' = fmap trConstant cs
   in modify $ \env -> env { constants = cs' }
 
-addVar :: Ident i => TypedExpr i -> DeclM i ()
+addVar :: Ident i => TypedExpr -> DeclM i ()
 addVar var =
   modify $ \env -> env { varList = (varList env) ++ [unBool' var] }
 
-getN :: TypedExpr i -> DeclM i Int
+getN :: TypedExpr -> DeclM i Int
 getN x = do vars <- gets varList
             return $ case List.elemIndex (unBool' x) vars of
                           Nothing -> error $ "Could not be found in list of     variables: " ++ show x
@@ -89,7 +89,7 @@ modifyVarEnv f = modify $ \env -> env { varEnv = f $ varEnv env }
 modifyNodes :: (Map i (NodeEnv i) -> Map i (NodeEnv i)) -> DeclM i ()
 modifyNodes f = modifyVarEnv $ (\env -> env { nodes = f $ nodes env })
 
-modifyVars :: (Map i (TypedExpr i) -> Map i (TypedExpr i)) -> DeclM i ()
+modifyVars :: (Map i (TypedExpr) -> Map i (TypedExpr)) -> DeclM i ()
 modifyVars f = modifyVarEnv $ (\env -> env { vars = f $ vars env })
 
 lookupErr :: (MonadError e m, Ord k) => e -> k -> Map k v -> m v
@@ -97,7 +97,7 @@ lookupErr err k m = case Map.lookup k m of
   Nothing -> throwError err
   Just v -> return v
 
-lookupVar :: (MonadState (Env i) m, MonadError String m, Ident i) => i -> m (TypedExpr i)
+lookupVar :: (MonadState (Env i) m, MonadError String m, Ident i) => i -> m (TypedExpr)
 lookupVar x = gets (vars . varEnv) >>= lookupErr ("Unknown variable " ++ identPretty x) x
 
 lookupNode :: Ident i => i -> DeclM i (NodeEnv i)
@@ -131,11 +131,11 @@ nextAutomatonIndex = state $ \env ->
 
 -- | Defines a stream analogous to defFun.
 defStream :: Ident i =>
-             Type i -> (StreamPos -> TypedExpr i) -> DeclM i (TypedStream i)
+             Type i -> (StreamPos -> TypedExpr) -> DeclM i (TypedStream i)
 defStream ty sf = gets natImpl >>= \natAnn -> defStream' natAnn ty sf
   where
     defStream' :: Ident i =>
-                  NatImplementation -> Type i -> (StreamPos -> TypedExpr i)
+                  NatImplementation -> Type i -> (StreamPos -> TypedExpr)
                   -> DeclM i (TypedStream i)
     defStream' natAnn (GroundType BoolT) f
       = liftSMT . fmap BoolStream $ defFunAnn natAnn (unBool' . f)
@@ -161,7 +161,7 @@ defStream ty sf = gets natImpl >>= \natAnn -> defStream' natAnn ty sf
 
 -- | Defines a function instead of streams
 defFunc :: Ident i =>
-             Int -> Type i -> ([SMTExpr Bool] -> TypedExpr i) -> DeclM i (TypedFunc i)
+             Int -> Type i -> ([SMTExpr Bool] -> TypedExpr) -> DeclM i (TypedFunc)
 defFunc i (GroundType BoolT) f = liftSMT . fmap BoolFunc $
                                 defFunAnn (replicate i ()) (unBool' . f)
 defFunc i (GroundType IntT) f = liftSMT . fmap IntFunc $
@@ -186,7 +186,7 @@ defFunc i (ProdType ts) f =
 
 -- stream :: Ident i => Type i -> DeclM i (Stream t)
 
-trConstant :: Ident i => Constant i -> TypedExpr i
+trConstant :: Ident i => Constant i -> TypedExpr
 trConstant (untyped -> BoolConst c) = BoolExpr $ constant c
 trConstant (untyped -> IntConst c) = IntExpr $ constant c
 trConstant (untyped -> RealConst c) = RealExpr $ constant c

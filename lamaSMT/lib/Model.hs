@@ -87,11 +87,11 @@ getNodeModel :: NodeEnv i -> ModelM (NodeModel i)
 getNodeModel (NodeEnv i o e) =
   NodeModel <$> mapM getVarModel i <*> getVarsModel o <*> getModel' e
 
-getVarsModel :: Map i (TypedExpr i) -> ModelM (Map i ValueStream)
+getVarsModel :: Map i (TypedExpr) -> ModelM (Map i ValueStream)
 getVarsModel = mapM getVarModel
 
 --TODO
-getVarModel :: TypedExpr i -> ModelM ValueStream
+getVarModel :: TypedExpr -> ModelM ValueStream
 getVarModel (BoolExpr s) = BoolVStream <$> getStreamValue s
 getVarModel (IntExpr  s) = IntVStream  <$> getStreamValue s
 getVarModel (RealExpr s) = RealVStream <$> getStreamValue s

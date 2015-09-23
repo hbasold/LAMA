@@ -57,7 +57,7 @@ import Internal.Monads
 -- FIXME: Make behaviour configurable, i.e. bottom can be some
 -- default value or a left open stream
 -- (atm it does the former).
-getBottom :: TypedExpr i -> TypedExpr i
+getBottom :: TypedExpr -> TypedExpr
 getBottom (BoolExpr _)     = BoolExpr $ constant False
 getBottom (IntExpr _)      = IntExpr  $ constant 0xdeadbeef
 getBottom (RealExpr _)     = RealExpr . constant $ fromInteger 0xdeadbeef
@@ -133,13 +133,13 @@ declareDecls activeCond excludeNodes d =
      modifyVars $ mappend (inp `mappend` locs `mappend` states)
      return (concat defs, excluded)
 
-declareVars :: Ident i => [Variable i] -> DeclM i (Map i (TypedExpr i))
+declareVars :: Ident i => [Variable i] -> DeclM i (Map i (TypedExpr))
 declareVars = fmap (Map.fromList) . declareVarList
 
-declareVarList :: Ident i => [Variable i] -> DeclM i ([(i, TypedExpr i)])
+declareVarList :: Ident i => [Variable i] -> DeclM i ([(i, TypedExpr)])
 declareVarList = mapM declareVar
 
-declareVar :: Ident i => Variable i -> DeclM i ((i, TypedExpr i))
+declareVar :: Ident i => Variable i -> DeclM i ((i, TypedExpr))
 declareVar (Variable x t) =
   do v    <- typedVar (identString x) t
      addVar v
@@ -148,7 +148,7 @@ declareVar (Variable x t) =
     typedVar :: Ident i =>
                 String
                 -> Type i
-                -> DeclM i (TypedExpr i)
+                -> DeclM i (TypedExpr)
     typedVar v (GroundType BoolT)
       = liftSMT $ fmap BoolExpr $ varNamed v
     typedVar v (GroundType IntT)
@@ -253,7 +253,7 @@ declareInstantDef activeCond inst@(NodeUsage x n _) =
 -- used to further refine this instant (e.g. wrap it into an ite).
 -- This may also return definitions of the parameters of a node.
 -- The activation condition is only used for the inputs of a node.
-trInstant :: Ident i => Maybe (SMTFunction [SMTExpr Bool] Bool) -> InstantDefinition i -> DeclM i (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i, [Definition])
+trInstant :: Ident i => Maybe (SMTFunction [SMTExpr Bool] Bool) -> InstantDefinition i -> DeclM i (Env i -> [(i, SMTExpr Bool)] -> TypedExpr, [Definition])
 trInstant _ (InstantExpr _ e) = return (runTransM $ trExpr e, [])
 trInstant inpActive (NodeUsage _ n es) =
   do nEnv <- lookupNode n
@@ -268,7 +268,7 @@ trInstant inpActive (NodeUsage _ n es) =
                  $ zip4 (nodeEnvIn nEnv) insN es esTr
      return (y, inpDefs)
 
-trOutput :: Ident i => Map i (TypedExpr i) -> TransM i (TypedExpr i)
+trOutput :: Ident i => Map i (TypedExpr) -> TransM i (TypedExpr)
 trOutput map = do
                  s <- ask
                  outList <- mapM (trOutput' s) (Map.toList map)
@@ -301,12 +301,12 @@ declareTransition activeCond (StateTransition x e) =
 -- (see declareDef).
 declareConditionalAssign :: Ident i =>
                             Maybe (SMTFunction [SMTExpr Bool] Bool)
-                            -> TypedExpr i
-                            -> TypedExpr i
+                            -> TypedExpr
+                            -> TypedExpr
                             -> Set i
                             -> [Int]
                             -> Bool
-                            -> (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i)
+                            -> (Env i -> [(i, SMTExpr Bool)] -> TypedExpr)
                             -> DeclM i Definition
 declareConditionalAssign activeCond defaultExpr x al ns succ ef =
   case activeCond of
@@ -327,8 +327,8 @@ declareConditionalAssign activeCond defaultExpr x al ns succ ef =
 -- id or succ' to define instances or state transitions).
 -- The second argument /x/ is the stream to be defined and the last
 -- argument (/ef/) is a function that generates the defining expression.
-declareDef :: Ident i => TypedExpr i -> Set i -> [Int] -> Bool ->
-              (Env i -> [(i, SMTExpr Bool)] -> TypedExpr i) -> DeclM i Definition
+declareDef :: Ident i => TypedExpr -> Set i -> [Int] -> Bool ->
+              (Env i -> [(i, SMTExpr Bool)] -> TypedExpr) -> DeclM i Definition
 declareDef x as ns succ ef =
   do env         <- get
      let defType = varDefType x
@@ -525,7 +525,7 @@ declareLocDef :: Ident i =>
                  -> Stream SMTEnum
                  -> Maybe (Expr i)
                  -> [(LocationId i, InstantDefinition i)]
-                 -> AutomTransM i (Env i -> StreamPos -> TypedExpr i, [Definition])
+                 -> AutomTransM i (Env i -> StreamPos -> TypedExpr, [Definition])
 declareLocDef activeCond s defaultExpr locs =
   do (innerPat, locs') <- case defaultExpr of
        Nothing -> case locs of
@@ -542,7 +542,7 @@ declareLocDef activeCond s defaultExpr locs =
                     Maybe (Stream Bool)
                     -> LocationId i
                     -> InstantDefinition i
-                    -> AutomTransM i (Env i -> StreamPos -> TypedExpr i, [Definition])
+                    -> AutomTransM i (Env i -> StreamPos -> TypedExpr, [Definition])
     trLocInstant _ _ inst@(InstantExpr _ _) =
       lift $ trInstant (error "no activation condition required") inst
     trLocInstant active l inst@(NodeUsage _ n _) =
@@ -555,7 +555,7 @@ declareLocDef activeCond s defaultExpr locs =
 trLocTransition :: Ident i =>
                    Stream SMTEnum
                    -> [(LocationId i, StateTransition i)]
-                   -> AutomTransM i (Env i -> StreamPos -> TypedExpr i)
+                   -> AutomTransM i (Env i -> StreamPos -> TypedExpr)
 trLocTransition s locs =
   let (innerPat, locs') = case locs of
         (l:ls) -> (trLocTrans $ snd l, ls)
@@ -568,10 +568,10 @@ trLocTransition s locs =
 
 mkLocationMatch :: Ident i =>
                    Stream SMTEnum
-                   -> (Env i -> StreamPos -> TypedExpr i)
+                   -> (Env i -> StreamPos -> TypedExpr)
                    -> LocationId i
-                   -> (Env i -> StreamPos -> TypedExpr i)
-                   -> AutomTransM i (Env i -> StreamPos -> TypedExpr i)
+                   -> (Env i -> StreamPos -> TypedExpr)
+                   -> AutomTransM i (Env i -> StreamPos -> TypedExpr)
 mkLocationMatch s f l lExpr =
   do lCons <- lookupLocName l
      lEnum <- lift $ trEnumConsAnn lCons <$> lookupEnumConsAnn lCons
@@ -710,7 +710,7 @@ declareInvariant :: Ident i =>
                     Maybe (SMTFunction [SMTExpr Bool] Bool) -> Expr i -> DeclM i Definition
 declareInvariant = declarePrecond
 
-trConstExpr :: Ident i => ConstExpr i -> DeclM i (TypedExpr i)
+trConstExpr :: Ident i => ConstExpr i -> DeclM i (TypedExpr)
 trConstExpr (untyped -> Const c)
   = return $ trConstant c
 trConstExpr (untyped -> ConstEnum x)
@@ -721,7 +721,7 @@ trConstExpr (untyped -> ConstProd (Prod cs)) =
 type TransM i = ReaderT ([(i, SMTExpr Bool)], Env i) (Either String)
 
 {-
-doAppStream :: TypedStream i -> TransM i (TypedExpr i)
+doAppStream :: TypedStream i -> TransM i (TypedExpr)
 doAppStream s = askStreamPos >>= return . appStream s
 -}
 
@@ -731,7 +731,7 @@ runTransM m e a = case runReaderT m (a, e) of
   Left err -> error err
   Right r -> r
 
-lookupVar' :: Ident i => i -> TransM i (TypedExpr i)
+lookupVar' :: Ident i => i -> TransM i (TypedExpr)
 lookupVar' x =
   do vs <- asks $ vars . varEnv . snd
      case Map.lookup x vs of
@@ -763,7 +763,7 @@ getArgSet expr = case untyped expr of
 
 -- we do no further type checks since this
 -- has been done beforehand.
-trExpr :: Ident i => Expr i -> TransM i (TypedExpr i)
+trExpr :: Ident i => Expr i -> TransM i (TypedExpr)
 trExpr expr = case untyped expr of
   AtExpr (AtomConst c) -> return $ trConstant c
   AtExpr (AtomVar x)   -> do
@@ -782,11 +782,11 @@ trExpr expr = case untyped expr of
        return $ (s ! fromEnum i)
   Match e pats         -> trExpr e >>= flip trPattern pats
 
-trPattern :: Ident i => TypedExpr i -> [Pattern i] -> TransM i (TypedExpr i)
+trPattern :: Ident i => TypedExpr -> [Pattern i] -> TransM i (TypedExpr)
 trPattern e@(EnumExpr _) = trEnumMatch e
 trPattern _ = error "Cannot match on non enum expression"
 
-trEnumMatch :: Ident i => TypedExpr i -> [Pattern i] -> TransM i (TypedExpr i)
+trEnumMatch :: Ident i => TypedExpr -> [Pattern i] -> TransM i (TypedExpr)
 trEnumMatch x pats =
   -- respect order of patterns here by putting the last in the default match
   -- and bulding the expression bottom-up:
@@ -811,7 +811,7 @@ trEnumConsAnn x = constantAnn (SMTEnum . fromString $ identString x)
 trEnumCons :: Ident i => EnumConstr i -> TransM i (SMTExpr SMTEnum)
 trEnumCons x = lookupEnumConsAnn' x >>= return . trEnumConsAnn x
 
-applyOp :: BinOp -> TypedExpr i -> TypedExpr i -> TypedExpr i
+applyOp :: BinOp -> TypedExpr -> TypedExpr -> TypedExpr
 applyOp Or      e1 e2 = liftBoolL or'  [e1, e2]
 applyOp And     e1 e2 = liftBoolL and' [e1, e2]
 applyOp Xor     e1 e2 = liftBoolL xor  [e1, e2]
