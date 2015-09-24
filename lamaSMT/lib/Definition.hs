@@ -8,7 +8,7 @@ import LamaSMTTypes
 import Internal.Monads
 
 data Definition =
-  SingleDef [Int] Bool (SMTFunction [SMTExpr Bool] Bool)
+  SingleDef [Int] Bool (SMTFunction [TypedExpr] Bool)
   | ProdDef (Array Int Definition)
   deriving Show
 
@@ -20,14 +20,14 @@ ensureDefinition argN succ _
 
 assertDefinition :: MonadSMT m =>
                     (SMTExpr Bool -> SMTExpr Bool)
-                    -> ([SMTExpr Bool], [SMTExpr Bool])
+                    -> ([TypedExpr], [TypedExpr])
                     -> Definition
                     -> m ()
 assertDefinition f i (SingleDef argN succ s) = liftSMT $ assert (f $ s `app` (lookupArgs argN succ i))
 assertDefinition f i (ProdDef ps) = mapM_ (assertDefinition f i) $ Arr.elems ps
 
-lookupArgs :: [Int] -> Bool -> ([SMTExpr Bool], [SMTExpr Bool])
-               -> [SMTExpr Bool]
+lookupArgs :: [Int] -> Bool -> ([TypedExpr], [TypedExpr])
+               -> [TypedExpr]
 lookupArgs argN True vars = [(snd vars) !! (head argN)] ++ (map ((!!) (fst vars)) $ tail argN)
 lookupArgs argN False vars = map ((!!) (fst vars)) argN
 

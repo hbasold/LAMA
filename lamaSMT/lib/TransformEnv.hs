@@ -47,7 +47,7 @@ data Env i = Env
            , enumConsAnn :: Map (EnumConstr i) (SMTAnnotation SMTEnum)
            , varEnv :: VarEnv i
            , currAutomatonIndex :: Integer
-           , varList :: [SMTExpr Bool]
+           , varList :: [TypedExpr]
            , natImpl :: NatImplementation
            , enumImpl :: EnumImplementation
            }
@@ -67,11 +67,11 @@ putConstants cs =
 
 addVar :: Ident i => TypedExpr -> DeclM i ()
 addVar var =
-  modify $ \env -> env { varList = (varList env) ++ [unBool' var] }
+  modify $ \env -> env { varList = (varList env) ++ [var] }
 
 getN :: TypedExpr -> DeclM i Int
 getN x = do vars <- gets varList
-            return $ case List.elemIndex (unBool' x) vars of
+            return $ case List.elemIndex x vars of
                           Nothing -> error $ "Could not be found in list of     variables: " ++ show x
                           Just n -> n
 
@@ -161,28 +161,28 @@ defStream ty sf = gets natImpl >>= \natAnn -> defStream' natAnn ty sf
 
 -- | Defines a function instead of streams
 defFunc :: Ident i =>
-             Int -> Type i -> ([SMTExpr Bool] -> TypedExpr) -> DeclM i (TypedFunc)
-defFunc i (GroundType BoolT) f = liftSMT . fmap BoolFunc $
-                                defFunAnn (replicate i ()) (unBool' . f)
-defFunc i (GroundType IntT) f = liftSMT . fmap IntFunc $
-                                defFunAnn (replicate i ()) (unInt . f)
-defFunc i (GroundType RealT) f = liftSMT . fmap RealFunc $
-                               defFunAnn (replicate i ()) (unReal . f)
-defFunc i (GroundType _) f = $notImplemented
-defFunc i (EnumType alias) f = do ann <- lookupEnumAnn alias
-                                  liftSMT $ fmap (EnumFunc ann) $
-                                   defFunAnn (replicate i ()) (unEnum . f)
+             Int -> Type i -> [TypedAnnotation] -> ([TypedExpr] -> TypedExpr) -> DeclM i (TypedFunc)
+defFunc i (GroundType BoolT) ann f = liftSMT . fmap BoolFunc $
+                                defFunAnn ann (unBool' . f)
+defFunc i (GroundType IntT) ann f = liftSMT . fmap IntFunc $
+                                defFunAnn ann (unInt . f)
+defFunc i (GroundType RealT) ann f = liftSMT . fmap RealFunc $
+                               defFunAnn ann (unReal . f)
+defFunc i (GroundType _) ann f = $notImplemented
+defFunc i (EnumType alias) ann f = do eann <- lookupEnumAnn alias
+                                      liftSMT $ fmap (EnumFunc eann) $
+                                       defFunAnn ann (unEnum . f)
 -- We have to pull the product out of a stream.
 -- If we are given a function f : FuncPos -> (Ix -> TE) = TypedExpr as above,
 -- we would like to have as result something like:
 -- g : Ix -> (FuncPos -> TE)
 -- g(i)(t) = defFunc(λt'.f(t')(i))(t)
 -- Here i is the index into the product and t,t' are time variables.
-defFunc i (ProdType ts) f =
+defFunc i (ProdType ts) ann f =
   do let u = length ts - 1
      x <- mapM defParts $ zip ts [0..u]
      return . ProdFunc $ listArray (0,u) x
-  where defParts (ty2, i) = defFunc i ty2 ((! i) . unProd' . f)
+  where defParts (ty2, i) = defFunc i ty2 ann ((! i) . unProd' . f)
 
 -- stream :: Ident i => Type i -> DeclM i (Stream t)
 

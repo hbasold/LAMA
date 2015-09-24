@@ -68,7 +68,7 @@ instance StrategyClass KInduct where
 
 -- | Checks the induction step and returns true if the invariant could be
 -- proven
-checkStep :: ProgDefs -> ([SMTExpr Bool], [SMTExpr Bool]) -> SMT Bool
+checkStep :: ProgDefs -> ([TypedExpr], [TypedExpr]) -> SMT Bool
 checkStep defs vars =
   do assumeTrace defs vars
      let invs = invariantDef defs
@@ -77,8 +77,8 @@ checkStep defs vars =
 -- | Holds current depth k and definitions of last k and n
 data InductState = InductState
                    { kVal  :: Natural
-                   , kDefs :: ([SMTExpr Bool], [SMTExpr Bool])
-                   , nDefs :: ([SMTExpr Bool], [SMTExpr Bool]) }
+                   , kDefs :: ([TypedExpr], [TypedExpr])
+                   , nDefs :: ([TypedExpr], [TypedExpr]) }
 type KInductM i = StateT InductState (WriterT (Hints i) SMTErr)
 
 -- | Checks the program against its invariant. If the invariant

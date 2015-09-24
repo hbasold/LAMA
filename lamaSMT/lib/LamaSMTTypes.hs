@@ -30,7 +30,7 @@ data TypedAnnotation
   = BoolAnnotation { anBool :: ArgAnnotation (SMTExpr Bool) }
   | IntAnnotation { anInt :: ArgAnnotation (SMTExpr Integer) }
   | RealAnnotation { anReal :: ArgAnnotation (SMTExpr Rational) }
-  | EnumAnnotation { anEnum :: ArgAnnotation (SMTExpr SMTEnum) }
+  | EnumAnnotation { anEnum :: SMTAnnotation SMTEnum}--ArgAnnotation (SMTExpr SMTEnum) }
   -- | ProdAnnotation { anProd :: ArgAnnotation a }
   deriving (Ord, Typeable, Eq, Show)
 
@@ -43,10 +43,10 @@ unProd' (ProdExpr e) = e
 unProd' e = error $ "Cannot unProd: " ++ show e
 
 data TypedFunc
-  = BoolFunc (SMTFunction [SMTExpr Bool] Bool)
-  | IntFunc (SMTFunction [SMTExpr Bool] Integer)
-  | RealFunc (SMTFunction [SMTExpr Bool] Rational)
-  | EnumFunc EnumAnn (SMTFunction [SMTExpr Bool] SMTEnum)
+  = BoolFunc (SMTFunction [TypedExpr] Bool)
+  | IntFunc (SMTFunction [TypedExpr] Integer)
+  | RealFunc (SMTFunction [TypedExpr] Rational)
+  | EnumFunc EnumAnn (SMTFunction [TypedExpr] SMTEnum)
   | ProdFunc (Array Int (TypedFunc))
   deriving Show
 
@@ -55,7 +55,7 @@ mkProdExpr [] = error "Cannot create empty product expression"
 mkProdExpr [s] = s
 mkProdExpr sts = ProdExpr . uncurry listArray $ ((0,) . pred . length &&& id) sts
 
-appFunc :: TypedFunc -> [SMTExpr Bool] -> TypedExpr
+appFunc :: TypedFunc -> [TypedExpr] -> TypedExpr
 appFunc (BoolFunc f) arg = BoolExpr $ f `app` arg
 appFunc (IntFunc f) arg = IntExpr $ f `app` arg
 appFunc (RealFunc f) arg = RealExpr $ f `app` arg
@@ -67,21 +67,45 @@ instance Args (TypedExpr) where
   foldExprs f s ~(BoolExpr x) (BoolAnnotation ann) = do
     (ns, res) <- foldExprs f s x ann
     return (ns, BoolExpr res)
+  foldExprs f s ~(IntExpr x) (IntAnnotation ann) = do
+    (ns, res) <- foldExprs f s x ann
+    return (ns, IntExpr res)
+  foldExprs f s ~(RealExpr x) (RealAnnotation ann) = do
+    (ns, res) <- foldExprs f s x ann
+    return (ns, RealExpr res)
   foldsExprs f s lst (BoolAnnotation ann) = do
     (ns, ress, res) <- foldsExprs f s (fmap (\(x,p) -> (case x of BoolExpr x' -> x',p)) lst) ann
     return (ns, fmap BoolExpr ress, BoolExpr res)
+  foldsExprs f s lst (IntAnnotation ann) = do
+    (ns, ress, res) <- foldsExprs f s (fmap (\(x,p) -> (case x of IntExpr x' -> x',p)) lst) ann
+    return (ns, fmap IntExpr ress, IntExpr res)
+  foldsExprs f s lst (RealAnnotation ann) = do
+    (ns, ress, res) <- foldsExprs f s (fmap (\(x,p) -> (case x of RealExpr x' -> x',p)) lst) ann
+    return (ns, fmap RealExpr ress, RealExpr res)
   extractArgAnnotation (BoolExpr x) = BoolAnnotation $ extractArgAnnotation x
+  extractArgAnnotation (IntExpr x) = IntAnnotation $ extractArgAnnotation x
+  extractArgAnnotation (RealExpr x) = RealAnnotation $ extractArgAnnotation x
   toArgs (BoolAnnotation ann) exprs = do
     (res, rest) <- toArgs ann exprs
     return (BoolExpr res, rest)
+  toArgs (IntAnnotation ann) exprs = do
+    (res, rest) <- toArgs ann exprs
+    return (IntExpr res, rest)
+  toArgs (RealAnnotation ann) exprs = do
+    (res, rest) <- toArgs ann exprs
+    return (RealExpr res, rest)
   fromArgs (BoolExpr xs) = fromArgs xs
   getSorts (_::TypedExpr) (BoolAnnotation ann) = error "lamasmt: no getSorts for TypedExpr"--getSorts (undefined::x) $ extractArgAnnotation ann
   getArgAnnotation _ _ = error "lamasmt: getArgAnnotation undefined for TypedExpr"
   showsArgs n p (BoolExpr x) = let (showx,nn) = showsArgs n 11 x
                                in (showParen (p>10) $
                                    showString "BoolExpr " . showx,nn)
-
-------------------------------
+  showsArgs n p (IntExpr x) = let (showx,nn) = showsArgs n 11 x
+                               in (showParen (p>10) $
+                                   showString "BoolExpr " . showx,nn)
+  showsArgs n p (RealExpr x) = let (showx,nn) = showsArgs n 11 x
+                               in (showParen (p>10) $
+                                   showString "BoolExpr " . showx,nn)
 
 type StreamPos = SMTExpr Natural
 type Stream t = SMTFunction StreamPos t

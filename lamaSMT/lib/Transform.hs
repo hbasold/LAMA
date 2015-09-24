@@ -118,7 +118,7 @@ declareEnum (t, EnumDef cs) =
         liftSMT (declareType (undefined :: SMTEnum) ann) >> return (t, ann)
 
 declareDecls :: Ident i =>
-                Maybe (SMTFunction [SMTExpr Bool] Bool)
+                Maybe (SMTFunction [TypedExpr] Bool)
                 -> Set i
                 -> Declarations i
                 -> DeclM i ([Definition], Map i (Node i))
@@ -186,7 +186,7 @@ enumVar argAnn ann@(EnumBitAnn size _ biggestCons) =
 -- declared. The other nodes are deferred to be declared in the corresponding
 -- location (see declareAutomaton and declareLocations).
 declareNode :: Ident i =>
-               Maybe (SMTFunction [SMTExpr Bool] Bool) -> i -> Node i -> DeclM i [Definition]
+               Maybe (SMTFunction [TypedExpr] Bool) -> i -> Node i -> DeclM i [Definition]
 declareNode active nName nDecl =
   do (interface, defs) <- localVarEnv (const emptyVarEnv) $
                           declareNode' active nDecl
@@ -194,7 +194,7 @@ declareNode active nName nDecl =
      return defs
   where
     declareNode' :: Ident i =>
-                    Maybe (SMTFunction [SMTExpr Bool] Bool) -> Node i
+                    Maybe (SMTFunction [TypedExpr] Bool) -> Node i
                     -> DeclM i (NodeEnv i, [Definition])
     declareNode' activeCond n =
       do let automNodes =
@@ -228,7 +228,7 @@ getNodesInLocations = mconcat . map getUsedLoc . automLocations
 -- | Creates definitions for instant definitions. In case of a node usage this
 -- may produce multiple definitions. If 
 declareInstantDef :: Ident i =>
-                     Maybe (SMTFunction [SMTExpr Bool] Bool)
+                     Maybe (SMTFunction [TypedExpr] Bool)
                      -> InstantDefinition i
                      -> DeclM i [Definition]
 declareInstantDef activeCond inst@(InstantExpr x e) =
@@ -253,7 +253,7 @@ declareInstantDef activeCond inst@(NodeUsage x n _) =
 -- used to further refine this instant (e.g. wrap it into an ite).
 -- This may also return definitions of the parameters of a node.
 -- The activation condition is only used for the inputs of a node.
-trInstant :: Ident i => Maybe (SMTFunction [SMTExpr Bool] Bool) -> InstantDefinition i -> DeclM i (Env i -> [(i, SMTExpr Bool)] -> TypedExpr, [Definition])
+trInstant :: Ident i => Maybe (SMTFunction [TypedExpr] Bool) -> InstantDefinition i -> DeclM i (Env i -> [(i, TypedExpr)] -> TypedExpr, [Definition])
 trInstant _ (InstantExpr _ e) = return (runTransM $ trExpr e, [])
 trInstant inpActive (NodeUsage _ n es) =
   do nEnv <- lookupNode n
@@ -275,15 +275,15 @@ trOutput map = do
                  return $ mkProdExpr outList
                where
                  trOutput' s (i, te) = case lookup i (fst s) of
-                                       Nothing -> throwError $ "No argument binding for " ++ identPretty i
-                                       Just n -> return $ BoolExpr n
+                                       Nothing -> throwError $ "No argument (output) binding for " ++ identPretty i
+                                       Just n -> return n
 
 -- | Creates a declaration for a state transition.
 -- If an activation condition c is given, the declaration boils down to
 -- x' = (ite c e x) where e is the defining expression. Otherwise it is just
 -- x' = e.
 declareTransition :: Ident i =>
-                     Maybe (SMTFunction [SMTExpr Bool] Bool)
+                     Maybe (SMTFunction [TypedExpr] Bool)
                      -> StateTransition i
                      -> DeclM i Definition
 declareTransition activeCond (StateTransition x e) =
@@ -300,13 +300,13 @@ declareTransition activeCond (StateTransition x e) =
 -- stream of /x/ which will be defined, can be specified by modPos
 -- (see declareDef).
 declareConditionalAssign :: Ident i =>
-                            Maybe (SMTFunction [SMTExpr Bool] Bool)
+                            Maybe (SMTFunction [TypedExpr] Bool)
                             -> TypedExpr
                             -> TypedExpr
                             -> Set i
                             -> [Int]
                             -> Bool
-                            -> (Env i -> [(i, SMTExpr Bool)] -> TypedExpr)
+                            -> (Env i -> [(i, TypedExpr)] -> TypedExpr)
                             -> DeclM i Definition
 declareConditionalAssign activeCond defaultExpr x al ns succ ef =
   case activeCond of
@@ -328,19 +328,35 @@ declareConditionalAssign activeCond defaultExpr x al ns succ ef =
 -- The second argument /x/ is the stream to be defined and the last
 -- argument (/ef/) is a function that generates the defining expression.
 declareDef :: Ident i => TypedExpr -> Set i -> [Int] -> Bool ->
-              (Env i -> [(i, SMTExpr Bool)] -> TypedExpr) -> DeclM i Definition
+              (Env i -> [(i, TypedExpr)] -> TypedExpr) -> DeclM i Definition
 declareDef x as ns succ ef =
   do env         <- get
      let defType = varDefType x
      xN          <- getN x
-     d           <- defFunc (1 + Set.size as) defType
-                    $ \a -> liftRel (.==.) (BoolExpr $ head a) $ ef env $ zip (Set.toList as) (tail a)
+     ann         <- getTypedAnnotation $ [xN] ++ ns
+     d           <- defFunc (1 + Set.size as) defType ann
+                    $ \a -> liftRel (.==.) (head a) $ ef env $ zip (Set.toList as) (tail a)
      return $ ensureDefinition ([xN] ++ ns) succ d
   where
     varDefType (ProdExpr ts) = ProdType . fmap varDefType $ Arr.elems ts
     varDefType _               = boolT
 
-declareFlow :: Ident i => Maybe (SMTFunction [SMTExpr Bool] Bool) -> Flow i -> DeclM i [Definition]
+getTypedAnnotation :: Ident i => [Int] -> DeclM i [TypedAnnotation]
+getTypedAnnotation ns = mapM getTypedAnnotation' ns
+  where
+    getTypedAnnotation' n =
+      do vars <- gets varList
+         case vars !! n of
+           BoolExpr _ -> return $ BoolAnnotation ()
+           IntExpr _ -> return $ IntAnnotation ()
+           RealExpr _ -> return $ RealAnnotation ()
+           --EnumExpr k -> do ea <- lookupEnumAnn k        
+                            --return $ EnumAnnotation ea
+        --                Nothing -> error "enum annotation not doung in environment"
+        --                Just v -> EnumAnnotation v
+        --ProdExpr _ -> ProdAnnotation ()
+
+declareFlow :: Ident i => Maybe (SMTFunction [TypedExpr] Bool) -> Flow i -> DeclM i [Definition]
 declareFlow activeCond f =
   do defDefs        <- fmap concat
                        . mapM (declareInstantDef activeCond)
@@ -692,22 +708,23 @@ assertInit (x, e) =
 
 -- | Creates a definition for a precondition p. If an activation condition c
 -- is given, the resulting condition is (=> c p).
-declarePrecond :: Ident i => Maybe (SMTFunction [SMTExpr Bool] Bool) -> Expr i -> DeclM i Definition
+declarePrecond :: Ident i => Maybe (SMTFunction [TypedExpr] Bool) -> Expr i -> DeclM i Definition
 declarePrecond activeCond e =
   do env      <- get
      let args = getArgSet e
      argsE    <- mapM lookupVar $ Set.toList args
      argsN    <- mapM getN argsE
+     ann      <- getTypedAnnotation argsN
      d        <- case activeCond of
-       Nothing -> defFunc (Set.size $ args) boolT $ \a -> runTransM (trExpr e) env (zip (Set.toList $ args) a)
-       Just c -> defFunc (Set.size $ args) boolT $
+       Nothing -> defFunc (Set.size $ args) boolT ann $ \a -> runTransM (trExpr e) env (zip (Set.toList $ args) a)
+       Just c -> defFunc (Set.size $ args) boolT ann $
                  \a -> (flip (flip runTransM env) (zip (Set.toList $ args) a))
 		       (trExpr e >>= \e' ->
                          return $ liftBool2 (.=>.) (BoolExpr $ c `app` a) e')
      return $ ensureDefinition argsN False d
 
 declareInvariant :: Ident i =>
-                    Maybe (SMTFunction [SMTExpr Bool] Bool) -> Expr i -> DeclM i Definition
+                    Maybe (SMTFunction [TypedExpr] Bool) -> Expr i -> DeclM i Definition
 declareInvariant = declarePrecond
 
 trConstExpr :: Ident i => ConstExpr i -> DeclM i (TypedExpr)
@@ -718,7 +735,7 @@ trConstExpr (untyped -> ConstEnum x)
 trConstExpr (untyped -> ConstProd (Prod cs)) =
   ProdExpr . listArray (0, length cs - 1) <$> mapM trConstExpr cs
 
-type TransM i = ReaderT ([(i, SMTExpr Bool)], Env i) (Either String)
+type TransM i = ReaderT ([(i, TypedExpr)], Env i) (Either String)
 
 {-
 doAppStream :: TypedStream i -> TransM i (TypedExpr)
@@ -726,7 +743,7 @@ doAppStream s = askStreamPos >>= return . appStream s
 -}
 
 -- beware: uses error
-runTransM :: TransM i a -> Env i -> [(i, SMTExpr Bool)] -> a
+runTransM :: TransM i a -> Env i -> [(i, TypedExpr)] -> a
 runTransM m e a = case runReaderT m (a, e) of
   Left err -> error err
   Right r -> r
@@ -770,7 +787,7 @@ trExpr expr = case untyped expr of
                             s <- ask
                             case lookup x (fst s) of
                               Nothing -> throwError $ "No argument binding for " ++ identPretty x
-                              Just n -> return $ BoolExpr n
+                              Just n -> return n
   AtExpr (AtomEnum x)  -> EnumExpr <$> trEnumCons x
   LogNot e             -> lift1Bool not' <$> trExpr e
   Expr2 op e1 e2       -> applyOp op <$> trExpr e1 <*> trExpr e2
