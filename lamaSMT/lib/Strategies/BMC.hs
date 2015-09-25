@@ -118,17 +118,15 @@ next checkCont s i vars =
 freshVars :: MonadSMT m => [TypedExpr] -> m [TypedExpr]
 freshVars vars = liftSMT $ mapM newVar vars
   where
-    newVar (BoolExpr _)   = do new <- var
-                               return $ BoolExpr new
-    newVar (IntExpr _)    = do new <- var
-                               return $ IntExpr new
-    newVar (RealExpr _)   = do new <- var
-                               return $ RealExpr new
+    newVar (BoolExpr _)          = do new <- var
+                                      return $ BoolExpr new
+    newVar (IntExpr _)           = do new <- var
+                                      return $ IntExpr new
+    newVar (RealExpr _)          = do new <- var
+                                      return $ RealExpr new
     newVar (EnumExpr (Var _ k))  = do new <- varAnn k
                                       return $ EnumExpr new
-                              --etAnn <- lookupEnumAnn et
-    --                          new <- varAnn etAnn
-    --                          return $ EnumExpr new
-    newVar (ProdExpr arr) = do newList <- mapM newVar (Array.elems arr)
-                               let newProd = mkProdExpr newList
-                               return newProd
+    newVar (ProdExpr arr)        =
+      do newList <- mapM newVar (Array.elems arr)
+         let newProd = mkProdExpr newList
+         return newProd

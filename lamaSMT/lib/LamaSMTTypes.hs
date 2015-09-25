@@ -12,6 +12,10 @@ import Data.Natural
 import NatInstance ()
 import Data.Array as Arr
 import Data.Typeable
+import Data.Foldable (foldlM)
+import Data.List (mapAccumL)
+
+import Text.Show
 
 import Control.Arrow ((&&&))
 
@@ -30,8 +34,8 @@ data TypedAnnotation
   = BoolAnnotation { anBool :: ArgAnnotation (SMTExpr Bool) }
   | IntAnnotation { anInt :: ArgAnnotation (SMTExpr Integer) }
   | RealAnnotation { anReal :: ArgAnnotation (SMTExpr Rational) }
-  | EnumAnnotation { anEnum ::{- SMTAnnotation SMTEnum-}ArgAnnotation (SMTExpr SMTEnum) }
-  -- | ProdAnnotation { anProd :: ArgAnnotation a }
+  | EnumAnnotation { anEnum :: ArgAnnotation (SMTExpr SMTEnum) }
+  | ProdAnnotation { anProd :: Array Int TypedAnnotation }
   deriving (Ord, Typeable, Eq, Show)
 
 unBool' :: TypedExpr -> SMTExpr Bool
@@ -76,6 +80,12 @@ instance Args (TypedExpr) where
   foldExprs f s ~(EnumExpr x) (EnumAnnotation ann) = do
     (ns, res) <- foldExprs f s x ann
     return (ns, EnumExpr res)
+  foldExprs f s ~(ProdExpr x) (ProdAnnotation y) =
+    foldlM (\(s',ProdExpr cmp) (k,ann) -> do
+      let el = x ! k
+      (s'',el') <- foldExprs f s' el ann
+      return (s'', ProdExpr $ cmp Arr.// [(k,el')])
+      ) (s,ProdExpr $ Arr.array (bounds y) []) (Arr.assocs y)
   foldsExprs f s lst (BoolAnnotation ann) = do
     (ns, ress, res) <- foldsExprs f s (fmap (\(x,p) -> (case x of BoolExpr x' -> x',p)) lst) ann
     return (ns, fmap BoolExpr ress, BoolExpr res)
@@ -88,10 +98,18 @@ instance Args (TypedExpr) where
   foldsExprs f s lst (EnumAnnotation ann) = do
     (ns, ress, res) <- foldsExprs f s (fmap (\(x,p) -> (case x of EnumExpr x' -> x',p)) lst) ann
     return (ns, fmap EnumExpr ress, EnumExpr res)
+  foldsExprs f s args (ProdAnnotation ann) = do
+    let lst_ann = Arr.assocs ann
+        lst = fmap (\(ProdExpr mp,extra) -> ([ mp ! k | (k,_) <- lst_ann ],extra)
+                   ) args
+    (ns,lst',lst_merged) <- foldsExprs f s lst (fmap snd lst_ann)
+    return (ns,fmap (\lst'' -> ProdExpr $ Arr.array (bounds ann) $ zip (fmap fst lst_ann) lst''
+                    ) lst',ProdExpr $ Arr.array (bounds ann)  $ zip (fmap fst lst_ann) lst_merged)
   extractArgAnnotation (BoolExpr x) = BoolAnnotation $ extractArgAnnotation x
   extractArgAnnotation (IntExpr x) = IntAnnotation $ extractArgAnnotation x
   extractArgAnnotation (RealExpr x) = RealAnnotation $ extractArgAnnotation x
   extractArgAnnotation (EnumExpr x) = EnumAnnotation $ extractArgAnnotation x
+  extractArgAnnotation (ProdExpr x) = ProdAnnotation $ fmap extractArgAnnotation x
   toArgs (BoolAnnotation ann) exprs = do
     (res, rest) <- toArgs ann exprs
     return (BoolExpr res, rest)
@@ -104,10 +122,20 @@ instance Args (TypedExpr) where
   toArgs (EnumAnnotation ann) exprs = do
     (res, rest) <- toArgs ann exprs
     return (EnumExpr res, rest)
+  toArgs (ProdAnnotation mp_ann) exprs =
+    case mapAccumL (\cst (k,ann) -> case cst of
+        Nothing -> (Nothing,undefined)
+        Just rest -> case toArgs ann rest of
+          Nothing -> (Nothing,undefined)
+          Just (res,rest') -> (Just rest', (k,res))
+                   ) (Just exprs) (Arr.assocs mp_ann) of
+      (Nothing,_) -> Nothing
+      (Just rest,mp) -> Just (ProdExpr $ Arr.array (bounds mp_ann) mp,rest)
   fromArgs (BoolExpr xs) = fromArgs xs
-  fromArgs (IntExpr xs) = fromArgs xs
+  fromArgs (IntExpr  xs) = fromArgs xs
   fromArgs (RealExpr xs) = fromArgs xs
   fromArgs (EnumExpr xs) = fromArgs xs
+  fromArgs (ProdExpr xs) = concat $ fmap fromArgs $ Arr.elems xs
   getSorts (_::TypedExpr) (BoolAnnotation ann) = error "lamasmt: no getSorts for TypedExpr"--getSorts (undefined::x) $ extractArgAnnotation ann
   getArgAnnotation _ _ = error "lamasmt: getArgAnnotation undefined for TypedExpr"
   showsArgs n p (BoolExpr x) = let (showx,nn) = showsArgs n 11 x
@@ -122,6 +150,16 @@ instance Args (TypedExpr) where
   showsArgs n p (EnumExpr x) = let (showx,nn) = showsArgs n 11 x
                                in (showParen (p>10) $
                                    showString "EnumExpr " . showx,nn)
+  showsArgs n p (ProdExpr x) =
+    let (ni,lst') = mapAccumL (\ci (key,arg)
+                               -> let (str,ci') = showsArgs ci 0 arg
+                                  in (ci',(key,str))
+                              ) n (Arr.assocs x)
+    in (showString "fromList " . showListWith (\(key,str)
+                                               -> showChar '(' .
+                                                  showsPrec 0 key .
+                                                  showChar ',' .
+                                                  str . showChar ')') lst',ni)
 
 type StreamPos = SMTExpr Natural
 type Stream t = SMTFunction StreamPos t

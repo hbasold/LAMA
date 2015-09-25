@@ -347,16 +347,14 @@ getTypedAnnotation ns = mapM getTypedAnnotation' ns
     getTypedAnnotation' n =
       do vars    <- gets varList
          eAnn <- gets enumAnn
-         case vars !! n of
-           BoolExpr _ -> return $ BoolAnnotation ()
-           IntExpr _ -> return $ IntAnnotation ()
-           RealExpr _ -> return $ RealAnnotation ()
-           EnumExpr (Var _ k) -> return $ EnumAnnotation k--return $ EnumAnnotation ()
-           --EnumExpr k -> do ea <- lookupEnumAnn k        
-                            --return $ EnumAnnotation ea
-        --                Nothing -> error "enum annotation not doung in environment"
-        --                Just v -> EnumAnnotation v
-        --ProdExpr _ -> ProdAnnotation ()
+         return $ getTypedAnnCases $ vars !! n
+           where getTypedAnnCases var =
+                   case var of
+                     BoolExpr _ -> BoolAnnotation ()
+                     IntExpr _ -> IntAnnotation ()
+                     RealExpr _ -> RealAnnotation ()
+                     EnumExpr (Var _ k) -> EnumAnnotation k
+                     ProdExpr k -> ProdAnnotation $ fmap getTypedAnnCases k
 
 declareFlow :: Ident i => Maybe (SMTFunction [TypedExpr] Bool) -> Flow i -> DeclM i [Definition]
 declareFlow activeCond f =
@@ -770,15 +768,15 @@ askStreamPos = asks fst
 
 getArgSet :: Ident i => Expr i -> Set i
 getArgSet expr = case untyped expr of
-  AtExpr (AtomConst c) -> Set.empty
-  AtExpr (AtomVar x)   -> Set.singleton x
-  AtExpr (AtomEnum x)  -> Set.empty
-  LogNot e             -> getArgSet e
-  Expr2 op e1 e2       -> Set.union (getArgSet e1) (getArgSet e2)
-  Ite c e1 e2          -> Set.unions [getArgSet c, getArgSet e1, getArgSet e2]
-  ProdCons (Prod es)   -> foldr (Set.union . getArgSet) Set.empty es
-  Project x i          -> Set.empty
-  Match e pats         -> getArgSet e
+  AtExpr (AtomConst c)  -> Set.empty
+  AtExpr (AtomVar x)    -> Set.singleton x
+  AtExpr (AtomEnum x)   -> Set.empty
+  LogNot e              -> getArgSet e
+  Expr2 op e1 e2        -> Set.union (getArgSet e1) (getArgSet e2)
+  Ite c e1 e2           -> Set.unions [getArgSet c, getArgSet e1, getArgSet e2]
+  ProdCons (Prod es)    -> foldr (Set.union . getArgSet) Set.empty es
+  Project x i           -> Set.singleton x
+  Match e pats -> Set.unions $ [getArgSet e] ++ map (\(Pattern _ x) -> getArgSet x) pats
 
 -- we do no further type checks since this
 -- has been done beforehand.
