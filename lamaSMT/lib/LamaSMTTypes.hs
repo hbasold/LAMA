@@ -30,7 +30,7 @@ data TypedAnnotation
   = BoolAnnotation { anBool :: ArgAnnotation (SMTExpr Bool) }
   | IntAnnotation { anInt :: ArgAnnotation (SMTExpr Integer) }
   | RealAnnotation { anReal :: ArgAnnotation (SMTExpr Rational) }
-  | EnumAnnotation { anEnum :: SMTAnnotation SMTEnum}--ArgAnnotation (SMTExpr SMTEnum) }
+  | EnumAnnotation { anEnum ::{- SMTAnnotation SMTEnum-}ArgAnnotation (SMTExpr SMTEnum) }
   -- | ProdAnnotation { anProd :: ArgAnnotation a }
   deriving (Ord, Typeable, Eq, Show)
 
@@ -73,6 +73,9 @@ instance Args (TypedExpr) where
   foldExprs f s ~(RealExpr x) (RealAnnotation ann) = do
     (ns, res) <- foldExprs f s x ann
     return (ns, RealExpr res)
+  foldExprs f s ~(EnumExpr x) (EnumAnnotation ann) = do
+    (ns, res) <- foldExprs f s x ann
+    return (ns, EnumExpr res)
   foldsExprs f s lst (BoolAnnotation ann) = do
     (ns, ress, res) <- foldsExprs f s (fmap (\(x,p) -> (case x of BoolExpr x' -> x',p)) lst) ann
     return (ns, fmap BoolExpr ress, BoolExpr res)
@@ -82,9 +85,13 @@ instance Args (TypedExpr) where
   foldsExprs f s lst (RealAnnotation ann) = do
     (ns, ress, res) <- foldsExprs f s (fmap (\(x,p) -> (case x of RealExpr x' -> x',p)) lst) ann
     return (ns, fmap RealExpr ress, RealExpr res)
+  foldsExprs f s lst (EnumAnnotation ann) = do
+    (ns, ress, res) <- foldsExprs f s (fmap (\(x,p) -> (case x of EnumExpr x' -> x',p)) lst) ann
+    return (ns, fmap EnumExpr ress, EnumExpr res)
   extractArgAnnotation (BoolExpr x) = BoolAnnotation $ extractArgAnnotation x
   extractArgAnnotation (IntExpr x) = IntAnnotation $ extractArgAnnotation x
   extractArgAnnotation (RealExpr x) = RealAnnotation $ extractArgAnnotation x
+  extractArgAnnotation (EnumExpr x) = EnumAnnotation $ extractArgAnnotation x
   toArgs (BoolAnnotation ann) exprs = do
     (res, rest) <- toArgs ann exprs
     return (BoolExpr res, rest)
@@ -94,7 +101,13 @@ instance Args (TypedExpr) where
   toArgs (RealAnnotation ann) exprs = do
     (res, rest) <- toArgs ann exprs
     return (RealExpr res, rest)
+  toArgs (EnumAnnotation ann) exprs = do
+    (res, rest) <- toArgs ann exprs
+    return (EnumExpr res, rest)
   fromArgs (BoolExpr xs) = fromArgs xs
+  fromArgs (IntExpr xs) = fromArgs xs
+  fromArgs (RealExpr xs) = fromArgs xs
+  fromArgs (EnumExpr xs) = fromArgs xs
   getSorts (_::TypedExpr) (BoolAnnotation ann) = error "lamasmt: no getSorts for TypedExpr"--getSorts (undefined::x) $ extractArgAnnotation ann
   getArgAnnotation _ _ = error "lamasmt: getArgAnnotation undefined for TypedExpr"
   showsArgs n p (BoolExpr x) = let (showx,nn) = showsArgs n 11 x
@@ -102,10 +115,13 @@ instance Args (TypedExpr) where
                                    showString "BoolExpr " . showx,nn)
   showsArgs n p (IntExpr x) = let (showx,nn) = showsArgs n 11 x
                                in (showParen (p>10) $
-                                   showString "BoolExpr " . showx,nn)
+                                   showString "IntExpr " . showx,nn)
   showsArgs n p (RealExpr x) = let (showx,nn) = showsArgs n 11 x
                                in (showParen (p>10) $
-                                   showString "BoolExpr " . showx,nn)
+                                   showString "RealExpr " . showx,nn)
+  showsArgs n p (EnumExpr x) = let (showx,nn) = showsArgs n 11 x
+                               in (showParen (p>10) $
+                                   showString "EnumExpr " . showx,nn)
 
 type StreamPos = SMTExpr Natural
 type Stream t = SMTFunction StreamPos t

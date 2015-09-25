@@ -21,7 +21,7 @@ import Lang.LAMA.Identifier
 import Lang.LAMA.Typing.TypedStructure
 import Lang.LAMA.Types
 import Language.SMTLib2 as SMT
-import Language.SMTLib2.Internals (declareType)
+import Language.SMTLib2.Internals (declareType, SMTExpr(Var))
 import Data.Unit
 import Data.String (IsString(..))
 import Data.Array as Arr
@@ -345,11 +345,13 @@ getTypedAnnotation :: Ident i => [Int] -> DeclM i [TypedAnnotation]
 getTypedAnnotation ns = mapM getTypedAnnotation' ns
   where
     getTypedAnnotation' n =
-      do vars <- gets varList
+      do vars    <- gets varList
+         eAnn <- gets enumAnn
          case vars !! n of
            BoolExpr _ -> return $ BoolAnnotation ()
            IntExpr _ -> return $ IntAnnotation ()
            RealExpr _ -> return $ RealAnnotation ()
+           EnumExpr (Var _ k) -> return $ EnumAnnotation k--return $ EnumAnnotation ()
            --EnumExpr k -> do ea <- lookupEnumAnn k        
                             --return $ EnumAnnotation ea
         --                Nothing -> error "enum annotation not doung in environment"
