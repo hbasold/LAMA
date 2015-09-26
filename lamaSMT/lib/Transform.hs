@@ -15,6 +15,8 @@
 
 module Transform where
 
+import Debug.Trace
+
 import Development.Placeholders
 
 import Lang.LAMA.Identifier
@@ -432,7 +434,9 @@ mkStateVars :: Ident i =>
 mkStateVars actName selName stateEnum =
   do stEnumAnn <- lookupEnumAnn stateEnum
      act <- liftSMT $ fmap EnumExpr $ varNamedAnn actName stEnumAnn
+     addVar act
      sel <- liftSMT $ fmap EnumExpr $ varNamedAnn selName stEnumAnn
+     addVar sel
      return (act, sel)
 
 -- | Extracts the the expressions for each variable seperated into
@@ -499,11 +503,11 @@ declareLocations activeCond s defaultExprs locations =
          (res, inpDefs) <- declareLocDef active s defaultExpr locs
          xVar           <- lookupVar x
          let xBottom    = getBottom xVar
-             args       = Set.unions $ map (\(_,InstantExpr _ e) -> getArgSet e) locs
+             args       = (\(_,InstantExpr _ e) -> getArgSet e) $ head locs
          argsE          <- mapM lookupVar $ Set.toList args
-         argsN          <- lift $ mapM getN argsE
+         argsN          <- lift $ mapM getN (argsE ++ [s])
          def            <-
-           lift $ declareConditionalAssign active xBottom xVar args argsN False res
+           trace (show args) $ trace (show argsN) $ lift $ declareConditionalAssign active xBottom xVar (Set.insert x args)argsN False res
          return $ inpDefs ++ [def]
 
 {-
@@ -558,14 +562,13 @@ declareLocDef activeCond s defaultExpr locs =
                     -> AutomTransM i (Env i -> [(i, TypedExpr)] -> TypedExpr, [Definition])
     trLocInstant _ _ inst@(InstantExpr _ _) =
       lift $ trInstant (error "no activation condition required") inst
-    trLocInstant active l inst@(NodeUsage _ n _) =
-      do (locActive, activeDef) <- mkLocationActivationCond active s l
+    trLocInstant active l inst@(NodeUsage _ n _) = error ("Not yet implemented")
+      {-do (locActive, activeDef) <- mkLocationActivationCond active s l
          node                   <- lookupLocalNode n
          nodeDefs               <- lift $ declareNode (Just locActive) n node
          (r, inpDefs)           <- lift $ trInstant (Just locActive) inst
          return (r, [activeDef] ++ nodeDefs ++ inpDefs)
 
-{-
 trLocTransition :: Ident i =>
                    SMTFunction [TypedExpr] SMTEnum
                    -> [(LocationId i, StateTransition i)]
@@ -606,7 +609,6 @@ mkLocationActivationCond :: Ident i =>
 mkLocationActivationCond activeCond (EnumExpr s) l =
   do lCons <- lookupLocName l
      lEnum <- lift $ trEnumConsAnn lCons <$> lookupEnumConsAnn lCons
-     --natAnn <- gets natImpl
      let cond = \_env t -> BoolExpr $ s .==. lEnum
      activeVar <- liftSMT $ fmap BoolExpr $ var
      def <- lift $ declareConditionalAssign activeCond
@@ -786,7 +788,7 @@ trExpr expr = case untyped expr of
                             s <- ask
                             case lookup x (fst s) of
                               Nothing -> throwError $ "No argument binding for " ++ identPretty x
-                              Just n -> return n
+                              Just n -> trace (show x) $ trace (show n) $ return n
   AtExpr (AtomEnum x)  -> EnumExpr <$> trEnumCons x
   LogNot e             -> lift1Bool not' <$> trExpr e
   Expr2 op e1 e2       -> applyOp op <$> trExpr e1 <*> trExpr e2
