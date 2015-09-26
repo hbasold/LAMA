@@ -206,15 +206,15 @@ declareNode active nName nDecl =
          let outs = Map.fromList outDecls
          modifyVars $ Map.union (Map.fromList outDecls)
          flowDefs <- declareFlow activeCond $ nodeFlow n
-         --automDefs <-
-         --  fmap concat .
-         --  mapM (declareAutomaton activeCond undeclaredNodes) .
-         --  Map.toList $ nodeAutomata n
+         automDefs <-
+           fmap concat .
+           mapM (declareAutomaton activeCond undeclaredNodes) .
+           Map.toList $ nodeAutomata n
          assertInits $ nodeInitial n
          precondDef <- declarePrecond activeCond $ nodeAssertion n
          varDefs <- gets varEnv
          return (NodeEnv ins outs varDefs,
-                 declDefs ++ flowDefs ++{- automDefs ++-} [precondDef])
+                 declDefs ++ flowDefs ++ automDefs ++ [precondDef])
 
 -- | Extracts all nodes which are used inside some location.
 getNodesInLocations :: Ident i => Automaton i -> Set i
@@ -356,7 +356,6 @@ declareFlow activeCond f =
      transitionDefs <- mapM (declareTransition activeCond) $ flowTransitions f
      return $ defDefs ++ transitionDefs
 
-{-
 -- | Declares an automaton by
 -- * defining an enum for the locations
 -- * defining two variables which hold the active location (see mkStateVars)
@@ -367,7 +366,7 @@ declareFlow activeCond f =
 --    conditions (mkTransitionEq)
 -- * asserting the initial location
 declareAutomaton :: Ident i =>
-                    Maybe (Stream Bool)
+                    Maybe (TypedExpr)
                     -> Map i (Node i)
                     -> (Int, Automaton i)
                     -> DeclM i [Definition]
@@ -387,19 +386,19 @@ declareAutomaton activeCond localNodes (_, a) =
          selName   = "sel" ++ automName
          selId     = fromString selName
      declareEnums $ Map.singleton enumName enum
-     (act, sel, eAnn) <- mkStateVars actName selName enumName
+     (act, sel) <- mkStateVars actName selName enumName
      modifyVars ( `Map.union` Map.fromList
-                  [(actId, EnumStream eAnn act),
-                   (selId, EnumStream eAnn sel)
+                  [(actId, act),
+                   (selId, sel)
                   ]
                 )
      locDefs <- (flip runReaderT (locCons, localNodes))
                 $ declareLocations activeCond act
                 (automDefaults a) (automLocations a)
-     edgeDefs <- mkTransitionEq activeCond stateT locCons actId selId
+     {-edgeDefs <- mkTransitionEq activeCond stateT locCons actId selId
                  $ automEdges a
      assertInit (selId, locConsConstExpr locCons stateT $ automInitial a)
-     return $ locDefs ++ edgeDefs
+   -}return $ locDefs-- ++ edgeDefs
 
   where
     getLocId (Location i _) = i
@@ -409,6 +408,7 @@ declareAutomaton activeCond localNodes (_, a) =
     locationName :: Ident i => String -> i -> i
     locationName automName sName = fromString $ automName ++ identString sName
 
+{-
     -- | Create the enum constructor for a given location name as constant.
     locConsConstExpr :: Ord i =>
                         Map (LocationId i) (EnumConstr i)
@@ -417,6 +417,7 @@ declareAutomaton activeCond localNodes (_, a) =
                         -> ConstExpr i
     locConsConstExpr locNames t loc
       = mkTyped (ConstEnum ((Map.!) locNames loc)) t
+-}
 
 -- | Generate names of two variable which represent
 -- the state of the automaton (s, sel). Where
@@ -427,13 +428,12 @@ mkStateVars :: Ident i =>
                String
                -> String
                -> i
-               -> DeclM i (Stream SMTEnum, Stream SMTEnum, EnumAnn)
+               -> DeclM i (TypedExpr, TypedExpr)
 mkStateVars actName selName stateEnum =
   do stEnumAnn <- lookupEnumAnn stateEnum
-     natAnn <- gets natImpl
-     act <- liftSMT $ funAnnNamed actName natAnn stEnumAnn
-     sel <- liftSMT $ funAnnNamed selName natAnn stEnumAnn
-     return (act, sel, stEnumAnn)
+     act <- liftSMT $ fmap EnumExpr $ varNamedAnn actName stEnumAnn
+     sel <- liftSMT $ fmap EnumExpr $ varNamedAnn selName stEnumAnn
+     return (act, sel)
 
 -- | Extracts the the expressions for each variable seperated into
 -- local definitons and state transitions.
@@ -473,8 +473,8 @@ lookupLocalNode n
 
 -- | Declares the data flow inside the locations of an automaton.
 declareLocations :: Ident i =>
-                    Maybe (Stream Bool)
-                    -> Stream SMTEnum
+                    Maybe (TypedExpr)
+                    -> TypedExpr
                     -> Map i (Expr i)
                     -> [Location i]
                     -> AutomTransM i [Definition]
@@ -485,26 +485,30 @@ declareLocations activeCond s defaultExprs locations =
   in do instDefs    <- fmap concat
                        . mapM (declareLocDefs activeCond defaultExprs)
                        $ Map.toList defs'
-        transDefs   <- mapM (declareLocTransitions activeCond)
-                       $ Map.toList trans
-        return $ instDefs ++ transDefs
+        --transDefs   <- mapM (declareLocTransitions activeCond)
+        --               $ Map.toList trans
+        return $ instDefs-- ++ transDefs
   where
     declareLocDefs :: Ident i =>
-                      Maybe (Stream Bool)
+                      Maybe (TypedExpr)
                       -> Map i (Expr i)
                       -> (i, [(LocationId i, InstantDefinition i)])
                       -> AutomTransM i [Definition]
     declareLocDefs active defaults (x, locs) =
       do defaultExpr    <- getDefault defaults x locs
          (res, inpDefs) <- declareLocDef active s defaultExpr locs
-         xStream        <- lookupVar x
-         let xBottom    = const $ getBottom xStream
+         xVar           <- lookupVar x
+         let xBottom    = getBottom xVar
+             args       = Set.unions $ map (\(_,InstantExpr _ e) -> getArgSet e) locs
+         argsE          <- mapM lookupVar $ Set.toList args
+         argsN          <- lift $ mapM getN argsE
          def            <-
-           lift $ declareConditionalAssign active id xBottom xStream res
+           lift $ declareConditionalAssign active xBottom xVar args argsN False res
          return $ inpDefs ++ [def]
 
+{-
     declareLocTransitions :: Ident i =>
-                             Maybe (Stream Bool)
+                             Maybe (TypedExpr)
                              -> (i, [(LocationId i, StateTransition i)])
                              -> AutomTransM i Definition
     declareLocTransitions active (x, locs) =
@@ -516,6 +520,7 @@ declareLocations activeCond s defaultExprs locations =
          def         <-
            lift $ declareConditionalAssign active succAnn xApp xStream res
          return def
+-}
 
     getDefault defaults x locs =
       do fullyDefined <- isFullyDefined locs
@@ -529,11 +534,11 @@ declareLocations activeCond s defaultExprs locations =
          return $ (Map.keysSet locNames) == (Set.fromList $ map fst locDefs)
 
 declareLocDef :: Ident i =>
-                 Maybe (Stream Bool)
-                 -> Stream SMTEnum
+                 Maybe (TypedExpr)
+                 -> TypedExpr
                  -> Maybe (Expr i)
                  -> [(LocationId i, InstantDefinition i)]
-                 -> AutomTransM i (Env i -> StreamPos -> TypedExpr, [Definition])
+                 -> AutomTransM i (Env i -> [(i, TypedExpr)] -> TypedExpr, [Definition])
 declareLocDef activeCond s defaultExpr locs =
   do (innerPat, locs') <- case defaultExpr of
        Nothing -> case locs of
@@ -547,10 +552,10 @@ declareLocDef activeCond s defaultExpr locs =
        innerPat locs'
   where
     trLocInstant :: Ident i =>
-                    Maybe (Stream Bool)
+                    Maybe (TypedExpr)
                     -> LocationId i
                     -> InstantDefinition i
-                    -> AutomTransM i (Env i -> StreamPos -> TypedExpr, [Definition])
+                    -> AutomTransM i (Env i -> [(i, TypedExpr)] -> TypedExpr, [Definition])
     trLocInstant _ _ inst@(InstantExpr _ _) =
       lift $ trInstant (error "no activation condition required") inst
     trLocInstant active l inst@(NodeUsage _ n _) =
@@ -560,10 +565,11 @@ declareLocDef activeCond s defaultExpr locs =
          (r, inpDefs)           <- lift $ trInstant (Just locActive) inst
          return (r, [activeDef] ++ nodeDefs ++ inpDefs)
 
+{-
 trLocTransition :: Ident i =>
-                   Stream SMTEnum
+                   SMTFunction [TypedExpr] SMTEnum
                    -> [(LocationId i, StateTransition i)]
-                   -> AutomTransM i (Env i -> StreamPos -> TypedExpr)
+                   -> AutomTransM i (Env i -> [(i, TypedExpr)] -> TypedExpr)
 trLocTransition s locs =
   let (innerPat, locs') = case locs of
         (l:ls) -> (trLocTrans $ snd l, ls)
@@ -573,45 +579,47 @@ trLocTransition s locs =
      innerPat locs'
   where
     trLocTrans (StateTransition _ e) = runTransM $ trExpr e
+-}
 
 mkLocationMatch :: Ident i =>
-                   Stream SMTEnum
-                   -> (Env i -> StreamPos -> TypedExpr)
+                   TypedExpr
+                   -> (Env i -> [(i, TypedExpr)] -> TypedExpr)
                    -> LocationId i
-                   -> (Env i -> StreamPos -> TypedExpr)
-                   -> AutomTransM i (Env i -> StreamPos -> TypedExpr)
-mkLocationMatch s f l lExpr =
+                   -> (Env i -> [(i, TypedExpr)] -> TypedExpr)
+                   -> AutomTransM i (Env i -> [(i, TypedExpr)] -> TypedExpr)
+mkLocationMatch (EnumExpr s) f l lExpr =
   do lCons <- lookupLocName l
      lEnum <- lift $ trEnumConsAnn lCons <$> lookupEnumConsAnn lCons
      return
        (\env t -> liftIte
-                  (BoolExpr $ (s `app` t) .==. lEnum)
+                  (BoolExpr $ s  .==. lEnum)
                   (lExpr env t)
                   (f env t))
 
 -- | Creates a variable which is true iff the given activation
 -- condition is true and the the given location is active.
 mkLocationActivationCond :: Ident i =>
-                            Maybe (Stream Bool)
-                            -> Stream SMTEnum
+                            Maybe (TypedExpr)
+                            -> TypedExpr
                             -> LocationId i
-                            -> AutomTransM i (Stream Bool, Definition)
-mkLocationActivationCond activeCond s l =
+                            -> AutomTransM i (TypedExpr, Definition)
+mkLocationActivationCond activeCond (EnumExpr s) l =
   do lCons <- lookupLocName l
      lEnum <- lift $ trEnumConsAnn lCons <$> lookupEnumConsAnn lCons
-     natAnn <- gets natImpl
-     let cond = \_env t -> BoolExpr $ (s `app` t) .==. lEnum
-     activeVar <- liftSMT $ funAnn natAnn unit
-     def <- lift $ declareConditionalAssign activeCond id
-            (const . BoolExpr $ constant False) (BoolStream activeVar) cond
+     --natAnn <- gets natImpl
+     let cond = \_env t -> BoolExpr $ s .==. lEnum
+     activeVar <- liftSMT $ fmap BoolExpr $ var
+     def <- lift $ declareConditionalAssign activeCond
+            (BoolExpr $ constant False) activeVar Set.empty [] False cond
      return (activeVar, def)
 
+{-
 -- | Creates two equations for the edges. The first calculates
 -- the next location (act). This is a chain of ite for each state surrounded
 -- by a match on the last location (sel). The definition of sel is just
 -- the saving of act for the next cycle.
 mkTransitionEq :: Ident i =>
-                  Maybe (Stream Bool)
+                  Maybe (TypedExpr)
                   -> Type i
                   -> Map (LocationId i) (EnumConstr i)
                   -> i
@@ -692,8 +700,7 @@ assertInits = mapM_ assertInit . Map.toList
 
 assertInit :: Ident i => (i, ConstExpr i) -> DeclM i ()
 assertInit (x, e) =
-  do natAnn <- gets natImpl
-     x' <- lookupVar x
+  do x' <- lookupVar x
      e' <- trConstExpr e
      let def = liftRel (.==.) x' e'
      liftSMT $ liftAssert def
