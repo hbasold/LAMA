@@ -161,28 +161,28 @@ defStream ty sf = gets natImpl >>= \natAnn -> defStream' natAnn ty sf
 
 -- | Defines a function instead of streams
 defFunc :: Ident i =>
-             Int -> Type i -> [TypedAnnotation] -> ([TypedExpr] -> TypedExpr) -> DeclM i (TypedFunc)
-defFunc i (GroundType BoolT) ann f = liftSMT . fmap BoolFunc $
+            Type i -> [TypedAnnotation] -> ([TypedExpr] -> TypedExpr) -> DeclM i (TypedFunc)
+defFunc (GroundType BoolT) ann f = liftSMT . fmap BoolFunc $
                                 defFunAnn ann (unBool' . f)
-defFunc i (GroundType IntT) ann f = liftSMT . fmap IntFunc $
+defFunc (GroundType IntT) ann f = liftSMT . fmap IntFunc $
                                 defFunAnn ann (unInt . f)
-defFunc i (GroundType RealT) ann f = liftSMT . fmap RealFunc $
+defFunc (GroundType RealT) ann f = liftSMT . fmap RealFunc $
                                defFunAnn ann (unReal . f)
-defFunc i (GroundType _) ann f = $notImplemented
-defFunc i (EnumType alias) ann f = do eann <- lookupEnumAnn alias
-                                      liftSMT $ fmap (EnumFunc eann) $
-                                       defFunAnn ann (unEnum . f)
+defFunc (GroundType _) ann f = $notImplemented
+defFunc (EnumType alias) ann f = do eann <- lookupEnumAnn alias
+                                    liftSMT $ fmap (EnumFunc eann) $
+                                      defFunAnn ann (unEnum . f)
 -- We have to pull the product out of a stream.
 -- If we are given a function f : FuncPos -> (Ix -> TE) = TypedExpr as above,
 -- we would like to have as result something like:
 -- g : Ix -> (FuncPos -> TE)
 -- g(i)(t) = defFunc(λt'.f(t')(i))(t)
 -- Here i is the index into the product and t,t' are time variables.
-defFunc i (ProdType ts) ann f =
+defFunc (ProdType ts) ann f =
   do let u = length ts - 1
      x <- mapM defParts $ zip ts [0..u]
      return . ProdFunc $ listArray (0,u) x
-  where defParts (ty2, i) = defFunc i ty2 ann ((! i) . unProd' . f)
+  where defParts (ty2, i) = defFunc ty2 ann ((! i) . unProd' . f)
 
 -- stream :: Ident i => Type i -> DeclM i (Stream t)
 

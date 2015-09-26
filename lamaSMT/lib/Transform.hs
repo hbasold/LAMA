@@ -328,7 +328,7 @@ declareDef x as ns succ ef =
      let defType = varDefType x
      xN          <- getN x
      ann         <- getTypedAnnotation $ [xN] ++ ns
-     d           <- defFunc (1 + Set.size as) defType ann
+     d           <- defFunc defType ann
                     $ \a -> liftRel (.==.) (head a) $ ef env $ zip (Set.toList as) (tail a)
      return $ ensureDefinition ([xN] ++ ns) succ d
   where
@@ -717,8 +717,8 @@ declarePrecond activeCond e =
      argsN    <- mapM getN argsE
      ann      <- getTypedAnnotation argsN
      d        <- case activeCond of
-       Nothing -> defFunc (Set.size $ args) boolT ann $ \a -> runTransM (trExpr e) env (zip (Set.toList $ args) a)
-       Just c -> defFunc (Set.size $ args) boolT ann $
+       Nothing -> defFunc boolT ann $ \a -> runTransM (trExpr e) env (zip (Set.toList $ args) a)
+       Just c -> defFunc boolT ann $
                  \a -> (flip (flip runTransM env) (zip (Set.toList $ args) a))
 		       (trExpr e >>= \e' ->
                          return $ liftBool2 (.=>.) c e')
