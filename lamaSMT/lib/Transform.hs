@@ -785,7 +785,7 @@ trExpr expr = case untyped expr of
                             s <- ask
                             case lookup x (fst s) of
                               Nothing -> throwError $ "No argument binding for " ++ identPretty x
-                              Just n -> return n
+                              Just n  -> return n
   AtExpr (AtomEnum x)  -> EnumExpr <$> trEnumCons x
   LogNot e             -> lift1Bool not' <$> trExpr e
   Expr2 op e1 e2       -> applyOp op <$> trExpr e1 <*> trExpr e2
@@ -793,8 +793,11 @@ trExpr expr = case untyped expr of
   ProdCons (Prod es)   -> (ProdExpr . listArray (0, (length es) - 1))
                           <$> mapM trExpr es
   Project x i          ->
-    do (ProdExpr s) <- lookupVar' x
-       return $ (s ! fromEnum i)
+    do s <- ask
+       (ProdExpr e) <- case lookup x (fst s) of
+                         Nothing -> throwError $ "No argument binding for " ++ identPretty x
+                         Just n  -> return n
+       return $ (e ! fromEnum i)
   Match e pats         -> trExpr e >>= flip trPattern pats
 
 trPattern :: Ident i => TypedExpr -> [Pattern i] -> TransM i (TypedExpr)
