@@ -487,9 +487,9 @@ declareLocations activeCond s defaultExprs locations =
   in do instDefs    <- fmap concat
                        . mapM (declareLocDefs activeCond defaultExprs)
                        $ Map.toList defs'
-        --transDefs   <- mapM (declareLocTransitions activeCond)
-        --               $ Map.toList trans
-        return $ instDefs-- ++ transDefs
+        transDefs   <- mapM (declareLocTransitions activeCond)
+                       $ Map.toList trans
+        return $ instDefs ++ transDefs
   where
     declareLocDefs :: Ident i =>
                       Maybe (TypedExpr)
@@ -508,21 +508,20 @@ declareLocations activeCond s defaultExprs locations =
            lift $ declareConditionalAssign active xBottom xVar args argsN False res
          return $ inpDefs ++ [def]
 
-{-
     declareLocTransitions :: Ident i =>
                              Maybe (TypedExpr)
                              -> (i, [(LocationId i, StateTransition i)])
                              -> AutomTransM i Definition
     declareLocTransitions active (x, locs) =
       do res         <- trLocTransition s locs
-         xStream     <- lookupVar x
-         natAnn      <- gets natImpl
-         let succAnn = succ' natAnn
-             xApp    = appStream xStream
+         xVar     <- lookupVar x
+         let xBottom    = getBottom xVar
+             args       = (\(_,StateTransition _ e) -> getArgSet e) $ head locs
+         argsE          <- mapM lookupVar $ Set.toList args
+         argsN          <- lift $ mapM getN (argsE ++ [s])
          def         <-
-           lift $ declareConditionalAssign active succAnn xApp xStream res
+           lift $ declareConditionalAssign active xBottom xVar args argsN True res
          return def
--}
 
     getDefault defaults x locs =
       do fullyDefined <- isFullyDefined locs
@@ -566,9 +565,10 @@ declareLocDef activeCond s defaultExpr locs =
          nodeDefs               <- lift $ declareNode (Just locActive) n node
          (r, inpDefs)           <- lift $ trInstant (Just locActive) inst
          return (r, [activeDef] ++ nodeDefs ++ inpDefs)
+-}
 
 trLocTransition :: Ident i =>
-                   SMTFunction [TypedExpr] SMTEnum
+                   TypedExpr
                    -> [(LocationId i, StateTransition i)]
                    -> AutomTransM i (Env i -> [(i, TypedExpr)] -> TypedExpr)
 trLocTransition s locs =
@@ -580,7 +580,6 @@ trLocTransition s locs =
      innerPat locs'
   where
     trLocTrans (StateTransition _ e) = runTransM $ trExpr e
--}
 
 mkLocationMatch :: Ident i =>
                    TypedExpr
