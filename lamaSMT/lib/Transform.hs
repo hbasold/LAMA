@@ -501,7 +501,7 @@ declareLocations activeCond s defaultExprs locations =
          (res, inpDefs) <- declareLocDef active s defaultExpr locs
          xVar           <- lookupVar x
          let xBottom    = getBottom xVar
-             args       = (\(_,InstantExpr _ e) -> getArgSet e) $ head locs
+             args       = Set.unions $ map (\(_,InstantExpr _ e) -> getArgSet e) locs
          argsE          <- mapM lookupVar $ Set.toList args
          argsN          <- lift $ mapM getN (argsE ++ [s])
          def            <-
@@ -516,7 +516,7 @@ declareLocations activeCond s defaultExprs locations =
       do res         <- trLocTransition s locs
          xVar     <- lookupVar x
          let xBottom    = getBottom xVar
-             args       = (\(_,StateTransition _ e) -> getArgSet e) $ head locs
+             args       = Set.unions $ map (\(_,StateTransition _ e) -> getArgSet e) locs
          argsE          <- mapM lookupVar $ Set.toList args
          argsN          <- lift $ mapM getN (argsE ++ [s])
          def         <-
