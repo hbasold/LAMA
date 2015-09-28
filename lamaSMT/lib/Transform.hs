@@ -15,8 +15,6 @@
 
 module Transform where
 
-import Debug.Trace
-
 import Development.Placeholders
 
 import Lang.LAMA.Identifier
@@ -329,7 +327,7 @@ declareDef x as ns succ ef =
      xN          <- getN x
      ann         <- getTypedAnnotation $ [xN] ++ ns
      d           <- defFunc defType ann
-                    $ \a -> liftRel (.==.) (head a) $ ef env $ zip (Set.toList as) (tail a)
+                    $ \a -> liftRel (.==.) (head a) $ ef env $ zip ((Set.toList as) ++ [error "Last argument must not be evaluated!"]) (tail a)
      return $ ensureDefinition ([xN] ++ ns) succ d
   where
     varDefType (ProdExpr ts) = ProdType . fmap varDefType $ Arr.elems ts
@@ -507,7 +505,7 @@ declareLocations activeCond s defaultExprs locations =
          argsE          <- mapM lookupVar $ Set.toList args
          argsN          <- lift $ mapM getN (argsE ++ [s])
          def            <-
-           trace (show args) $ trace (show argsN) $ lift $ declareConditionalAssign active xBottom xVar (Set.insert x args)argsN False res
+           lift $ declareConditionalAssign active xBottom xVar args argsN False res
          return $ inpDefs ++ [def]
 
 {-
@@ -595,7 +593,7 @@ mkLocationMatch (EnumExpr s) f l lExpr =
      lEnum <- lift $ trEnumConsAnn lCons <$> lookupEnumConsAnn lCons
      return
        (\env t -> liftIte
-                  (BoolExpr $ s  .==. lEnum)
+                  (BoolExpr $ (unEnum $ snd $ last t) .==. lEnum)
                   (lExpr env t)
                   (f env t))
 
@@ -788,7 +786,7 @@ trExpr expr = case untyped expr of
                             s <- ask
                             case lookup x (fst s) of
                               Nothing -> throwError $ "No argument binding for " ++ identPretty x
-                              Just n -> trace (show x) $ trace (show n) $ return n
+                              Just n -> return n
   AtExpr (AtomEnum x)  -> EnumExpr <$> trEnumCons x
   LogNot e             -> lift1Bool not' <$> trExpr e
   Expr2 op e1 e2       -> applyOp op <$> trExpr e1 <*> trExpr e2
