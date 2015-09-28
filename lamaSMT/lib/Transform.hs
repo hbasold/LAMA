@@ -395,10 +395,10 @@ declareAutomaton activeCond localNodes (_, a) =
      locDefs <- (flip runReaderT (locCons, localNodes))
                 $ declareLocations activeCond act
                 (automDefaults a) (automLocations a)
-     {-edgeDefs <- mkTransitionEq activeCond stateT locCons actId selId
+     edgeDefs <- mkTransitionEq activeCond stateT locCons actId selId
                  $ automEdges a
      assertInit (selId, locConsConstExpr locCons stateT $ automInitial a)
-   -}return $ locDefs-- ++ edgeDefs
+     return $ locDefs ++ edgeDefs
 
   where
     getLocId (Location i _) = i
@@ -408,7 +408,6 @@ declareAutomaton activeCond localNodes (_, a) =
     locationName :: Ident i => String -> i -> i
     locationName automName sName = fromString $ automName ++ identString sName
 
-{-
     -- | Create the enum constructor for a given location name as constant.
     locConsConstExpr :: Ord i =>
                         Map (LocationId i) (EnumConstr i)
@@ -417,7 +416,6 @@ declareAutomaton activeCond localNodes (_, a) =
                         -> ConstExpr i
     locConsConstExpr locNames t loc
       = mkTyped (ConstEnum ((Map.!) locNames loc)) t
--}
 
 -- | Generate names of two variable which represent
 -- the state of the automaton (s, sel). Where
@@ -612,7 +610,6 @@ mkLocationActivationCond activeCond (EnumExpr s) l =
             (BoolExpr $ constant False) activeVar Set.empty [] False cond
      return (activeVar, def)
 
-{-
 -- | Creates two equations for the edges. The first calculates
 -- the next location (act). This is a chain of ite for each state surrounded
 -- by a match on the last location (sel). The definition of sel is just
@@ -692,7 +689,6 @@ mkTransitionEq activeCond locationEnumTy locationEnumConstrs act sel es =
                     -> Expr i
      locConsExpr locNames t loc
        = mkTyped (AtExpr $ AtomEnum ((Map.!) locNames loc)) t
--}
 
 assertInits :: Ident i => StateInit i -> DeclM i ()
 assertInits = mapM_ assertInit . Map.toList
