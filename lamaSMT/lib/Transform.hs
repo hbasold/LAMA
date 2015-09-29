@@ -238,7 +238,7 @@ declareInstantDef activeCond inst@(InstantExpr x e) =
      argsE <- mapM lookupVar $ Set.toList args
      argsN <- mapM getN argsE
      def <- declareConditionalAssign
-            activeCond (getBottom xVar) xVar args argsN False res
+            activeCond (const $ const $ getBottom xVar) xVar args argsN False res
      return [def]
 declareInstantDef activeCond inst@(NodeUsage x n _) =
   do (outp, inpDefs) <- trInstant activeCond inst
@@ -246,7 +246,7 @@ declareInstantDef activeCond inst@(NodeUsage x n _) =
      nEnv            <- lookupNode n
      outN            <- mapM getN $ nodeEnvOut nEnv
      outpDef         <- declareConditionalAssign
-                        activeCond (getBottom xVar) xVar (Map.keysSet $ nodeEnvOut nEnv) (Map.elems outN) False outp
+                        activeCond (const $ const $ getBottom xVar) xVar (Map.keysSet $ nodeEnvOut nEnv) (Map.elems outN) False outp
      return $ inpDefs ++ [outpDef]
 
 -- | Translates an instant definition into a function which can be
@@ -264,7 +264,7 @@ trInstant inpActive (NodeUsage _ n es) =
      insN <- mapM (mapM getN) insE
      inpDefs  <- mapM (\(x, n, e, eTr) ->
                         declareConditionalAssign
-                        inpActive (getBottom x) x (getArgSet e) n False eTr)
+                        inpActive (const $ const $ getBottom x) x (getArgSet e) n False eTr)
                  $ zip4 (nodeEnvIn nEnv) insN es esTr
      return (y, inpDefs)
 
@@ -292,7 +292,7 @@ declareTransition activeCond (StateTransition x e) =
          args    = getArgSet e
      argsE <- mapM lookupVar $ Set.toList args
      argsN <- mapM getN argsE
-     declareConditionalAssign activeCond (getBottom xVar) xVar args argsN True e'
+     declareConditionalAssign activeCond (const $ const $ getBottom xVar) xVar args argsN True e'
 
 -- | Creates a declaration for an assignment. Depending on the
 -- activation condition the given expression or a default expression
@@ -301,7 +301,7 @@ declareTransition activeCond (StateTransition x e) =
 -- (see declareDef).
 declareConditionalAssign :: Ident i =>
                             Maybe (TypedExpr)
-                            -> TypedExpr
+                            -> (Env i -> [(i, TypedExpr)] -> TypedExpr)
                             -> TypedExpr
                             -> Set i
                             -> [Int]
@@ -312,7 +312,7 @@ declareConditionalAssign activeCond defaultExpr x al ns succ ef =
   case activeCond of
     Nothing -> declareDef x al ns succ ef
     Just c  ->
-      declareDef x al ns succ (\env t -> liftIte c (ef env t) defaultExpr)
+      declareDef x al ns succ (\env t -> liftIte c (ef env t) (defaultExpr env t))
 
 -- | Creates a definition for a given variable. Whereby a function to
 -- manipulate the stream position at which it is defined is used (normally
@@ -329,9 +329,10 @@ declareDef x as ns succ ef =
      d           <- defFunc defType ann
                     $ \a -> liftRel (.==.) (head a) $ ef env $ zip ((Set.toList as) ++ [error "Last argument must not be evaluated!"]) (tail a)
      return $ ensureDefinition ([xN] ++ ns) succ d
-  where
-    varDefType (ProdExpr ts) = ProdType . fmap varDefType $ Arr.elems ts
-    varDefType _               = boolT
+
+varDefType :: TypedExpr -> Type i
+varDefType (ProdExpr ts) = ProdType . fmap varDefType $ Arr.elems ts
+varDefType _               = boolT
 
 getTypedAnnotation :: Ident i => [Int] -> DeclM i [TypedAnnotation]
 getTypedAnnotation ns = mapM getTypedAnnotation' ns
@@ -499,7 +500,7 @@ declareLocations activeCond s defaultExprs locations =
          (res, inpDefs) <- declareLocDef active s defaultExpr locs
          xVar           <- lookupVar x
          argss          <- lift $ mapM locArgSet locs
-         let xBottom    = getBottom xVar
+         let xBottom    = const $ const $ getBottom xVar
              args       = Set.unions argss
          argsE          <- mapM lookupVar $ Set.toList args
          argsN          <- lift $ mapM getN (argsE ++ [s])
@@ -518,12 +519,12 @@ declareLocations activeCond s defaultExprs locations =
     declareLocTransitions active (x, locs) =
       do res         <- trLocTransition s locs
          xVar     <- lookupVar x
-         let xBottom    = getBottom xVar
-             args       = Set.unions $ map (\(_,StateTransition _ e) -> getArgSet e) locs
+         let defExpr    = mkTyped (AtExpr (AtomVar x)) $ varDefType xVar
+             args       = Set.unions $ (map (\(_,StateTransition _ e) -> getArgSet e) locs) ++ [getArgSet defExpr]
          argsE          <- mapM lookupVar $ Set.toList args
          argsN          <- lift $ mapM getN (argsE ++ [s])
          def         <-
-           lift $ declareConditionalAssign active xBottom xVar args argsN True res
+           lift $ declareConditionalAssign active (runTransM $ trExpr defExpr) xVar args argsN True res
          return def
 
     getDefault defaults x locs =
@@ -613,7 +614,7 @@ mkLocationActivationCond activeCond e l =
      lift $ addVar activeVar
      argN <- lift $ getN e
      def <- lift $ declareConditionalAssign activeCond
-            (BoolExpr $ constant False) activeVar Set.empty [argN] False cond
+            (const $ const $ BoolExpr $ constant False) activeVar Set.empty [argN] False cond
      return (activeVar, def)
 
 -- | Creates two equations for the edges. The first calculates
