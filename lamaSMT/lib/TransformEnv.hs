@@ -72,7 +72,7 @@ addVar var =
 getN :: TypedExpr -> DeclM i Int
 getN x = do vars <- gets varList
             return $ case List.elemIndex x vars of
-                          Nothing -> error $ "Could not be found in list of     variables: " ++ show x
+                          Nothing -> error $ "Could not be found in list of variables: " ++ show x
                           Just n -> n
 
 putEnumAnn :: Ident i => Map i (SMTAnnotation SMTEnum) -> DeclM i ()

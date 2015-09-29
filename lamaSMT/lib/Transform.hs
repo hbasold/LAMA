@@ -187,7 +187,7 @@ enumVar argAnn ann@(EnumBitAnn size _ biggestCons) =
 -- location (see declareAutomaton and declareLocations).
 declareNode :: Ident i =>
                Maybe (TypedExpr) -> i -> Node i -> DeclM i [Definition]
-declareNode active nName nDecl =
+declareNode active nName nDecl = 
   do (interface, defs) <- localVarEnv (const emptyVarEnv) $
                           declareNode' active nDecl
      modifyNodes $ Map.insert nName interface
@@ -498,13 +498,18 @@ declareLocations activeCond s defaultExprs locations =
       do defaultExpr    <- getDefault defaults x locs
          (res, inpDefs) <- declareLocDef active s defaultExpr locs
          xVar           <- lookupVar x
+         argss          <- lift $ mapM locArgSet locs
          let xBottom    = getBottom xVar
-             args       = Set.unions $ map (\(_,InstantExpr _ e) -> getArgSet e) locs
+             args       = Set.unions argss
          argsE          <- mapM lookupVar $ Set.toList args
          argsN          <- lift $ mapM getN (argsE ++ [s])
          def            <-
            lift $ declareConditionalAssign active xBottom xVar args argsN False res
          return $ inpDefs ++ [def]
+      where
+        locArgSet (_,InstantExpr _ e) = return $ getArgSet e
+        locArgSet (_,NodeUsage _ n _) = do nEnv <- lookupNode n
+                                           return $ Map.keysSet (nodeEnvOut nEnv)
 
     declareLocTransitions :: Ident i =>
                              Maybe (TypedExpr)
@@ -557,13 +562,12 @@ declareLocDef activeCond s defaultExpr locs =
                     -> AutomTransM i (Env i -> [(i, TypedExpr)] -> TypedExpr, [Definition])
     trLocInstant _ _ inst@(InstantExpr _ _) =
       lift $ trInstant (error "no activation condition required") inst
-    trLocInstant active l inst@(NodeUsage _ n _) = error ("Not yet implemented")
-      {-do (locActive, activeDef) <- mkLocationActivationCond active s l
+    trLocInstant active l inst@(NodeUsage _ n _) =
+      do (locActive, activeDef) <- mkLocationActivationCond active s l
          node                   <- lookupLocalNode n
          nodeDefs               <- lift $ declareNode (Just locActive) n node
          (r, inpDefs)           <- lift $ trInstant (Just locActive) inst
          return (r, [activeDef] ++ nodeDefs ++ inpDefs)
--}
 
 trLocTransition :: Ident i =>
                    TypedExpr
@@ -601,13 +605,15 @@ mkLocationActivationCond :: Ident i =>
                             -> TypedExpr
                             -> LocationId i
                             -> AutomTransM i (TypedExpr, Definition)
-mkLocationActivationCond activeCond (EnumExpr s) l =
+mkLocationActivationCond activeCond e l =
   do lCons <- lookupLocName l
      lEnum <- lift $ trEnumConsAnn lCons <$> lookupEnumConsAnn lCons
-     let cond = \_env t -> BoolExpr $ s .==. lEnum
+     let cond = \_env t -> BoolExpr $ (unEnum $ snd $ last t) .==. lEnum
      activeVar <- liftSMT $ fmap BoolExpr $ var
+     lift $ addVar activeVar
+     argN <- lift $ getN e
      def <- lift $ declareConditionalAssign activeCond
-            (BoolExpr $ constant False) activeVar Set.empty [] False cond
+            (BoolExpr $ constant False) activeVar Set.empty [argN] False cond
      return (activeVar, def)
 
 -- | Creates two equations for the edges. The first calculates
