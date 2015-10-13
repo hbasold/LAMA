@@ -20,7 +20,7 @@ data Hint i = Hint { hintDescr :: String, hintModel :: Model i }
 type Hints i = [Hint i]
 data StrategyResult i =
      Success
-     | Failure Natural-- (Model i)
+     | Failure Natural (Model i)
      | Unknown String (Hints i)
 
 data Strategy = forall s. StrategyClass s => Strategy s

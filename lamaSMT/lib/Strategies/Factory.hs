@@ -44,5 +44,5 @@ getStrategyHelp lineLength = renderStyle (style { lineLength }) $
 
 getStrategy :: String -> Strategy
 getStrategy "bmc" = Strategy (defaultStrategyOpts :: BMC)
-getStrategy "kinduct" = Strategy (defaultStrategyOpts :: KInduct)
+--getStrategy "kinduct" = Strategy (defaultStrategyOpts :: KInduct)
 getStrategy _ = error "Unknown strategy"

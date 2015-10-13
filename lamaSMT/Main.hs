@@ -210,14 +210,13 @@ checkModel :: Ident i =>
            -> (StrategyResult i)
            -> IO ()
 checkModel _ _ Success = putStrLn "42"
-checkModel opts prog (Failure lastIndex) =
+checkModel opts prog (Failure lastIndex m) =
   do putStrLn ":-("
      putStrLn $ "Found counterexample at depth " ++ show lastIndex
-{-     when (optDumpModel opts) (putStrLn . render $ prettyModel m)
+     when (optDumpModel opts) (putStrLn . render $ prettyModel m)
      case optScenarioFile opts of
        Nothing -> return ()
        Just f -> writeFile f $ render $ scadeScenario prog (optTopNodePath opts) m
--}
 checkModel opts prog (Unknown what hints) =
   do putStrLn ":-("
      putStrLn what

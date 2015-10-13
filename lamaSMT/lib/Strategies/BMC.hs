@@ -43,7 +43,7 @@ instance StrategyClass BMC where
     let base = 0
         vars = varList env
     in do fresh <- freshVars vars
-          check' s (getModel $ varEnv env) defs base (vars, fresh)
+          check' s (getModel $ varEnv env) defs (Map.singleton base vars) base (vars, fresh)
 
 assumeTrace :: MonadSMT m => ProgDefs -> ([TypedExpr], [TypedExpr]) -> m ()
 assumeTrace defs args =
@@ -51,29 +51,31 @@ assumeTrace defs args =
   assertPrecond args (precondition defs)
 
 bmcStep :: MonadSMT m =>
-        (Map Natural StreamPos -> SMT (Model i))
+        (Map Natural [TypedExpr] -> SMT (Model i))
         -> ProgDefs
+        -> Map Natural [TypedExpr]
         -> ([TypedExpr], [TypedExpr])
-        -> m (Bool)
-bmcStep getModel defs vars =
+        -> m (Maybe (Model i))
+bmcStep getModel defs pastVars vars =
   do assumeTrace defs vars
      let invs = invariantDef defs
      liftSMT . stack
-       $ checkInvariant vars invs-- >>=
-       --checkGetModel getModel pastIndices
+       $ checkInvariant vars invs >>=
+       checkGetModel getModel pastVars
 
 check' :: BMC
-       -> (Map Natural StreamPos -> SMT (Model i))
+       -> (Map Natural [TypedExpr] -> SMT (Model i))
        -> ProgDefs
+       -> Map Natural [TypedExpr]
        -> Natural
        -> ([TypedExpr], [TypedExpr])
        -> SMTErr (StrategyResult i)
-check' s getModel defs i vars =
+check' s getModel defs pastVars i vars =
   do liftIO $ when (bmcPrintProgress s) (putStrLn $ "Depth " ++ show i)
-     r <- bmcStep getModel defs vars
+     r <- bmcStep getModel defs pastVars vars
      case r of
-       True -> next (check' s getModel defs) s i vars
-       False -> return $ Failure i 
+       Nothing -> next (check' s getModel defs) s pastVars i vars
+       Just m -> return $ Failure i m
 
 assertDefs :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> [Definition] -> m ()
 assertDefs i = mapM_ (assertDef i)
@@ -89,30 +91,33 @@ checkInvariant :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> Definition -> m Bo
 checkInvariant i p = liftSMT $ assertDefinition not' i p >> liftM not checkSat
 
 checkGetModel :: MonadSMT m =>
-              (Map Natural StreamPos -> SMT (Model i))
-              -> Map Natural StreamPos
+              (Map Natural [TypedExpr] -> SMT (Model i))
+              -> Map Natural [TypedExpr]
               -> Bool
               -> m (Maybe (Model i))
 checkGetModel getModel indices r = liftSMT $
   if r then return Nothing else fmap Just $ getModel indices
 
-next :: (Natural
+next :: (Map Natural [TypedExpr]
+             -> Natural
              -> ([TypedExpr], [TypedExpr])
              -> SMTErr (StrategyResult i)
         )
         -> BMC
+        -> Map Natural [TypedExpr]
         -> Natural
         -> ([TypedExpr], [TypedExpr])
         -> SMTErr (StrategyResult i)
-next checkCont s i vars =
+next checkCont s pastVars i vars =
   let i' = succ i
+      pastVars' = Map.insert i' (snd vars) pastVars
   in case bmcDepth s of
        Nothing -> do vars' <- freshVars $ snd vars
-                     checkCont i' (snd vars, vars')
+                     checkCont pastVars' i' (snd vars, vars')
        Just l ->
          if i' < l
          then do vars' <- freshVars $ snd vars
-                 checkCont i' (snd vars, vars')
+                 checkCont pastVars' i' (snd vars, vars')
          else return Success
 
 freshVars :: MonadSMT m => [TypedExpr] -> m [TypedExpr]

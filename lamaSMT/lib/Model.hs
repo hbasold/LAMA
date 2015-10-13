@@ -8,6 +8,11 @@ import Data.Natural
 import Text.PrettyPrint hiding ((<>))
 import Data.Array as Arr
 import Data.Monoid
+import Data.Maybe (fromJust)
+import qualified Data.List as List
+import Data.List (elemIndex)
+
+import Debug.Trace
 
 import Control.Monad.Reader (MonadReader(..), ReaderT(..))
 import Control.Applicative (Applicative(..), (<$>))
@@ -74,10 +79,10 @@ prettyStreamVals
                 (integer $ toInteger n) <+> text "->" <+> text (show v))
           . Map.toList
 
-getModel :: VarEnv i -> Map Natural StreamPos -> SMT (Model i)
-getModel env = runReaderT (getModel' env)
+getModel :: VarEnv i -> Map Natural [TypedExpr] -> SMT (Model i)
+getModel env m = runReaderT (getModel' env) m
 
-type ModelM = ReaderT (Map Natural StreamPos) SMT
+type ModelM = ReaderT (Map Natural [TypedExpr]) SMT
 
 getModel' :: VarEnv i -> ModelM (Model i)
 getModel' env =
@@ -92,16 +97,23 @@ getVarsModel = mapM getVarModel
 
 --TODO
 getVarModel :: TypedExpr -> ModelM ValueStream
-getVarModel (BoolExpr s) = BoolVStream <$> getStreamValue s
-getVarModel (IntExpr  s) = IntVStream  <$> getStreamValue s
-getVarModel (RealExpr s) = RealVStream <$> getStreamValue s
-getVarModel (EnumExpr s) = EnumVStream <$> getStreamValue s
+getVarModel (BoolExpr s) = do vars   <- ask
+                              let i = fromJust $ List.elemIndex (BoolExpr s) (vars Map.! 0)
+                              stream <- liftSMT $ mapM (\l -> getValue $ unBool $ l !! i) vars
+                              return $ BoolVStream stream
+getVarModel (IntExpr s)  = do vars   <- ask
+                              let i = fromJust $ List.elemIndex (IntExpr s) (vars Map.! 0)
+                              stream <- liftSMT $ mapM (\l -> getValue $ unInt $ l !! i) vars
+                              return $ IntVStream stream
+getVarModel (RealExpr s) = do vars   <- ask
+                              let i = fromJust $ List.elemIndex (RealExpr s) (vars Map.! 0)
+                              stream <- liftSMT $ mapM (\l -> getValue $ unReal $ l !! i) vars
+                              return $ RealVStream stream
+getVarModel (EnumExpr s) = do vars   <- ask
+                              let i = fromJust $ List.elemIndex (EnumExpr s) (vars Map.! 0)
+                              stream <- liftSMT $ mapM (\l -> getValue $ unEnum $ l !! i) vars
+                              return $ EnumVStream stream
 getVarModel (ProdExpr s) = ProdVStream <$> mapM getVarModel s
-
-getStreamValue :: SMTValue t => SMTExpr t -> ModelM (ValueStreamT t)
-getStreamValue s
-  = ask >>=
-    liftSMT . mapM (\i -> getValue $ s)
 
 scadeScenario :: Ident i =>
               Program i -> [String] -> Model i -> Doc

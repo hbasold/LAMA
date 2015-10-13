@@ -2,6 +2,7 @@
 {-# LANGUAGE ViewPatterns #-}
 module Strategies.KInduction where
 
+{-
 import Data.Natural
 import NatInstance
 import Data.List (stripPrefix)
@@ -143,3 +144,4 @@ retrieveHints getModel indOpts k success =
          else return []
        (AllInductionSteps, _      ) ->
          getModel >>= \m -> return [Hint (show k) m]
+-}
