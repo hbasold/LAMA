@@ -12,8 +12,6 @@ import Data.Maybe (fromJust)
 import qualified Data.List as List
 import Data.List (elemIndex)
 
-import Debug.Trace
-
 import Control.Monad.Reader (MonadReader(..), ReaderT(..))
 import Control.Applicative (Applicative(..), (<$>))
 
@@ -113,7 +111,11 @@ getVarModel (EnumExpr s) = do vars   <- ask
                               let i = fromJust $ List.elemIndex (EnumExpr s) (vars Map.! 0)
                               stream <- liftSMT $ mapM (\l -> getValue $ unEnum $ l !! i) vars
                               return $ EnumVStream stream
-getVarModel (ProdExpr s) = ProdVStream <$> mapM getVarModel s
+getVarModel (ProdExpr s) = do vars <- ask
+                              let i = fromJust $ List.elemIndex (ProdExpr s) (vars Map.! 0)
+                                  newArg = Map.map (\l -> Arr.elems $ unProd $ l !! i) vars
+                              stream <- liftSMT $ mapM (\a -> runReaderT (getVarModel a) newArg) s
+                              return $ ProdVStream stream
 
 scadeScenario :: Ident i =>
               Program i -> [String] -> Model i -> Doc
