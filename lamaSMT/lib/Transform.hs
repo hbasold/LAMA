@@ -289,10 +289,11 @@ declareTransition :: Ident i =>
 declareTransition activeCond (StateTransition x e) =
   do xVar     <- lookupVar x
      let e'      = runTransM $ trExpr e
-         args    = getArgSet e
+         defExpr = mkTyped (AtExpr (AtomVar x)) $ varDefType xVar
+         args    = Set.union (getArgSet e) (getArgSet defExpr)
      argsE <- mapM lookupVar $ Set.toList args
      argsN <- mapM getN argsE
-     declareConditionalAssign activeCond (const $ const $ getBottom xVar) xVar args argsN True e'
+     declareConditionalAssign activeCond (runTransM $ trExpr defExpr) xVar args argsN True e'
 
 -- | Creates a declaration for an assignment. Depending on the
 -- activation condition the given expression or a default expression
