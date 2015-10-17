@@ -22,7 +22,6 @@ import Data.List (replicate)
 import Control.Monad.State (StateT(..), MonadState(..), modify, gets)
 import Control.Monad.Error (ErrorT(..), MonadError(..))
 
-import Unit
 import SMTEnum
 import NatInstance
 import LamaSMTTypes
