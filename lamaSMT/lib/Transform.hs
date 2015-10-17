@@ -397,8 +397,9 @@ declareAutomaton activeCond localNodes (_, a) =
      locDefs <- (flip runReaderT (locCons, localNodes))
                 $ declareLocations activeCond act
                 (automDefaults a) (automLocations a)
-     edgeDefs <- mkTransitionEq activeCond stateT locCons actId selId
-                 $ automEdges a
+     enumAnn <- lookupEnumAnn enumName
+     let bottom = EnumExpr $ constantAnn (enumBottom enumAnn) enumAnn
+     edgeDefs <- mkTransitionEq activeCond stateT locCons actId selId (automEdges a) bottom
      assertInit (selId, locConsConstExpr locCons stateT $ automInitial a)
      return $ locDefs ++ edgeDefs
 
@@ -629,25 +630,32 @@ mkTransitionEq :: Ident i =>
                   -> i
                   -> i
                   -> [Edge i]
+                  -> TypedExpr
                   -> DeclM i [Definition]
-mkTransitionEq activeCond locationEnumTy locationEnumConstrs act sel es =
-  -- we reuse the translation machinery by building a match expression and
-  -- translating that.
+mkTransitionEq activeCond locationEnumTy locationEnumConstrs act sel es bot =
   -- We use foldr to enforce that transition that occur later in the
   -- source get a lower priority.
-  do stateDef <- declareInstantDef activeCond
-                 . InstantExpr act
-                 . mkMatch
-                   locationEnumConstrs
-                   locationEnumTy
-                   sel
-                   (mkTyped (AtExpr $ AtomVar sel) locationEnumTy)
-                 . Map.toList
-                 $ foldr addEdge Map.empty es
-     stateTr <- declareTransition activeCond
-                $ StateTransition
-                  sel
-                  (mkTyped (AtExpr $ AtomVar act) locationEnumTy)
+  do stateDef <- do 
+                   let e = mkMatch locationEnumConstrs
+                           locationEnumTy sel (mkTyped (AtExpr $
+                           AtomVar sel) locationEnumTy) . Map.toList
+                           $ foldr addEdge Map.empty es
+                       inst = InstantExpr act e
+                       args = getArgSet e
+                   (res, []) <- trInstant (error "no activation condition") inst
+                   xVar <- lookupVar act
+                   argsE <- mapM lookupVar $ Set.toList args
+                   argsN <- mapM getN argsE
+                   def <- declareConditionalAssign activeCond (const $ const $ bot) xVar args argsN False res
+                   return [def]
+     stateTr <- do 
+       xVar     <- lookupVar sel
+       let e'      = runTransM $ trExpr (mkTyped (AtExpr $ AtomVar act) locationEnumTy)
+           defExpr = mkTyped (AtExpr (AtomVar sel)) $ varDefType xVar
+           args    = Set.union (getArgSet (mkTyped (AtExpr $ AtomVar act) locationEnumTy)) (getArgSet defExpr)
+       argsE <- mapM lookupVar $ Set.toList args
+       argsN <- mapM getN argsE
+       declareConditionalAssign activeCond (runTransM $ trExpr defExpr) xVar args argsN True e'
      return $ stateDef ++ [stateTr]
   where
      addEdge (Edge h t c) m =
