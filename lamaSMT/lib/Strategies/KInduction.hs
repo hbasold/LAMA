@@ -2,7 +2,6 @@
 {-# LANGUAGE ViewPatterns #-}
 module Strategies.KInduction where
 
-{-
 import Data.Natural
 import NatInstance
 import Data.List (stripPrefix)
@@ -62,7 +61,7 @@ instance StrategyClass KInduct where
           let s0 = InductState baseK (vars, k1) (n0, n1)
           (r, hints) <- runWriterT
                 $ (flip evalStateT s0)
-                $ check' indOpts (getModel $ varEnv env) defs
+                $ check' indOpts (getModel $ varEnv env) defs (Map.singleton baseK vars)
           case r of
                Unknown what h -> return $ Unknown what (h ++ hints)
                _ -> return r
@@ -88,45 +87,46 @@ type KInductM i = StateT InductState (WriterT (Hints i) SMTErr)
 -- call next, which increases k. Finally, if also the induction
 -- step can be proven, Nothing is returned.
 check' :: KInduct
-       -> (Map Natural StreamPos -> SMT (Model i))
+       -> (Map Natural [TypedExpr] -> SMT (Model i))
        -> ProgDefs
+       -> Map Natural [TypedExpr]
        -> KInductM i (StrategyResult i)
-check' indOpts getModel defs =
+check' indOpts getModel defs pastVars =
   do InductState{..} <- get
      liftIO $ when (printProgress indOpts) (putStrLn $ "Depth " ++ show kVal)
-     rBMC <- bmcStep getModel defs kDefs
+     rBMC <- bmcStep getModel defs pastVars kDefs
      case rBMC of
-       False -> return $ Failure kVal
-       True ->
+       Just m -> return $ Failure kVal m
+       Nothing ->
          do let n0 = fst nDefs
                 n1 = snd nDefs
             n2 <- freshVars n1
             assertPrecond (n0, n1) $ invariantDef defs
             modify $ \indSt -> indSt { nDefs = (n1, n2) }
-            indSuccess <- liftSMT . stack $
+            (indSuccess, hints) <- liftSMT . stack $
               do r <- checkStep defs (n1, n2)
-                 --h <- retrieveHints (getModel pastKs) indOpts kVal r
-                 --return (r, h)
-                 return r
-            --tell hints
+                 h <- retrieveHints (getModel pastVars) indOpts kVal r
+                 return (r, h)
+            tell hints
             let k' = succ kVal
             if indSuccess
                then return Success
                else case depth indOpts of
-                    Nothing -> cont k'
+                    Nothing -> cont k' pastVars
                     Just l  ->
                       if k' > l
                       then return $ Unknown ("Cancelled induction. Found no"
                                               ++" proof within given depth")
                                     []
-                      else cont k'
+                      else cont k' pastVars
   where
-    cont k' =
+    cont k' pastVars =
       do indState@InductState{..} <- get
          let k1 = snd kDefs
+             pastVars' = Map.insert k' k1 pastVars
          k2 <- freshVars k1
          put $ indState { kVal = k', kDefs = (k1, k2) }
-         check' indOpts getModel defs
+         check' indOpts getModel defs pastVars'
 
 -- | If requested, gets a model for the induction step
 retrieveHints :: SMT (Model i)
@@ -144,4 +144,3 @@ retrieveHints getModel indOpts k success =
          else return []
        (AllInductionSteps, _      ) ->
          getModel >>= \m -> return [Hint (show k) m]
--}
