@@ -67,8 +67,8 @@ putConstants cs =
   let cs' = fmap trConstant cs
   in modify $ \env -> env { constants = cs' }
 
-addVar :: Ident i => TypedExpr -> DeclM i ()
-addVar var =
+putVar :: Ident i => TypedExpr -> DeclM i ()
+putVar var =
   modify $ \env -> env { varList = (varList env) ++ [var] }
 
 getN :: TypedExpr -> DeclM i Int

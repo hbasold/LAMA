@@ -142,7 +142,7 @@ declareVarList = mapM declareVar
 declareVar :: Ident i => Variable i -> DeclM i ((i, TypedExpr))
 declareVar (Variable x t) =
   do v    <- typedVar (identString x) t
-     addVar v
+     putVar v
      return (x, v)
   where
     typedVar :: Ident i =>
@@ -433,9 +433,9 @@ mkStateVars :: Ident i =>
 mkStateVars actName selName stateEnum =
   do stEnumAnn <- lookupEnumAnn stateEnum
      act <- liftSMT $ fmap EnumExpr $ varNamedAnn actName stEnumAnn
-     addVar act
+     putVar act
      sel <- liftSMT $ fmap EnumExpr $ varNamedAnn selName stEnumAnn
-     addVar sel
+     putVar sel
      return (act, sel)
 
 -- | Extracts the the expressions for each variable seperated into
@@ -613,7 +613,7 @@ mkLocationActivationCond activeCond e l =
      lEnum <- lift $ trEnumConsAnn lCons <$> lookupEnumConsAnn lCons
      let cond = \_env t -> BoolExpr $ (unEnum $ snd $ last t) .==. lEnum
      activeVar <- liftSMT $ fmap BoolExpr $ var
-     lift $ addVar activeVar
+     lift $ putVar activeVar
      argN <- lift $ getN e
      def <- lift $ declareConditionalAssign activeCond
             (const $ const $ BoolExpr $ constant False) activeVar Set.empty [argN] False cond
