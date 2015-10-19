@@ -58,7 +58,7 @@ instance StrategyClass Invar where
           n0  <- freshVars vars
           n1  <- freshVars vars
           assumeTrace defs (n0, n1)
-          let s0 = InductState baseK (vars, k1) (n0, n1)
+          let s0 = InductState baseK (vars, k1) (n0, n1) $ constructRs (instSet env)
           (r, hints) <- runWriterT
                 $ (flip evalStateT s0)
                 $ check' indOpts (getModel $ varEnv env) defs (Map.singleton baseK vars)
@@ -78,7 +78,8 @@ checkStep defs vars =
 data InductState = InductState
                    { kVal  :: Natural
                    , kDefs :: ([TypedExpr], [TypedExpr])
-                   , nDefs :: ([TypedExpr], [TypedExpr]) }
+                   , nDefs :: ([TypedExpr], [TypedExpr])
+                   , rs    :: [(Term, Term)] }
 type KInductM i = StateT InductState (WriterT (Hints i) SMTErr)
 
 -- | Checks the program against its invariant. If the invariant
@@ -98,7 +99,9 @@ check' indOpts getModel defs pastVars =
      case rBMC of
        Just m -> return $ Failure kVal m
        Nothing ->
-         do let n0 = fst nDefs
+         do rs' <- filterRs rs kDefs
+            modify $ \indSt -> indSt { rs = rs' }
+            let n0 = fst nDefs
                 n1 = snd nDefs
             n2 <- freshVars n1
             assertPrecond (n0, n1) $ invariantDef defs
@@ -127,6 +130,13 @@ check' indOpts getModel defs pastVars =
          k2 <- freshVars k1
          put $ indState { kVal = k', kDefs = (k1, k2) }
          check' indOpts getModel defs pastVars'
+
+filterRs :: MonadSMT m => [(Term, Term)] -> ([TypedExpr], [TypedExpr]) -> m [(Term, Term)]
+filterRs rs args = liftSMT $ do push
+                                assertRs args rs
+                                r <-checkSat
+                                pop
+                                return rs
 
 -- | If requested, gets a model for the induction step
 retrieveHints :: SMT (Model i)

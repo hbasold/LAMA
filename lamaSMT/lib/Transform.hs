@@ -731,6 +731,7 @@ declarePrecond activeCond e =
                  \a -> (flip (flip runTransM env) (zip (Set.toList $ args) a))
 		       (trExpr e >>= \e' ->
                          return $ liftBool2 (.=>.) c e')
+     putTerm argsN d
      return $ ensureDefinition argsN False d
 
 declareInvariant :: Ident i =>

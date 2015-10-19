@@ -27,6 +27,7 @@ import Control.Monad.Error (ErrorT(..), MonadError(..))
 import SMTEnum
 import NatInstance
 import LamaSMTTypes
+import Definition
 import Internal.Monads
 
 data NodeEnv i = NodeEnv
@@ -49,7 +50,7 @@ data Env i = Env
            , varEnv :: VarEnv i
            , currAutomatonIndex :: Integer
            , varList :: [TypedExpr]
-           , instSet :: Set (SMTExpr Bool)
+           , instSet :: Set Term
            , natImpl :: NatImplementation
            , enumImpl :: EnumImplementation
            }
@@ -76,6 +77,10 @@ getN x = do vars <- gets varList
             return $ case List.elemIndex x vars of
                           Nothing -> error $ "Could not be found in list of variables: " ++ show x
                           Just n -> n
+
+putTerm :: Ident i => [Int] -> TypedFunc -> DeclM i ()
+putTerm argsN (BoolFunc t) = 
+  modify $ \env -> env { instSet = Set.insert (BoolTerm argsN t) (instSet env) }
 
 putEnumAnn :: Ident i => Map i (SMTAnnotation SMTEnum) -> DeclM i ()
 putEnumAnn eAnns =
