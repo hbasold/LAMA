@@ -6,6 +6,7 @@ import Text.PrettyPrint
 import Strategy
 import Strategies.BMC
 import Strategies.KInduction
+import Strategies.Invariant
 
 defaultStrategy :: Strategy
 defaultStrategy = Strategy (defaultStrategyOpts :: BMC)
@@ -45,4 +46,5 @@ getStrategyHelp lineLength = renderStyle (style { lineLength }) $
 getStrategy :: String -> Strategy
 getStrategy "bmc" = Strategy (defaultStrategyOpts :: BMC)
 getStrategy "kinduct" = Strategy (defaultStrategyOpts :: KInduct)
+getStrategy "kinduct-inv" = Strategy (defaultStrategyOpts :: Invar)
 getStrategy _ = error "Unknown strategy"

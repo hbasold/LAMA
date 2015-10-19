@@ -15,6 +15,8 @@ import qualified Data.List as List
 import Data.List (elemIndex)
 import qualified Data.Map as Map
 import Data.Map (Map)
+import qualified Data.Set as Set
+import Data.Set (Set)
 import Prelude hiding (mapM)
 import Data.Traversable
 import Data.List (replicate)
@@ -47,6 +49,7 @@ data Env i = Env
            , varEnv :: VarEnv i
            , currAutomatonIndex :: Integer
            , varList :: [TypedExpr]
+           , instSet :: Set (SMTExpr Bool)
            , natImpl :: NatImplementation
            , enumImpl :: EnumImplementation
            }
@@ -55,7 +58,7 @@ emptyVarEnv :: VarEnv i
 emptyVarEnv = VarEnv Map.empty Map.empty
 
 emptyEnv :: NatImplementation -> EnumImplementation -> Env i
-emptyEnv = Env Map.empty Map.empty Map.empty emptyVarEnv 0 []
+emptyEnv = Env Map.empty Map.empty Map.empty emptyVarEnv 0 [] Set.empty
 
 type DeclM i = StateT (Env i) (ErrorT String SMT)
 
