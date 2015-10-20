@@ -55,6 +55,11 @@ mkRelation :: ([TypedExpr], [TypedExpr]) -> (Term, Term) -> SMTExpr Bool
 mkRelation i (BoolTerm argsf f, BoolTerm argsg g) = (f `app` (lookupArgs argsf False i)) .=>.
                                                        (g `app` (lookupArgs argsg False i))
 
-assertRs :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> [(Term, Term)] -> m [SMTExpr Bool]
+assertRs :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> [(Term, Term)] -> m ()
 assertRs i rs = let c = (map (mkRelation i) rs) in
-                  liftSMT $ assert (not' $ foldl (.&&.) (head c) $ tail c) >> return c
+                  liftSMT $ assert (not' $ foldl (.&&.) (head c) $ tail c)
+
+assertR :: MonadSMT m => [TypedExpr] -> (Term, Term) -> m ()
+assertR i (BoolTerm argsf f, BoolTerm argsg g) =
+  liftSMT $ assert ((f `app` (lookupArgs argsf False (i, i))) .=>.
+    (g `app` (lookupArgs argsg False (i, i))))

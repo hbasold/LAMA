@@ -64,7 +64,7 @@ instance StrategyClass Invar where
           assumeTrace defs (n0, n1)
           let s0 = InductState baseK (vars, k1) (n0, n1)
                      $ constructRs (instSet env) (GroundType BoolT)
-          (r, hints) <- trace (show $ rs s0) $ runWriterT
+          (r, hints) <- runWriterT
                 $ (flip evalStateT s0)
                 $ check' indOpts (getModel $ varEnv env) defs (Map.singleton baseK vars)
           case r of
@@ -138,20 +138,27 @@ check' indOpts getModel defs pastVars =
 
 filterRs :: MonadSMT m => [(Term, Term)] -> ([TypedExpr], [TypedExpr]) -> m [(Term, Term)]
 filterRs rs@(r:rss) args = liftSMT $ do push
-                                        c <- assertRs args rs
+                                        assertRs args rs
                                         r <- checkSat
-                                        trace (show r) $ pop
-                                        if r
-                                           then do model <- mapM getValue c
-                                                   filtered <- filterRs' model rs
+                                        trace (show r ) $ if r
+                                           then do model <- mapM (\(BoolExpr s) -> getValue s) $ fst args
+                                                   let model' = map (\s -> BoolExpr $ constant s) model
+                                                   pop
+                                                   filtered <- filterRs' model' rs
                                                    filterRs filtered args
-                                           else return rs
+                                           else pop >> return rs
 filterRs [] _ = liftSMT $ return []
 
-filterRs' :: (SMTValue t, MonadSMT m) => [t] -> [(Term, Term)] -> m [(Term, Term)]
-filterRs' model rs = liftSMT $ do push
-                                  pop
-                                  return rs
+filterRs' :: MonadSMT m => [TypedExpr] -> [(Term, Term)] -> m [(Term, Term)]
+filterRs' model (r:rs) = liftSMT $ do trace (show r) $ push
+                                      assertR model r
+                                      e <- checkSat
+                                      pop
+                                      rest <- filterRs' model rs
+                                      if e
+                                         then return $ [r] ++ rest
+                                         else return rest
+filterRs' model [] = liftSMT $ return []
 
 -- | If requested, gets a model for the induction step
 retrieveHints :: SMT (Model i)
