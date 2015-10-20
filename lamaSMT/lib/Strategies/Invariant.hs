@@ -2,6 +2,8 @@
 {-# LANGUAGE ViewPatterns #-}
 module Strategies.Invariant where
 
+import Debug.Trace
+
 import Data.Natural
 import NatInstance
 import Data.List (stripPrefix)
@@ -132,11 +134,21 @@ check' indOpts getModel defs pastVars =
          check' indOpts getModel defs pastVars'
 
 filterRs :: MonadSMT m => [(Term, Term)] -> ([TypedExpr], [TypedExpr]) -> m [(Term, Term)]
-filterRs rs args = liftSMT $ do push
-                                assertRs args rs
-                                r <-checkSat
-                                pop
-                                return rs
+filterRs rs@(r:rss) args = liftSMT $ do push
+                                        c <- assertRs args rs
+                                        r <- checkSat
+                                        trace (show r) $ pop
+                                        if r
+                                           then do model <- mapM getValue c
+                                                   filtered <- filterRs' model rs
+                                                   filterRs filtered args
+                                           else return rs
+filterRs [] _ = liftSMT $ return []
+
+filterRs' :: (SMTValue t, MonadSMT m) => [t] -> [(Term, Term)] -> m [(Term, Term)]
+filterRs' model rs = liftSMT $ do push
+                                  pop
+                                  return rs
 
 -- | If requested, gets a model for the induction step
 retrieveHints :: SMT (Model i)
