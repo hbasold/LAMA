@@ -49,13 +49,10 @@ data Term =
 constructRs :: Set Term -> [(Term, Term)]
 constructRs ts = [(x,y) | x <- Set.toList ts, y <- Set.toList ts, x /= y]
 
+mkRelation :: ([TypedExpr], [TypedExpr]) -> (Term, Term) -> SMTExpr Bool
+mkRelation i (BoolTerm argsf f, BoolTerm argsg g) = (f `app` (lookupArgs argsf False i)) .=>.
+                                                       (g `app` (lookupArgs argsg False i))
+
 assertRs :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> [(Term, Term)] -> m ()
-{-
-assertRs i rs = liftSMT $ assert (not' (foldl (\(t, s) -> and' t s) (constant True) (assertRs' i rs)))
-  where assertRs' :: ([TypedExpr], [TypedExpr]) -> [(Term, Term)] -> [(SMTExpr t, SMTExpr t)]
-        assertRs' i ((BoolTerm argsf f, BoolTerm argsg g):rs) = 
-          [(f `app` (lookupArgs argsf False i), g `app` (lookupArgs argsg False i))] ++ assertRs' i rs
-        assertRs' i [] = []
--}
-assertRs i ((BoolTerm argsf f, BoolTerm argsg g):rs) = liftSMT $ assert ((f `app` (lookupArgs argsf False i)) .=>. (g `app` (lookupArgs argsg False i))) >> assertRs i rs
-assertRs i [] = return ()
+assertRs i rs = let c = (map (mkRelation i) rs) in
+                  liftSMT $ assert (not' $ foldl (.&&.) (head c) $ tail c)
