@@ -1,9 +1,10 @@
 module Definition where
 
-import Data.Array as Arr
+import Lang.LAMA.Types
 
 import Language.SMTLib2 as SMT
 
+import Data.Array as Arr
 import qualified Data.Set as Set
 import Data.Set (Set)
 
@@ -46,8 +47,9 @@ data Term =
   | RealTerm [Int] (SMTFunction [TypedExpr] Rational)
   deriving (Show, Ord, Eq)
 
-constructRs :: Set Term -> [(Term, Term)]
-constructRs ts = [(x,y) | x <- Set.toList ts, y <- Set.toList ts, x /= y]
+constructRs :: Set Term -> Type i -> [(Term, Term)]
+constructRs ts (GroundType BoolT) = [(x,y) | x@(BoolTerm _ _) <- Set.toList ts,
+                                      y@(BoolTerm _ _) <- Set.toList ts, x /= y]
 
 mkRelation :: ([TypedExpr], [TypedExpr]) -> (Term, Term) -> SMTExpr Bool
 mkRelation i (BoolTerm argsf f, BoolTerm argsg g) = (f `app` (lookupArgs argsf False i)) .=>.

@@ -329,7 +329,9 @@ declareDef x as ns succ ef =
      ann         <- getTypedAnnotation $ [xN] ++ ns
      d           <- defFunc defType ann
                     $ \a -> liftRel (.==.) (head a) $ ef env $ zip ((Set.toList as) ++ [error "Last argument must not be evaluated!"]) (tail a)
-     return $ ensureDefinition ([xN] ++ ns) succ d
+     let argsN   = ([xN] ++ ns)
+     putTerm argsN d
+     return $ ensureDefinition argsN succ d
 
 varDefType :: TypedExpr -> Type i
 varDefType (ProdExpr ts) = ProdType . fmap varDefType $ Arr.elems ts

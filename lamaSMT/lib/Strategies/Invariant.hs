@@ -4,6 +4,8 @@ module Strategies.Invariant where
 
 import Debug.Trace
 
+import Lang.LAMA.Types
+
 import Data.Natural
 import NatInstance
 import Data.List (stripPrefix)
@@ -60,8 +62,9 @@ instance StrategyClass Invar where
           n0  <- freshVars vars
           n1  <- freshVars vars
           assumeTrace defs (n0, n1)
-          let s0 = InductState baseK (vars, k1) (n0, n1) $ constructRs (instSet env)
-          (r, hints) <- runWriterT
+          let s0 = InductState baseK (vars, k1) (n0, n1)
+                     $ constructRs (instSet env) (GroundType BoolT)
+          (r, hints) <- trace (show $ rs s0) $ runWriterT
                 $ (flip evalStateT s0)
                 $ check' indOpts (getModel $ varEnv env) defs (Map.singleton baseK vars)
           case r of
