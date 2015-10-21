@@ -509,16 +509,23 @@ declareLocations activeCond s defaultExprs locations =
          xVar           <- lookupVar x
          argss          <- lift $ mapM locArgList locs
          let xBottom    = const $ const $ getBottom xVar
-             args       = concat argss ++ maybe [] getArgList defaultExpr
-         argsE          <- mapM lookupVar args
-         argsN          <- lift $ mapM getN (argsE ++ [s])
+             args       = concat $ map (\(s, _) -> s) argss ++ [maybe [] getArgList defaultExpr]
+
+             argsN      = snd $ foldl (\(_, a) (_, b) -> (Set.empty, a ++ b)) (Set.empty, []) argss
+         argsNs         <- lift $ getN s
          def            <-
-           lift $ declareConditionalAssign active xBottom xVar (args ++ [fromString "dummyForLocEnum"]) argsN False res
+           lift $ declareConditionalAssign active xBottom xVar (args ++[fromString "dummyForLocEnum"]) (argsN ++ [argsNs])False res
          return $ inpDefs ++ [def]
       where
-        locArgList (_,InstantExpr _ e) = return $ getArgList e
-        locArgList (_,NodeUsage _ n _) = do nEnv <- lookupNode n
-                                            return $ Map.keys (nodeEnvOut nEnv)
+        locArgList (_,InstantExpr _ e) = do 
+                                          let args = getArgList e
+                                          argsE <- mapM lookupVar args
+                                          argsN <- mapM getN argsE
+                                          return (args, argsN)
+        locArgList (_,NodeUsage _ n _) = do nEnv  <- lookupNode n
+                                            let args = Map.keys (nodeEnvOut nEnv)
+                                            argsN <- mapM getN $ nodeEnvOut nEnv
+                                            return (args, Map.elems argsN)
 
     declareLocTransitions :: Ident i =>
                              Maybe (i, TypedExpr)
