@@ -118,7 +118,7 @@ declareEnum (t, EnumDef cs) =
         liftSMT (declareType (undefined :: SMTEnum) ann) >> return (t, ann)
 
 declareDecls :: Ident i =>
-                Maybe (TypedExpr)
+                Maybe (i, TypedExpr)
                 -> Set i
                 -> Declarations i
                 -> DeclM i ([Definition], Map i (Node i))
@@ -186,7 +186,7 @@ enumVar argAnn ann@(EnumBitAnn size _ biggestCons) =
 -- declared. The other nodes are deferred to be declared in the corresponding
 -- location (see declareAutomaton and declareLocations).
 declareNode :: Ident i =>
-               Maybe (TypedExpr) -> i -> Node i -> DeclM i [Definition]
+               Maybe (i, TypedExpr) -> i -> Node i -> DeclM i [Definition]
 declareNode active nName nDecl = 
   do (interface, defs) <- localVarEnv (const emptyVarEnv) $
                           declareNode' active nDecl
@@ -194,7 +194,7 @@ declareNode active nName nDecl =
      return defs
   where
     declareNode' :: Ident i =>
-                    Maybe (TypedExpr) -> Node i
+                    Maybe (i, TypedExpr) -> Node i
                     -> DeclM i (NodeEnv i, [Definition])
     declareNode' activeCond n =
       do let automNodes =
@@ -228,7 +228,7 @@ getNodesInLocations = mconcat . map getUsedLoc . automLocations
 -- | Creates definitions for instant definitions. In case of a node usage this
 -- may produce multiple definitions. If 
 declareInstantDef :: Ident i =>
-                     Maybe (TypedExpr)
+                     Maybe (i, TypedExpr)
                      -> InstantDefinition i
                      -> DeclM i [Definition]
 declareInstantDef activeCond inst@(InstantExpr x e) =
@@ -253,7 +253,7 @@ declareInstantDef activeCond inst@(NodeUsage x n _) =
 -- used to further refine this instant (e.g. wrap it into an ite).
 -- This may also return definitions of the parameters of a node.
 -- The activation condition is only used for the inputs of a node.
-trInstant :: Ident i => Maybe (TypedExpr) -> InstantDefinition i -> DeclM i (Env i -> [(i, TypedExpr)] -> TypedExpr, [Definition])
+trInstant :: Ident i => Maybe (i, TypedExpr) -> InstantDefinition i -> DeclM i (Env i -> [(i, TypedExpr)] -> TypedExpr, [Definition])
 trInstant _ (InstantExpr _ e) = return (runTransM $ trExpr e, [])
 trInstant inpActive (NodeUsage _ n es) =
   do nEnv <- lookupNode n
@@ -283,7 +283,7 @@ trOutput map = do
 -- x' = (ite c e x) where e is the defining expression. Otherwise it is just
 -- x' = e.
 declareTransition :: Ident i =>
-                     Maybe (TypedExpr)
+                     Maybe (i, TypedExpr)
                      -> StateTransition i
                      -> DeclM i Definition
 declareTransition activeCond (StateTransition x e) =
@@ -301,7 +301,7 @@ declareTransition activeCond (StateTransition x e) =
 -- stream of /x/ which will be defined, can be specified by modPos
 -- (see declareDef).
 declareConditionalAssign :: Ident i =>
-                            Maybe (TypedExpr)
+                            Maybe (i, TypedExpr)
                             -> (Env i -> [(i, TypedExpr)] -> TypedExpr)
                             -> TypedExpr
                             -> Set i
@@ -309,11 +309,15 @@ declareConditionalAssign :: Ident i =>
                             -> Bool
                             -> (Env i -> [(i, TypedExpr)] -> TypedExpr)
                             -> DeclM i Definition
-declareConditionalAssign activeCond defaultExpr x al ns succ ef =
+declareConditionalAssign activeCond defaultExpr x as ns succ ef =
   case activeCond of
-    Nothing -> declareDef x al ns succ ef
-    Just c  ->
-      declareDef x al ns succ (\env t -> liftIte c (ef env t) (defaultExpr env t))
+    Nothing -> declareDef x as ns succ ef
+    Just (ident, c)  -> do
+      condN <- getN c
+      let condExpr = mkTyped (AtExpr (AtomVar (ident))) $ varDefType c
+          arg      = getArgSet condExpr
+          condVar  = runTransM $ trExpr condExpr
+      declareDef x (Set.union as arg) ([condN] ++ ns) succ (\env t -> liftIte (condVar env t) (ef env t) (defaultExpr env t))
 
 -- | Creates a definition for a given variable. Whereby a function to
 -- manipulate the stream position at which it is defined is used (normally
@@ -350,7 +354,7 @@ getTypedAnnotation ns = mapM getTypedAnnotation' ns
                      EnumExpr (Var _ k) -> EnumAnnotation k
                      ProdExpr k -> ProdAnnotation $ fmap getTypedAnnCases k
 
-declareFlow :: Ident i => Maybe (TypedExpr) -> Flow i -> DeclM i [Definition]
+declareFlow :: Ident i => Maybe (i, TypedExpr) -> Flow i -> DeclM i [Definition]
 declareFlow activeCond f =
   do defDefs        <- fmap concat
                        . mapM (declareInstantDef activeCond)
@@ -368,13 +372,14 @@ declareFlow activeCond f =
 --    conditions (mkTransitionEq)
 -- * asserting the initial location
 declareAutomaton :: Ident i =>
-                    Maybe (TypedExpr)
+                    Maybe (i, TypedExpr)
                     -> Map i (Node i)
                     -> (Int, Automaton i)
                     -> DeclM i [Definition]
 declareAutomaton activeCond localNodes (_, a) =
   do automIndex <- nextAutomatonIndex
      let automName = "Autom" ++ show automIndex
+         condName  = automName ++ "_active"
          enumName  = fromString $ automName ++ "States"
          stateT    = EnumType enumName
          locNames  =
@@ -394,7 +399,7 @@ declareAutomaton activeCond localNodes (_, a) =
                    (selId, sel)
                   ]
                 )
-     locDefs <- (flip runReaderT (locCons, localNodes))
+     locDefs <- (flip runReaderT ((locCons, localNodes), condName))
                 $ declareLocations activeCond act
                 (automDefaults a) (automLocations a)
      enumAnn <- lookupEnumAnn enumName
@@ -464,19 +469,19 @@ extractAssigns = foldl addLocExprs (Map.empty, Map.empty)
 -- beforehand and the undeclared nodes which are used in one of the
 -- locations of the automata to be defined.
 type AutomTransM i =
-  ReaderT (Map (LocationId i) (EnumConstr i), Map i (Node i)) (DeclM i)
+  ReaderT ((Map (LocationId i) (EnumConstr i), Map i (Node i)), String) (DeclM i)
 
 lookupLocName :: Ident i => LocationId i -> AutomTransM i (EnumConstr i)
 lookupLocName l
-  = asks fst >>= lookupErr ("Unknown location " ++ identPretty l) l
+  = asks (fst . fst) >>= lookupErr ("Unknown location " ++ identPretty l) l
 
 lookupLocalNode :: Ident i => i -> AutomTransM i (Node i)
 lookupLocalNode n
-  = asks snd >>= lookupErr ("Unknow local node " ++ identPretty n) n
+  = asks (snd .fst) >>= lookupErr ("Unknow local node " ++ identPretty n) n
 
 -- | Declares the data flow inside the locations of an automaton.
 declareLocations :: Ident i =>
-                    Maybe (TypedExpr)
+                    Maybe (i, TypedExpr)
                     -> TypedExpr
                     -> Map i (Expr i)
                     -> [Location i]
@@ -493,7 +498,7 @@ declareLocations activeCond s defaultExprs locations =
         return $ instDefs ++ transDefs
   where
     declareLocDefs :: Ident i =>
-                      Maybe (TypedExpr)
+                      Maybe (i, TypedExpr)
                       -> Map i (Expr i)
                       -> (i, [(LocationId i, InstantDefinition i)])
                       -> AutomTransM i [Definition]
@@ -515,7 +520,7 @@ declareLocations activeCond s defaultExprs locations =
                                            return $ Map.keysSet (nodeEnvOut nEnv)
 
     declareLocTransitions :: Ident i =>
-                             Maybe (TypedExpr)
+                             Maybe (i, TypedExpr)
                              -> (i, [(LocationId i, StateTransition i)])
                              -> AutomTransM i Definition
     declareLocTransitions active (x, locs) =
@@ -537,11 +542,11 @@ declareLocations activeCond s defaultExprs locations =
                 $ lookupErr (identPretty x ++ " not fully defined") x defaults
 
     isFullyDefined locDefs =
-      do locNames <- asks fst
+      do locNames <- asks (fst . fst)
          return $ (Map.keysSet locNames) == (Set.fromList $ map fst locDefs)
 
 declareLocDef :: Ident i =>
-                 Maybe (TypedExpr)
+                 Maybe (i, TypedExpr)
                  -> TypedExpr
                  -> Maybe (Expr i)
                  -> [(LocationId i, InstantDefinition i)]
@@ -559,17 +564,17 @@ declareLocDef activeCond s defaultExpr locs =
        innerPat locs'
   where
     trLocInstant :: Ident i =>
-                    Maybe (TypedExpr)
+                    Maybe (i, TypedExpr)
                     -> LocationId i
                     -> InstantDefinition i
                     -> AutomTransM i (Env i -> [(i, TypedExpr)] -> TypedExpr, [Definition])
     trLocInstant _ _ inst@(InstantExpr _ _) =
       lift $ trInstant (error "no activation condition required") inst
     trLocInstant active l inst@(NodeUsage _ n _) =
-      do (locActive, activeDef) <- mkLocationActivationCond active s l
+      do (identActive, locActive, activeDef) <- mkLocationActivationCond active s l
          node                   <- lookupLocalNode n
-         nodeDefs               <- lift $ declareNode (Just locActive) n node
-         (r, inpDefs)           <- lift $ trInstant (Just locActive) inst
+         nodeDefs               <- lift $ declareNode (Just (identActive, locActive)) n node
+         (r, inpDefs)           <- lift $ trInstant (Just (identActive, locActive)) inst
          return (r, [activeDef] ++ nodeDefs ++ inpDefs)
 
 trLocTransition :: Ident i =>
@@ -604,27 +609,28 @@ mkLocationMatch (EnumExpr s) f l lExpr =
 -- | Creates a variable which is true iff the given activation
 -- condition is true and the the given location is active.
 mkLocationActivationCond :: Ident i =>
-                            Maybe (TypedExpr)
+                            Maybe (i, TypedExpr)
                             -> TypedExpr
                             -> LocationId i
-                            -> AutomTransM i (TypedExpr, Definition)
+                            -> AutomTransM i (i, TypedExpr, Definition)
 mkLocationActivationCond activeCond e l =
-  do lCons <- lookupLocName l
+  do condName <- asks snd
+     lCons <- lookupLocName l
      lEnum <- lift $ trEnumConsAnn lCons <$> lookupEnumConsAnn lCons
      let cond = \_env t -> BoolExpr $ (unEnum $ snd $ last t) .==. lEnum
-     activeVar <- liftSMT $ fmap BoolExpr $ var
+     activeVar <- liftSMT $ fmap BoolExpr $ varNamed condName
      lift $ addVar activeVar
      argN <- lift $ getN e
      def <- lift $ declareConditionalAssign activeCond
             (const $ const $ BoolExpr $ constant False) activeVar Set.empty [argN] False cond
-     return (activeVar, def)
+     return (fromString condName, activeVar, def)
 
 -- | Creates two equations for the edges. The first calculates
 -- the next location (act). This is a chain of ite for each state surrounded
 -- by a match on the last location (sel). The definition of sel is just
 -- the saving of act for the next cycle.
 mkTransitionEq :: Ident i =>
-                  Maybe (TypedExpr)
+                  Maybe (i, TypedExpr)
                   -> Type i
                   -> Map (LocationId i) (EnumConstr i)
                   -> i
@@ -718,7 +724,7 @@ assertInit (x, e) =
 
 -- | Creates a definition for a precondition p. If an activation condition c
 -- is given, the resulting condition is (=> c p).
-declarePrecond :: Ident i => Maybe (TypedExpr) -> Expr i -> DeclM i Definition
+declarePrecond :: Ident i => Maybe (i, TypedExpr) -> Expr i -> DeclM i Definition
 declarePrecond activeCond e =
   do env      <- get
      let args = getArgSet e
@@ -727,14 +733,14 @@ declarePrecond activeCond e =
      ann      <- getTypedAnnotation argsN
      d        <- case activeCond of
        Nothing -> defFunc boolT ann $ \a -> runTransM (trExpr e) env (zip (Set.toList $ args) a)
-       Just c -> defFunc boolT ann $
+       Just (ident, c) -> defFunc boolT ann $
                  \a -> (flip (flip runTransM env) (zip (Set.toList $ args) a))
 		       (trExpr e >>= \e' ->
                          return $ liftBool2 (.=>.) c e')
      return $ ensureDefinition argsN False d
 
 declareInvariant :: Ident i =>
-                    Maybe (TypedExpr) -> Expr i -> DeclM i Definition
+                    Maybe (i, TypedExpr) -> Expr i -> DeclM i Definition
 declareInvariant = declarePrecond
 
 trConstExpr :: Ident i => ConstExpr i -> DeclM i (TypedExpr)
