@@ -333,6 +333,7 @@ declareDef x as ns succ ef =
      ann         <- getTypedAnnotation $ [xN] ++ ns
      d           <- defFunc defType ann
                     $ \a -> liftRel (.==.) (head a) $ ef env $ zip ((Set.toList as) ++ [error "Last argument must not be evaluated!"]) (tail a)
+
      return $ ensureDefinition ([xN] ++ ns) succ d
 
 varDefType :: TypedExpr -> Type i
@@ -512,7 +513,7 @@ declareLocations activeCond s defaultExprs locations =
          argsE          <- mapM lookupVar $ Set.toList args
          argsN          <- lift $ mapM getN (argsE ++ [s])
          def            <-
-           lift $ declareConditionalAssign active xBottom xVar args argsN False res
+           lift $ declareConditionalAssign active xBottom xVar (Set.insert (fromString "dummyForLocEnum") args) argsN False res
          return $ inpDefs ++ [def]
       where
         locArgSet (_,InstantExpr _ e) = return $ getArgSet e
@@ -531,7 +532,7 @@ declareLocations activeCond s defaultExprs locations =
          argsE          <- mapM lookupVar $ Set.toList args
          argsN          <- lift $ mapM getN (argsE ++ [s])
          def         <-
-           lift $ declareConditionalAssign active (runTransM $ trExpr defExpr) xVar args argsN True res
+           lift $ declareConditionalAssign active (runTransM $ trExpr defExpr) xVar (Set.insert (fromString "dummyForLocEnum") args) argsN True res
          return def
 
     getDefault defaults x locs =
