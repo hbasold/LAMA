@@ -234,8 +234,8 @@ declareInstantDef :: Ident i =>
 declareInstantDef activeCond inst@(InstantExpr x e) =
   do (res, []) <- trInstant (error "no activation condition") inst
      xVar <- lookupVar x
-     let args = getArgSet e
-     argsE <- mapM lookupVar $ Set.toList args
+     let args = getArgList e
+     argsE <- mapM lookupVar args
      argsN <- mapM getN argsE
      def <- declareConditionalAssign
             activeCond (const $ const $ getBottom xVar) xVar args argsN False res
@@ -246,7 +246,7 @@ declareInstantDef activeCond inst@(NodeUsage x n _) =
      nEnv            <- lookupNode n
      outN            <- mapM getN $ nodeEnvOut nEnv
      outpDef         <- declareConditionalAssign
-                        activeCond (const $ const $ getBottom xVar) xVar (Map.keysSet $ nodeEnvOut nEnv) (Map.elems outN) False outp
+                        activeCond (const $ const $ getBottom xVar) xVar (Map.keys $ nodeEnvOut nEnv) (Map.elems outN) False outp
      return $ inpDefs ++ [outpDef]
 
 -- | Translates an instant definition into a function which can be
@@ -259,12 +259,12 @@ trInstant inpActive (NodeUsage _ n es) =
   do nEnv <- lookupNode n
      let esTr = map (runTransM . trExpr) es
          y    = runTransM $ trOutput $ nodeEnvOut nEnv
-         ins = map (Set.toList . getArgSet) es
+         ins = map getArgList es
      insE <- mapM (mapM lookupVar) ins
      insN <- mapM (mapM getN) insE
      inpDefs  <- mapM (\(x, n, e, eTr) ->
                         declareConditionalAssign
-                        inpActive (const $ const $ getBottom x) x (getArgSet e) n False eTr)
+                        inpActive (const $ const $ getBottom x) x (getArgList e) n False eTr)
                  $ zip4 (nodeEnvIn nEnv) insN es esTr
      return (y, inpDefs)
 
@@ -290,8 +290,8 @@ declareTransition activeCond (StateTransition x e) =
   do xVar     <- lookupVar x
      let e'      = runTransM $ trExpr e
          defExpr = mkTyped (AtExpr (AtomVar x)) $ varDefType xVar
-         args    = Set.union (getArgSet e) (getArgSet defExpr)
-     argsE <- mapM lookupVar $ Set.toList args
+         args    = getArgList defExpr ++ getArgList e
+     argsE <- mapM lookupVar args
      argsN <- mapM getN argsE
      declareConditionalAssign activeCond (runTransM $ trExpr defExpr) xVar args argsN True e'
 
@@ -304,7 +304,7 @@ declareConditionalAssign :: Ident i =>
                             Maybe (i, TypedExpr)
                             -> (Env i -> [(i, TypedExpr)] -> TypedExpr)
                             -> TypedExpr
-                            -> Set i
+                            -> [i]
                             -> [Int]
                             -> Bool
                             -> (Env i -> [(i, TypedExpr)] -> TypedExpr)
@@ -315,16 +315,16 @@ declareConditionalAssign activeCond defaultExpr x as ns succ ef =
     Just (ident, c)  -> do
       condN <- getN c
       let condExpr = mkTyped (AtExpr (AtomVar (ident))) $ varDefType c
-          arg      = getArgSet condExpr
+          arg      = getArgList condExpr
           condVar  = runTransM $ trExpr condExpr
-      declareDef x (Set.union as arg) ([condN] ++ ns) succ (\env t -> liftIte (condVar env t) (ef env t) (defaultExpr env t))
+      declareDef x (arg ++ as) ([condN] ++ ns) succ (\env t -> liftIte (condVar env t) (ef env t) (defaultExpr env t))
 
 -- | Creates a definition for a given variable. Whereby a function to
 -- manipulate the stream position at which it is defined is used (normally
 -- id or succ' to define instances or state transitions).
 -- The second argument /x/ is the stream to be defined and the last
 -- argument (/ef/) is a function that generates the defining expression.
-declareDef :: Ident i => TypedExpr -> Set i -> [Int] -> Bool ->
+declareDef :: Ident i => TypedExpr -> [i] -> [Int] -> Bool ->
               (Env i -> [(i, TypedExpr)] -> TypedExpr) -> DeclM i Definition
 declareDef x as ns succ ef =
   do env         <- get
@@ -332,7 +332,7 @@ declareDef x as ns succ ef =
      xN          <- getN x
      ann         <- getTypedAnnotation $ [xN] ++ ns
      d           <- defFunc defType ann
-                    $ \a -> liftRel (.==.) (head a) $ ef env $ zip ((Set.toList as) ++ [error "Last argument must not be evaluated!"]) (tail a)
+                    $ \a -> liftRel (.==.) (head a) $ ef env $ zip (as ++ [error "Last argument must not be evaluated!"]) (tail a)
      let argsN   = ([xN] ++ ns)
      putTerm argsN d
      return $ ensureDefinition argsN succ d
@@ -508,18 +508,18 @@ declareLocations activeCond s defaultExprs locations =
       do defaultExpr    <- getDefault defaults x locs
          (res, inpDefs) <- declareLocDef active s defaultExpr locs
          xVar           <- lookupVar x
-         argss          <- lift $ mapM locArgSet locs
+         argss          <- lift $ mapM locArgList locs
          let xBottom    = const $ const $ getBottom xVar
-             args       = Set.unions argss
-         argsE          <- mapM lookupVar $ Set.toList args
+             args       = concat argss
+         argsE          <- mapM lookupVar args
          argsN          <- lift $ mapM getN (argsE ++ [s])
          def            <-
-           lift $ declareConditionalAssign active xBottom xVar (Set.insert (fromString "dummyForLocEnum") args) argsN False res
+           lift $ declareConditionalAssign active xBottom xVar (args ++ [fromString "dummyForLocEnum"]) argsN False res
          return $ inpDefs ++ [def]
       where
-        locArgSet (_,InstantExpr _ e) = return $ getArgSet e
-        locArgSet (_,NodeUsage _ n _) = do nEnv <- lookupNode n
-                                           return $ Map.keysSet (nodeEnvOut nEnv)
+        locArgList (_,InstantExpr _ e) = return $ getArgList e
+        locArgList (_,NodeUsage _ n _) = do nEnv <- lookupNode n
+                                            return $ Map.keys (nodeEnvOut nEnv)
 
     declareLocTransitions :: Ident i =>
                              Maybe (i, TypedExpr)
@@ -529,11 +529,11 @@ declareLocations activeCond s defaultExprs locations =
       do res         <- trLocTransition s locs
          xVar     <- lookupVar x
          let defExpr    = mkTyped (AtExpr (AtomVar x)) $ varDefType xVar
-             args       = Set.unions $ (map (\(_,StateTransition _ e) -> getArgSet e) locs) ++ [getArgSet defExpr]
-         argsE          <- mapM lookupVar $ Set.toList args
+             args       = concat $ (map (\(_,StateTransition _ e) -> getArgList e) locs) ++ [getArgList defExpr]
+         argsE          <- mapM lookupVar args
          argsN          <- lift $ mapM getN (argsE ++ [s])
          def         <-
-           lift $ declareConditionalAssign active (runTransM $ trExpr defExpr) xVar (Set.insert (fromString "dummyForLocEnum") args) argsN True res
+           lift $ declareConditionalAssign active (runTransM $ trExpr defExpr) xVar (args ++ [fromString "dummyForLocEnum"]) argsN True res
          return def
 
     getDefault defaults x locs =
@@ -624,7 +624,7 @@ mkLocationActivationCond activeCond e l =
      lift $ putVar activeVar
      argN <- lift $ getN e
      def <- lift $ declareConditionalAssign activeCond
-            (const $ const $ BoolExpr $ constant False) activeVar Set.empty [argN] False cond
+            (const $ const $ BoolExpr $ constant False) activeVar [] [argN] False cond
      return (fromString condName, activeVar, def)
 
 -- | Creates two equations for the edges. The first calculates
@@ -649,10 +649,10 @@ mkTransitionEq activeCond locationEnumTy locationEnumConstrs act sel es bot =
                            AtomVar sel) locationEnumTy) . Map.toList
                            $ foldr addEdge Map.empty es
                        inst = InstantExpr act e
-                       args = getArgSet e
+                       args = getArgList e
                    (res, []) <- trInstant (error "no activation condition") inst
                    xVar <- lookupVar act
-                   argsE <- mapM lookupVar $ Set.toList args
+                   argsE <- mapM lookupVar args
                    argsN <- mapM getN argsE
                    def <- declareConditionalAssign activeCond (const $ const $ bot) xVar args argsN False res
                    return [def]
@@ -660,8 +660,8 @@ mkTransitionEq activeCond locationEnumTy locationEnumConstrs act sel es bot =
        xVar     <- lookupVar sel
        let e'      = runTransM $ trExpr (mkTyped (AtExpr $ AtomVar act) locationEnumTy)
            defExpr = mkTyped (AtExpr (AtomVar sel)) $ varDefType xVar
-           args    = Set.union (getArgSet (mkTyped (AtExpr $ AtomVar act) locationEnumTy)) (getArgSet defExpr)
-       argsE <- mapM lookupVar $ Set.toList args
+           args    = (getArgList defExpr) ++ (getArgList (mkTyped (AtExpr $ AtomVar act) locationEnumTy))
+       argsE <- mapM lookupVar args
        argsN <- mapM getN argsE
        declareConditionalAssign activeCond (runTransM $ trExpr defExpr) xVar args argsN True e'
      return $ stateDef ++ [stateTr]
@@ -729,14 +729,14 @@ assertInit (x, e) =
 declarePrecond :: Ident i => Maybe (i, TypedExpr) -> Expr i -> DeclM i Definition
 declarePrecond activeCond e =
   do env      <- get
-     let args = getArgSet e
-     argsE    <- mapM lookupVar $ Set.toList args
+     let args = getArgList e
+     argsE    <- mapM lookupVar args
      argsN    <- mapM getN argsE
      ann      <- getTypedAnnotation argsN
      d        <- case activeCond of
-       Nothing -> defFunc boolT ann $ \a -> runTransM (trExpr e) env (zip (Set.toList $ args) a)
+       Nothing -> defFunc boolT ann $ \a -> runTransM (trExpr e) env $ zip args a
        Just (ident, c) -> defFunc boolT ann $
-                 \a -> (flip (flip runTransM env) (zip (Set.toList $ args) a))
+                 \a -> (flip (flip runTransM env) (zip args a))
 		       (trExpr e >>= \e' ->
                          return $ liftBool2 (.=>.) c e')
      putTerm argsN d
@@ -785,17 +785,17 @@ askStreamPos :: TransM i StreamPos
 askStreamPos = asks fst
 -}
 
-getArgSet :: Ident i => Expr i -> Set i
-getArgSet expr = case untyped expr of
-  AtExpr (AtomConst c)  -> Set.empty
-  AtExpr (AtomVar x)    -> Set.singleton x
-  AtExpr (AtomEnum x)   -> Set.empty
-  LogNot e              -> getArgSet e
-  Expr2 op e1 e2        -> Set.union (getArgSet e1) (getArgSet e2)
-  Ite c e1 e2           -> Set.unions [getArgSet c, getArgSet e1, getArgSet e2]
-  ProdCons (Prod es)    -> foldr (Set.union . getArgSet) Set.empty es
-  Project x i           -> Set.singleton x
-  Match e pats -> Set.unions $ [getArgSet e] ++ map (\(Pattern _ x) -> getArgSet x) pats
+getArgList :: Ident i => Expr i ->  [i]
+getArgList expr = case untyped expr of
+  AtExpr (AtomConst c)  -> []
+  AtExpr (AtomVar x)    -> [x]
+  AtExpr (AtomEnum x)   -> []
+  LogNot e              -> getArgList e
+  Expr2 op e1 e2        -> getArgList e2 ++ getArgList e1
+  Ite c e1 e2           -> getArgList e2 ++ getArgList e1 ++ getArgList c
+  ProdCons (Prod es)    -> foldr ((++) . getArgList) [] es
+  Project x i           -> [x]
+  Match e pats -> concat $ [getArgList e] ++ map (\(Pattern _ x) -> getArgList x) pats
 
 -- we do no further type checks since this
 -- has been done beforehand.
