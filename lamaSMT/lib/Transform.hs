@@ -38,6 +38,7 @@ import Prelude hiding (mapM)
 import Data.Traversable
 import Data.Foldable (foldlM, foldrM)
 import Data.Monoid
+import Data.Maybe
 
 import Control.Monad.Trans.Class
 import Control.Monad.State (StateT(..), MonadState(..), gets)
@@ -510,7 +511,7 @@ declareLocations activeCond s defaultExprs locations =
          xVar           <- lookupVar x
          argss          <- lift $ mapM locArgList locs
          let xBottom    = const $ const $ getBottom xVar
-             args       = concat argss
+             args       = concat argss ++ maybe [] getArgList defaultExpr
          argsE          <- mapM lookupVar args
          argsN          <- lift $ mapM getN (argsE ++ [s])
          def            <-
