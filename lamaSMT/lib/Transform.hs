@@ -509,12 +509,14 @@ declareLocations activeCond s defaultExprs locations =
          xVar           <- lookupVar x
          argss          <- lift $ mapM locArgList locs
          let xBottom    = const $ const $ getBottom xVar
-             args       = concat $ map (\(s, _) -> s) argss ++ [maybe [] getArgList defaultExpr]
-
-             argsN      = snd $ foldl (\(_, a) (_, b) -> (Set.empty, a ++ b)) (Set.empty, []) argss
+             argDefault  = maybe [] getArgList defaultExpr
+         argDefaultE    <- mapM lookupVar argDefault
+         argDefaultN    <- lift $ mapM getN argDefaultE
+         let args       = concat $ map fst argss ++ [argDefault]
+             argsN      = concat $ map snd argss ++ [argDefaultN]
          argsNs         <- lift $ getN s
          def            <-
-           lift $ declareConditionalAssign active xBottom xVar (args ++[fromString "dummyForLocEnum"]) (argsN ++ [argsNs])False res
+           lift $ declareConditionalAssign active xBottom xVar (args ++ [fromString "dummyForLocEnum"]) (argsN ++ [argsNs]) False res
          return $ inpDefs ++ [def]
       where
         locArgList (_,InstantExpr _ e) = do 
