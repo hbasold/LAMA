@@ -204,7 +204,7 @@ declareNode active nName nDecl =
            declareDecls activeCond automNodes $ nodeDecls n
          outDecls <- declareVarList $ nodeOutputs n
          ins <- mapM (lookupVar . varIdent) . declsInput $ nodeDecls n
-         let outs = Map.fromList outDecls
+         let outs = outDecls
          modifyVars $ Map.union (Map.fromList outDecls)
          flowDefs <- declareFlow activeCond $ nodeFlow n
          automDefs <-
@@ -245,9 +245,9 @@ declareInstantDef activeCond inst@(NodeUsage x n _) =
   do (outp, inpDefs) <- trInstant activeCond inst
      xVar            <- lookupVar x
      nEnv            <- lookupNode n
-     outN            <- mapM getN $ nodeEnvOut nEnv
+     outN            <- mapM (\(_, e) -> getN e) $ nodeEnvOut nEnv
      outpDef         <- declareConditionalAssign
-                        activeCond (const $ const $ getBottom xVar) xVar (Map.keys $ nodeEnvOut nEnv) (Map.elems outN) False outp
+                        activeCond (const $ const $ getBottom xVar) xVar (map fst $ nodeEnvOut nEnv) outN False outp
      return $ inpDefs ++ [outpDef]
 
 -- | Translates an instant definition into a function which can be
@@ -269,10 +269,10 @@ trInstant inpActive (NodeUsage _ n es) =
                  $ zip4 (nodeEnvIn nEnv) insN es esTr
      return (y, inpDefs)
 
-trOutput :: Ident i => Map i (TypedExpr) -> TransM i (TypedExpr)
-trOutput map = do
+trOutput :: Ident i => [(i, TypedExpr)] -> TransM i (TypedExpr)
+trOutput m = do
                  s <- ask
-                 outList <- mapM (trOutput' s) (Map.toList map)
+                 outList <- mapM (trOutput' s) m
                  return $ mkProdExpr outList
                where
                  trOutput' s (i, te) = case lookup i (fst s) of
@@ -525,9 +525,9 @@ declareLocations activeCond s defaultExprs locations =
                                           argsN <- mapM getN argsE
                                           return (args, argsN)
         locArgList (_,NodeUsage _ n _) = do nEnv  <- lookupNode n
-                                            let args = Map.keys (nodeEnvOut nEnv)
-                                            argsN <- mapM getN $ nodeEnvOut nEnv
-                                            return (args, Map.elems argsN)
+                                            let args = map fst $ nodeEnvOut nEnv
+                                            argsN <- mapM (getN . snd) $ nodeEnvOut nEnv
+                                            return (args, argsN)
 
     declareLocTransitions :: Ident i =>
                              Maybe (i, TypedExpr)

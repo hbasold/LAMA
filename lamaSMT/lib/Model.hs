@@ -43,7 +43,7 @@ data Model i = Model
 
 data NodeModel i = NodeModel
                    { nodeModelIn :: [ValueStream]
-                   , nodeModelOut :: Map i ValueStream
+                   , nodeModelOut :: [ValueStream]
                    , nodeModelVars :: Model i
                    } deriving Show
 
@@ -59,7 +59,7 @@ prettyNodes = vcat . map (\(x, n) -> (ptext $ identString x) <+> prettyNodeModel
 prettyNodeModel :: Ident i => NodeModel i -> Doc
 prettyNodeModel m = braces . nest 2 $
   text "Inputs:" $+$ nest 2 (vcat . map prettyStream $ nodeModelIn m) $+$
-  text "Outputs:" $+$ nest 2 (vcat . map prettyStream $ Map.elems $ nodeModelOut m) $+$
+  text "Outputs:" $+$ nest 2 (vcat . map prettyStream $ nodeModelOut m) $+$
   prettyModel (nodeModelVars m)
 
 prettyStream :: ValueStream -> Doc
@@ -88,7 +88,7 @@ getModel' env =
 
 getNodeModel :: NodeEnv i -> ModelM (NodeModel i)
 getNodeModel (NodeEnv i o e) =
-  NodeModel <$> mapM getVarModel i <*> getVarsModel o <*> getModel' e
+  NodeModel <$> mapM getVarModel i <*> mapM (getVarModel . snd) o <*> getModel' e
 
 getVarsModel :: Map i (TypedExpr) -> ModelM (Map i ValueStream)
 getVarsModel = mapM getVarModel
