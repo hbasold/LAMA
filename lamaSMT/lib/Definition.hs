@@ -43,7 +43,7 @@ data ProgDefs = ProgDefs
 
 data Term =
   BoolTerm [Int] (SMTFunction [TypedExpr] Bool)
-  | IntTerm [Int] (SMTFunction [TypedExpr] Int)
+  | IntTerm [Int] (SMTFunction [TypedExpr] Integer)
   | RealTerm [Int] (SMTFunction [TypedExpr] Rational)
   deriving (Show, Ord, Eq)
 

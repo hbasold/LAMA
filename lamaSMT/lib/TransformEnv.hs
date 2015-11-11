@@ -50,7 +50,8 @@ data Env i = Env
            , varEnv :: VarEnv i
            , currAutomatonIndex :: Integer
            , varList :: [TypedExpr]
-           , instSet :: Set Term
+           , instSetBool :: Set Term
+           , instSetInt :: Set Term
            , natImpl :: NatImplementation
            , enumImpl :: EnumImplementation
            }
@@ -59,7 +60,7 @@ emptyVarEnv :: VarEnv i
 emptyVarEnv = VarEnv Map.empty Map.empty
 
 emptyEnv :: NatImplementation -> EnumImplementation -> Env i
-emptyEnv = Env Map.empty Map.empty Map.empty emptyVarEnv 0 [] Set.empty
+emptyEnv = Env Map.empty Map.empty Map.empty emptyVarEnv 0 [] Set.empty Set.empty
 
 type DeclM i = StateT (Env i) (ErrorT String SMT)
 
@@ -80,7 +81,11 @@ getN x = do vars <- gets varList
 
 putTerm :: Ident i => [Int] -> TypedFunc -> DeclM i ()
 putTerm argsN (BoolFunc t) = 
-  modify $ \env -> env { instSet = Set.insert (BoolTerm argsN t) (instSet env) }
+  modify $ \env -> env { instSetBool = Set.insert (BoolTerm argsN t) (instSetBool env) }
+putTerm argsN (IntFunc t) = 
+  modify $ \env -> env { instSetInt = Set.insert (IntTerm argsN t) (instSetInt env) }
+putTerm argsN _ = 
+  modify $ \env -> env
 
 putEnumAnn :: Ident i => Map i (SMTAnnotation SMTEnum) -> DeclM i ()
 putEnumAnn eAnns =

@@ -63,7 +63,7 @@ instance StrategyClass Invar where
           n1  <- freshVars vars
           assumeTrace defs (n0, n1)
           let s0 = InductState baseK (vars, k1) (n0, n1)
-                     $ constructRs (instSet env) (GroundType BoolT)
+                     $ constructRs (instSetBool env) (GroundType BoolT)
           (r, hints) <- runWriterT
                 $ (flip evalStateT s0)
                 $ check' indOpts (getModel $ varEnv env) defs (Map.singleton baseK vars)
