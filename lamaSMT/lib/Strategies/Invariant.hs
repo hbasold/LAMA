@@ -35,10 +35,11 @@ data GenerateHints =
 data Invar = Invar
                { depth :: Maybe Natural
                , printProgress :: Bool
+               , printInvCount :: Bool
                , generateHints :: GenerateHints }
 
 instance StrategyClass Invar where
-  defaultStrategyOpts = Invar Nothing False NoHints
+  defaultStrategyOpts = Invar Nothing False False NoHints
 
   readOption (stripPrefix "depth=" -> Just d) indOpts =
     case d of
@@ -46,6 +47,8 @@ instance StrategyClass Invar where
       _     -> indOpts { depth = Just $ read d }
   readOption "progress" indOpts =
     indOpts { printProgress = True }
+  readOption "invariant-count" indOpts =
+    indOpts { printInvCount = True }
   readOption (stripPrefix "hints" -> Just r) indOpts =
     case (stripPrefix "=" r) of
          Nothing    -> indOpts { generateHints = LastInductionStep }
@@ -100,6 +103,7 @@ check' :: Invar
 check' indOpts getModel defs pastVars =
   do InductState{..} <- get
      liftIO $ when (printProgress indOpts) (putStrLn $ "Depth " ++ show kVal)
+     liftIO $ when (printInvCount indOpts) (putStrLn $ "Number of Invariants: " ++ (show $ length rs))
      rBMC <- bmcStep getModel defs pastVars kDefs
      case rBMC of
        Just m -> return $ Failure kVal m
