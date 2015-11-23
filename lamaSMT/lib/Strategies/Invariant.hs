@@ -144,17 +144,16 @@ filterRs :: MonadSMT m => [(Term, Term)] -> ([TypedExpr], [TypedExpr]) -> m [(Te
 filterRs rs@(r:rss) args = liftSMT $ do push
                                         assertRs args rs
                                         r <- checkSat
-                                        trace (show r ) $ if r
-                                           then do model <- mapM (\(BoolExpr s) -> getValue s) $ fst args
-                                                   let model' = map (\s -> BoolExpr $ constant s) model
+                                        if r
+                                           then do model <- mapM getTypedValue $ fst args
                                                    pop
-                                                   filtered <- filterRs' model' rs
+                                                   filtered <- filterRs' model rs
                                                    filterRs filtered args
                                            else pop >> return rs
 filterRs [] _ = liftSMT $ return []
 
 filterRs' :: MonadSMT m => [TypedExpr] -> [(Term, Term)] -> m [(Term, Term)]
-filterRs' model (r:rs) = liftSMT $ do trace (show r) $ push
+filterRs' model (r:rs) = liftSMT $ do push
                                       assertR model r
                                       e <- checkSat
                                       pop

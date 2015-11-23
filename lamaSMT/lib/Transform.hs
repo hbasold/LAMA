@@ -53,18 +53,6 @@ import Definition
 import TransformEnv
 import Internal.Monads
 
--- | Gets an "undefined" value for a given type of expression.
--- The expression itself is not further analysed.
--- FIXME: Make behaviour configurable, i.e. bottom can be some
--- default value or a left open stream
--- (atm it does the former).
-getBottom :: TypedExpr -> TypedExpr
-getBottom (BoolExpr _)     = BoolExpr $ constant False
-getBottom (IntExpr _)      = IntExpr  $ constant 0xdeadbeef
-getBottom (RealExpr _)     = RealExpr . constant $ fromInteger 0xdeadbeef
-getBottom (EnumExpr e) = EnumExpr e --evtl. TODO
-getBottom (ProdExpr strs)  = ProdExpr $ fmap getBottom strs
-
 -- | Transforms a LAMA program into a set of formulas which is
 -- directly declared and a set of defining functions. Those functions
 -- can be used to define a cycle by giving it the point in time.

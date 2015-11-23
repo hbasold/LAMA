@@ -56,6 +56,18 @@ data Env i = Env
            , enumImpl :: EnumImplementation
            }
 
+-- | Gets an "undefined" value for a given type of expression.
+-- The expression itself is not further analysed.
+-- FIXME: Make behaviour configurable, i.e. bottom can be some
+-- default value or a left open stream
+-- (atm it does the former).
+getBottom :: TypedExpr -> TypedExpr
+getBottom (BoolExpr _)     = BoolExpr $ constant False
+getBottom (IntExpr _)      = IntExpr  $ constant 0xdeadbeef
+getBottom (RealExpr _)     = RealExpr . constant $ fromInteger 0xdeadbeef
+getBottom (EnumExpr e) = EnumExpr e --evtl. TODO
+getBottom (ProdExpr strs)  = ProdExpr $ fmap getBottom strs
+
 emptyVarEnv :: VarEnv i
 emptyVarEnv = VarEnv Map.empty Map.empty
 
@@ -86,6 +98,11 @@ putTerm argsN (IntFunc t) =
   modify $ \env -> env { instSetInt = Set.insert (IntTerm argsN t) (instSetInt env) }
 putTerm argsN _ = 
   modify $ \env -> env
+
+getTypedValue :: MonadSMT m => TypedExpr -> m (TypedExpr)
+getTypedValue (BoolExpr s) = liftSMT $ getValue s >>= return . BoolExpr . constant
+getTypedValue (IntExpr s) = liftSMT $ getValue s >>= return . IntExpr . constant
+getTypedValue e = liftSMT $ return $ getBottom e
 
 putEnumAnn :: Ident i => Map i (SMTAnnotation SMTEnum) -> DeclM i ()
 putEnumAnn eAnns =
