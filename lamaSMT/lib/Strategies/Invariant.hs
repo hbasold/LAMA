@@ -65,8 +65,7 @@ instance StrategyClass Invar where
           n0  <- freshVars vars
           n1  <- freshVars vars
           assumeTrace defs (n0, n1)
-          let s0 = InductState baseK (vars, k1) (n0, n1)
-                     $ constructRs (instSetBool env) (GroundType BoolT)
+          let s0 = InductState baseK (vars, k1) (n0, n1) $ PosetGraph [instSetBool env] []
           (r, hints) <- runWriterT
                 $ (flip evalStateT s0)
                 $ check' indOpts (getModel $ varEnv env) defs (Map.singleton baseK vars)
@@ -84,10 +83,10 @@ checkStep defs vars =
 
 -- | Holds current depth k and definitions of last k and n
 data InductState = InductState
-                   { kVal  :: Natural
-                   , kDefs :: ([TypedExpr], [TypedExpr])
-                   , nDefs :: ([TypedExpr], [TypedExpr])
-                   , rs    :: [(Term, Term)] }
+                   { kVal     :: Natural
+                   , kDefs    :: ([TypedExpr], [TypedExpr])
+                   , nDefs    :: ([TypedExpr], [TypedExpr])
+                   , binPoset :: PosetGraph }
 type KInductM i = StateT InductState (WriterT (Hints i) SMTErr)
 
 -- | Checks the program against its invariant. If the invariant
@@ -103,13 +102,13 @@ check' :: Invar
 check' indOpts getModel defs pastVars =
   do InductState{..} <- get
      liftIO $ when (printProgress indOpts) (putStrLn $ "Depth " ++ show kVal)
-     liftIO $ when (printInvCount indOpts) (putStrLn $ "Number of Invariants: " ++ (show $ length rs))
+     --liftIO $ when (printInvCount indOpts) (putStrLn $ "Number of Invariants: " ++ (show $ length rs))
      rBMC <- bmcStep getModel defs pastVars kDefs
      case rBMC of
        Just m -> return $ Failure kVal m
        Nothing ->
-         do rs' <- filterRs rs kDefs
-            modify $ \indSt -> indSt { rs = rs' }
+         do rs' <- filterC binPoset kDefs
+            --modify $ \indSt -> indSt { rs = rs' }
             let n0 = fst nDefs
                 n1 = snd nDefs
             n2 <- freshVars n1
@@ -140,16 +139,17 @@ check' indOpts getModel defs pastVars =
          put $ indState { kVal = k', kDefs = (k1, k2) }
          check' indOpts getModel defs pastVars'
 
-filterRs :: MonadSMT m => [(Term, Term)] -> ([TypedExpr], [TypedExpr]) -> m [(Term, Term)]
-filterRs rs@(r:rss) args = liftSMT $ do push
-                                        assertRs args rs
-                                        r <- checkSat
-                                        if r
-                                           then do model <- mapM getTypedValue $ fst args
-                                                   pop
-                                                   filtered <- filterRs' model rs
-                                                   filterRs filtered args
-                                           else pop >> return rs
+filterC :: MonadSMT m => PosetGraph -> ([TypedExpr], [TypedExpr]) -> m PosetGraph
+filterC g@(PosetGraph v e) args = liftSMT $ do push
+                                               assertPosetGraph args g
+                                               r <- checkSat
+                                               if r
+                                                  then do model <- mapM getTypedValue $ fst args
+                                                          pop
+                                                          --filtered <- filterRs' model rs
+                                                          --filterRs filtered args
+                                                          return g
+                                                  else pop >> return g
 filterRs [] _ = liftSMT $ return []
 
 filterRs' :: MonadSMT m => [TypedExpr] -> [(Term, Term)] -> m [(Term, Term)]

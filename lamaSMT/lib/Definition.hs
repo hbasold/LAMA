@@ -47,6 +47,23 @@ data Term =
   | RealTerm [Int] (SMTFunction [TypedExpr] Rational)
   deriving (Show, Ord, Eq)
 
+type PosetGraphNode = [Term]
+
+data PosetGraph = PosetGraph
+                  { vertices :: [PosetGraphNode]
+                  , edges    :: [(PosetGraphNode, PosetGraphNode)]
+                  }
+
+assertPosetGraph :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> PosetGraph -> m [()]
+assertPosetGraph i (PosetGraph vertices edges) = do mapM (\v -> mapM (\a -> assertRelation (fst i) (a, head v) (.==.)) (tail v)) vertices
+                                                    mapM (\(a, b) -> assertRelation (fst i) (head a, head b) (.=>.)) edges
+                                                   
+
+assertRelation :: MonadSMT m => [TypedExpr] -> (Term, Term) -> (SMTExpr Bool -> SMTExpr Bool -> SMTExpr Bool) -> m ()
+assertRelation i (BoolTerm argsf f, BoolTerm argsg g) r =
+  liftSMT $ assert ((f `app` (lookupArgs argsf False (i, i))) `r`
+    (g `app` (lookupArgs argsg False (i, i))))
+
 constructRs :: Set Term -> Type i -> [(Term, Term)]
 constructRs ts (GroundType BoolT) = [(x,y) | x@(BoolTerm _ _) <- Set.toList ts,
                                       y@(BoolTerm _ _) <- Set.toList ts, x /= y]
