@@ -50,8 +50,8 @@ data Env i = Env
            , varEnv :: VarEnv i
            , currAutomatonIndex :: Integer
            , varList :: [TypedExpr]
-           , instSetBool :: Set Term
-           , instSetInt :: Set Term
+           , instSetBool :: [Term]
+           , instSetInt :: [Term]
            , natImpl :: NatImplementation
            , enumImpl :: EnumImplementation
            }
@@ -72,7 +72,7 @@ emptyVarEnv :: VarEnv i
 emptyVarEnv = VarEnv Map.empty Map.empty
 
 emptyEnv :: NatImplementation -> EnumImplementation -> Env i
-emptyEnv = Env Map.empty Map.empty Map.empty emptyVarEnv 0 [] Set.empty Set.empty
+emptyEnv = Env Map.empty Map.empty Map.empty emptyVarEnv 0 [] [] []
 
 type DeclM i = StateT (Env i) (ErrorT String SMT)
 
@@ -93,9 +93,9 @@ getN x = do vars <- gets varList
 
 putTerm :: Ident i => [Int] -> TypedFunc -> DeclM i ()
 putTerm argsN (BoolFunc t) = 
-  modify $ \env -> env { instSetBool = Set.insert (BoolTerm argsN t) (instSetBool env) }
+  modify $ \env -> env { instSetBool = instSetBool env ++ [BoolTerm argsN t] }
 putTerm argsN (IntFunc t) = 
-  modify $ \env -> env { instSetInt = Set.insert (IntTerm argsN t) (instSetInt env) }
+  modify $ \env -> env { instSetBool = instSetBool env ++ [IntTerm argsN t] }
 putTerm argsN _ = 
   modify $ \env -> env
 
