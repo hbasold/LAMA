@@ -51,12 +51,16 @@ type PosetGraphNode = [Term]
 
 data PosetGraph = PosetGraph
                   { vertices :: [PosetGraphNode]
-                  , edges    :: [(PosetGraphNode, PosetGraphNode)]
+                  , edges    :: [(Int, Int)]
                   }
 
 assertPosetGraph :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> PosetGraph -> m [()]
-assertPosetGraph i (PosetGraph vertices edges) = do mapM (\v -> mapM (\a -> assertRelation (fst i) (a, head v) (.==.)) (tail v)) vertices
-                                                    mapM (\(a, b) -> assertRelation (fst i) (head a, head b) (.=>.)) edges
+assertPosetGraph i (PosetGraph vertices edges) = do mapM assertPosetGraph' vertices
+                                                    --mapM (\(a, b) -> assertRelation (fst i) (head (vertices !! a), head (vertices !! b)) (.=>.)) edges
+                                                    return []
+  where
+    assertPosetGraph' (v:vs) = mapM (\a -> assertRelation (fst i) (a, v) (.==.)) vs
+    assertPosetGraph' _ = return []
                                                    
 
 assertRelation :: MonadSMT m => [TypedExpr] -> (Term, Term) -> (SMTExpr Bool -> SMTExpr Bool -> SMTExpr Bool) -> m ()

@@ -104,6 +104,13 @@ getTypedValue (BoolExpr s) = liftSMT $ getValue s >>= return . BoolExpr . consta
 getTypedValue (IntExpr s) = liftSMT $ getValue s >>= return . IntExpr . constant
 getTypedValue e = liftSMT $ return $ getBottom e
 
+evalTerm :: ([TypedExpr], [TypedExpr]) -> Term -> Bool
+evalTerm i (BoolTerm args f) = let smtTrue  = constant True
+                                   smtFalse = constant False
+                               in case f `app` (lookupArgs args False i) of
+                                 smtTrue  -> True
+                                 smtFalse -> False
+
 putEnumAnn :: Ident i => Map i (SMTAnnotation SMTEnum) -> DeclM i ()
 putEnumAnn eAnns =
   modify $ \env -> env { enumAnn = (enumAnn env) `Map.union` eAnns }

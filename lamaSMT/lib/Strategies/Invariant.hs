@@ -8,7 +8,7 @@ import Lang.LAMA.Types
 
 import Data.Natural
 import NatInstance
-import Data.List (stripPrefix)
+import Data.List (stripPrefix, partition)
 import qualified Data.Map as Map
 import Data.Map (Map)
 
@@ -107,8 +107,8 @@ check' indOpts getModel defs pastVars =
      case rBMC of
        Just m -> return $ Failure kVal m
        Nothing ->
-         do rs' <- filterC binPoset kDefs
-            --modify $ \indSt -> indSt { rs = rs' }
+         do binPoset' <- filterC binPoset kDefs
+            modify $ \indSt -> indSt { binPoset = binPoset' }
             let n0 = fst nDefs
                 n1 = snd nDefs
             n2 <- freshVars n1
@@ -120,16 +120,17 @@ check' indOpts getModel defs pastVars =
                  return (r, h)
             tell hints
             let k' = succ kVal
-            if indSuccess
-               then return Success
-               else case depth indOpts of
-                    Nothing -> cont k' pastVars
-                    Just l  ->
-                      if k' > l
-                      then return $ Unknown ("Cancelled induction. Found no"
-                                              ++" proof within given depth")
-                                    []
-                      else cont k' pastVars
+            --if indSuccess
+               --then return Success
+               --else case depth indOpts of
+            case depth indOpts of
+              Nothing -> cont k' pastVars
+              Just l  ->
+                if k' > l
+                  then return $ Unknown ("Cancelled induction. Found no"
+                                           ++" proof within given depth")
+                                 []
+                  else cont k' pastVars
   where
     cont k' pastVars =
       do indState@InductState{..} <- get
@@ -142,13 +143,15 @@ check' indOpts getModel defs pastVars =
 filterC :: MonadSMT m => PosetGraph -> ([TypedExpr], [TypedExpr]) -> m PosetGraph
 filterC g@(PosetGraph v e) args = liftSMT $ do push
                                                assertPosetGraph args g
-                                               r <- checkSat
+                                               r  <- checkSat
                                                if r
                                                   then do model <- mapM getTypedValue $ fst args
+                                                          let v' = map (partition $ evalTerm args) v
+                                                              e' = [(a+(length v'), a) | a <- [0..(length v')-1]]
                                                           pop
                                                           --filtered <- filterRs' model rs
                                                           --filterRs filtered args
-                                                          return g
+                                                          return $ trace "hi" $ PosetGraph (map fst v' ++ map snd v') e'
                                                   else pop >> return g
 filterRs [] _ = liftSMT $ return []
 
