@@ -104,12 +104,8 @@ getTypedValue (BoolExpr s) = liftSMT $ getValue s >>= return . BoolExpr . consta
 getTypedValue (IntExpr s) = liftSMT $ getValue s >>= return . IntExpr . constant
 getTypedValue e = liftSMT $ return $ getBottom e
 
-evalTerm :: ([TypedExpr], [TypedExpr]) -> Term -> Bool
-evalTerm i (BoolTerm args f) = let smtTrue  = constant True
-                                   smtFalse = constant False
-                               in case f `app` (lookupArgs args False i) of
-                                 smtTrue  -> True
-                                 smtFalse -> False
+evalTerm :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> Term -> m Bool
+evalTerm i (BoolTerm args f) = liftSMT $ getValue $ f `app` (lookupArgs args False i)
 
 putEnumAnn :: Ident i => Map i (SMTAnnotation SMTEnum) -> DeclM i ()
 putEnumAnn eAnns =
