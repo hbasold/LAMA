@@ -15,7 +15,7 @@ import Data.Map (Map)
 import Control.Monad.State (MonadState(..), StateT, evalStateT, modify)
 import Control.Monad.Writer (MonadWriter(..), WriterT, runWriterT)
 import Control.Monad.IO.Class
-import Control.Monad (when)
+import Control.Monad (when, filterM)
 import Control.Arrow ((&&&))
 
 import Language.SMTLib2
@@ -142,30 +142,14 @@ check' indOpts getModel defs pastVars =
 
 filterC :: MonadSMT m => PosetGraph -> ([TypedExpr], [TypedExpr]) -> m PosetGraph
 filterC g@(PosetGraph v e) args = liftSMT $ do push
-                                               assertPosetGraph args g
+                                               assertPosetGraph args $trace (show g) $ g
                                                r  <- checkSat
-                                               if r
-                                                  then do model <- mapM getTypedValue $ fst args
-                                                          let v' = map (partition $ evalTerm args) v
-                                                              e' = [(a+(length v'), a) | a <- [0..(length v')-1]]
+                                               trace (show r) $ if r
+                                                  then do v1' <- mapM (filterM $ evalTerm args) v
+                                                          v2' <- mapM (filterM (\a -> evalTerm args a >>= return . not)) v
                                                           pop
-                                                          --filtered <- filterRs' model rs
-                                                          --filterRs filtered args
-                                                          return $ trace "hi" $ PosetGraph (map fst v' ++ map snd v') e'
+                                                          return $ trace (show v1') $ trace (show v2') $ PosetGraph (v1' ++ v2') e
                                                   else pop >> return g
-filterRs [] _ = liftSMT $ return []
-
-filterRs' :: MonadSMT m => [TypedExpr] -> [(Term, Term)] -> m [(Term, Term)]
-filterRs' model (r:rs) = liftSMT $ do push
-                                      assertR model r
-                                      e <- checkSat
-                                      pop
-                                      rest <- filterRs' model rs
-                                      if e
-                                         then return $ [r] ++ rest
-                                         else return rest
-filterRs' model [] = liftSMT $ return []
-
 -- | If requested, gets a model for the induction step
 retrieveHints :: SMT (Model i)
               -> Invar
