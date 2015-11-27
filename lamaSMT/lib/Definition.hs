@@ -53,32 +53,25 @@ data PosetGraph = PosetGraph
                   { vertices :: [PosetGraphNode]
                   , edges    :: [(Int, Int)]
                   }
+  deriving (Show, Ord, Eq)
 
 assertPosetGraph :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> PosetGraph -> m [()]
-assertPosetGraph i (PosetGraph vertices edges) = do mapM assertPosetGraph' vertices
-                                                    --mapM (\(a, b) -> assertRelation (fst i) (head (vertices !! a), head (vertices !! b)) (.=>.)) edges
+assertPosetGraph i (PosetGraph vertices edges) = do let vcs = map assertPosetGraph' vertices
+                                                        vc = foldl (.&&.) (head vcs) $ tail vcs
+                                                    liftSMT $ assert (not' vc)
                                                     return []
   where
-    assertPosetGraph' (v:vs) = mapM (\a -> assertRelation (fst i) (a, v) (.==.)) vs
-    assertPosetGraph' _ = return []
+    assertPosetGraph' (v:vs) = let c = map (\a -> mkRelation (fst i) (a, v) (.==.)) vs in
+                                 foldl (.&&.) (head c) $ tail c
                                                    
 
-assertRelation :: MonadSMT m => [TypedExpr] -> (Term, Term) -> (SMTExpr Bool -> SMTExpr Bool -> SMTExpr Bool) -> m ()
-assertRelation i (BoolTerm argsf f, BoolTerm argsg g) r =
-  liftSMT $ assert ((f `app` (lookupArgs argsf False (i, i))) `r`
-    (g `app` (lookupArgs argsg False (i, i))))
+mkRelation :: [TypedExpr] -> (Term, Term) -> (SMTExpr Bool -> SMTExpr Bool -> SMTExpr Bool) -> SMTExpr Bool
+mkRelation i (BoolTerm argsf f, BoolTerm argsg g) r =
+  (f `app` lookupArgs argsf False (i, i)) `r` (g `app` lookupArgs argsg False (i, i))
 
 constructRs :: Set Term -> Type i -> [(Term, Term)]
 constructRs ts (GroundType BoolT) = [(x,y) | x@(BoolTerm _ _) <- Set.toList ts,
                                       y@(BoolTerm _ _) <- Set.toList ts, x /= y]
-
-mkRelation :: ([TypedExpr], [TypedExpr]) -> (Term, Term) -> SMTExpr Bool
-mkRelation i (BoolTerm argsf f, BoolTerm argsg g) = (f `app` (lookupArgs argsf False i)) .=>.
-                                                       (g `app` (lookupArgs argsg False i))
-
-assertRs :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> [(Term, Term)] -> m ()
-assertRs i rs = let c = (map (mkRelation i) rs) in
-                  liftSMT $ assert (not' $ foldl (.&&.) (head c) $ tail c)
 
 assertR :: MonadSMT m => [TypedExpr] -> (Term, Term) -> m ()
 assertR i (BoolTerm argsf f, BoolTerm argsg g) =
