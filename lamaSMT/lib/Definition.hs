@@ -7,6 +7,10 @@ import Language.SMTLib2 as SMT
 import Data.Array as Arr
 import qualified Data.Set as Set
 import Data.Set (Set)
+import qualified Data.List as List
+import Data.List ((\\))
+import Control.Monad.State
+import Control.Arrow ((***))
 
 import LamaSMTTypes
 import Internal.Monads
@@ -48,21 +52,48 @@ data Term =
   deriving (Show, Ord, Eq)
 
 type PosetGraphNode = [Term]
+type PosetGraphEdge = (Int, Int)
 
 data PosetGraph = PosetGraph
                   { vertices :: [PosetGraphNode]
-                  , edges    :: [(Int, Int)]
+                  , edges    :: [PosetGraphEdge]
                   }
   deriving (Show, Ord, Eq)
 
+type GraphM = State [PosetGraphEdge]
+
+buildNextGraph :: ([PosetGraphNode], [PosetGraphNode]) -> [PosetGraphEdge] -> PosetGraph
+buildNextGraph (v0, v1) e = let leaves = getLeaves e
+                                i = length v0
+                                firstEdges = [(a, a+i) | a <- [0..i-1]] ++ e
+                                otherEdges = evalState (traverseGraph i leaves) e
+                                in PosetGraph (v0 ++ v1) (firstEdges ++ otherEdges)
+  where
+    getLeaves e = [snd $ head e]
+
+traverseGraph :: Int -> [Int] -> GraphM [PosetGraphEdge]
+traverseGraph i (l:ls) = do edgesLeft <- get
+                            let p = getPredecessors l edgesLeft
+                            put $ edgesLeft \\ p
+                            top <- traverseGraph i (map fst p)
+                            rest <- traverseGraph i ls
+                            return $ map ((+i) *** (+i)) p ++ top ++ rest
+  where
+    getPredecessors l e = [(x,y) | (x,y) <- e, y == l]
+                            
+traverseGraph _ [] = return []
+
 assertPosetGraph :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> PosetGraph -> m [()]
 assertPosetGraph i (PosetGraph vertices edges) = do let vcs = map assertPosetGraph' vertices
-                                                        vc = foldl (.&&.) (head vcs) $ tail vcs
+                                                        --vc = foldl (.&&.) (head vcs) $ tail vcs
+                                                        vc = foldl (.&&.) (constant True) vcs
                                                     liftSMT $ assert (not' vc)
                                                     return []
   where
+    assertPosetGraph' (v:[]) = constant True
     assertPosetGraph' (v:vs) = let c = map (\a -> mkRelation (fst i) (a, v) (.==.)) vs in
                                  foldl (.&&.) (head c) $ tail c
+    assertPosetGraph' [] = constant True
                                                    
 
 mkRelation :: [TypedExpr] -> (Term, Term) -> (SMTExpr Bool -> SMTExpr Bool -> SMTExpr Bool) -> SMTExpr Bool

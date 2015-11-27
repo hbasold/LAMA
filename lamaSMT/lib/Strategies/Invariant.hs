@@ -65,7 +65,7 @@ instance StrategyClass Invar where
           n0  <- freshVars vars
           n1  <- freshVars vars
           assumeTrace defs (n0, n1)
-          let s0 = InductState baseK (vars, k1) (n0, n1) $ PosetGraph [instSetBool env] []
+          let s0 = InductState baseK (vars, k1) (n0, n1) $ PosetGraph [map fst . filter (\(x,y) -> (mod y 100) == 0) $ zip (instSetBool env) [1..]] []
           (r, hints) <- runWriterT
                 $ (flip evalStateT s0)
                 $ check' indOpts (getModel $ varEnv env) defs (Map.singleton baseK vars)
@@ -145,10 +145,10 @@ filterC g@(PosetGraph v e) args = liftSMT $ do push
                                                assertPosetGraph args $trace (show g) $ g
                                                r  <- checkSat
                                                trace (show r) $ if r
-                                                  then do v1' <- mapM (filterM $ evalTerm args) v
-                                                          v2' <- mapM (filterM (\a -> evalTerm args a >>= return . not)) v
-                                                          pop
-                                                          return $ trace (show v1') $ trace (show v2') $ PosetGraph (v1' ++ v2') e
+                                                 then do v0' <- mapM (filterM (\a -> evalTerm args a >>= return . not)) v
+                                                         v1' <- mapM (filterM $ evalTerm args) v
+                                                         pop
+                                                         return ${- trace (show v0') $ trace (show v1') $-} buildNextGraph (v0', v1') e
                                                   else pop >> return g
 -- | If requested, gets a model for the induction step
 retrieveHints :: SMT (Model i)
