@@ -35,7 +35,7 @@ data GenerateHints =
 data Invar = Invar
                { depth :: Maybe Natural
                , printProgress :: Bool
-               , printInvCount :: Bool
+               , printInvStats :: Bool
                , generateHints :: GenerateHints }
 
 instance StrategyClass Invar where
@@ -47,8 +47,8 @@ instance StrategyClass Invar where
       _     -> indOpts { depth = Just $ read d }
   readOption "progress" indOpts =
     indOpts { printProgress = True }
-  readOption "invariant-count" indOpts =
-    indOpts { printInvCount = True }
+  readOption "invariant-stats" indOpts =
+    indOpts { printInvStats = True }
   readOption (stripPrefix "hints" -> Just r) indOpts =
     case (stripPrefix "=" r) of
          Nothing    -> indOpts { generateHints = LastInductionStep }
@@ -65,7 +65,7 @@ instance StrategyClass Invar where
           n0  <- freshVars vars
           n1  <- freshVars vars
           assumeTrace defs (n0, n1)
-          let s0 = InductState baseK (vars, k1) (n0, n1) $ PosetGraph [map fst . filter (\(x,y) -> (mod y 100) == 0) $ zip (instSetBool env) [1..]] []
+          let s0 = InductState baseK (vars, k1) (n0, n1) $ PosetGraph [map fst . filter (\(x,y) -> (mod y 1) == 0) $ zip (instSetBool env) [1..]] []
           (r, hints) <- runWriterT
                 $ (flip evalStateT s0)
                 $ check' indOpts (getModel $ varEnv env) defs (Map.singleton baseK vars)
@@ -102,7 +102,7 @@ check' :: Invar
 check' indOpts getModel defs pastVars =
   do InductState{..} <- get
      liftIO $ when (printProgress indOpts) (putStrLn $ "Depth " ++ show kVal)
-     --liftIO $ when (printInvCount indOpts) (putStrLn $ "Number of Invariants: " ++ (show $ length rs))
+     liftIO $ when (printInvStats indOpts) (putStrLn $ "Boolean Invariants:\n" ++ (show $ length $ vertices binPoset) ++ " Node(s) with\n" ++ (show $ length $ concat $ vertices binPoset) ++ " Element(s) and\n" ++ (show $ length $ edges binPoset) ++ " Edge(s)\n")
      rBMC <- bmcStep getModel defs pastVars kDefs
      case rBMC of
        Just m -> return $ Failure kVal m
@@ -142,7 +142,7 @@ check' indOpts getModel defs pastVars =
 
 filterC :: MonadSMT m => PosetGraph -> ([TypedExpr], [TypedExpr]) -> m PosetGraph
 filterC g@(PosetGraph v e) args = liftSMT $ do push
-                                               assertPosetGraph args $trace (show g) $ g
+                                               assertPosetGraph args g
                                                r  <- checkSat
                                                trace (show r) $ if r
                                                  then do v0' <- mapM (filterM (\a -> evalTerm args a >>= return . not)) v
