@@ -142,7 +142,7 @@ check' indOpts getModel defs pastVars =
 
 filterC :: MonadSMT m => PosetGraph -> ([TypedExpr], [TypedExpr]) -> m PosetGraph
 filterC g@(PosetGraph v e) args = liftSMT $ do push
-                                               assertPosetGraph args g
+                                               assertPosetGraph not' args g
                                                r  <- checkSat
                                                trace (show r) $ if r
                                                  then do v0' <- mapM (filterM (\a -> evalTerm args a >>= return . not)) v

@@ -93,17 +93,17 @@ traverseGraph i (l:ls) = do edgesLeft <- get
                             
 traverseGraph _ [] = return []
 
-assertPosetGraph :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> PosetGraph -> m [()]
-assertPosetGraph i (PosetGraph vertices edges) = do let vcs = map assertPosetGraph' vertices
-                                                        --vc = foldl (.&&.) (head vcs) $ tail vcs
-                                                        vc = foldl (.&&.) (constant True) vcs
-                                                    liftSMT $ assert (not' vc)
-                                                    return []
+assertPosetGraph :: MonadSMT m => (SMTExpr Bool -> SMTExpr Bool) -> ([TypedExpr], [TypedExpr]) -> PosetGraph -> m [()]
+assertPosetGraph f i (PosetGraph vertices edges) = do let vcs = map assertPosetGraphVs vertices
+                                                          vc = foldl (.&&.) (constant True) $ vcs ++ assertPosetGraphEs edges
+                                                      liftSMT $ assert (f vc)
+                                                      return []
   where
-    assertPosetGraph' (v:[]) = constant True
-    assertPosetGraph' (v:vs) = let c = map (\a -> mkRelation (fst i) (a, v) (.==.)) vs in
-                                 foldl (.&&.) (head c) $ tail c
-    assertPosetGraph' [] = constant True
+    assertPosetGraphVs (v:[]) = constant True
+    assertPosetGraphVs (v:vs) = let c = map (\a -> mkRelation (fst i) (a, v) (.==.)) vs in
+                                  foldl (.&&.) (head c) $ tail c
+    assertPosetGraphVs [] = constant True
+    assertPosetGraphEs es = map (\(a,b) -> mkRelation (fst i) (head (vertices !! a), head (vertices !! b)) (.=>.)) es
                                                    
 
 mkRelation :: [TypedExpr] -> (Term, Term) -> (SMTExpr Bool -> SMTExpr Bool -> SMTExpr Bool) -> SMTExpr Bool
