@@ -70,7 +70,7 @@ buildNextGraph (v0, v1) e = let leaves = getLeaves e
                                 in removeEmptyNodes $ PosetGraph (v0 ++ v1) (firstEdges ++ otherEdges)
   where
     getLeaves e = [snd $ head e]
-
+removeEmptyNodes :: PosetGraph -> PosetGraph
 removeEmptyNodes (PosetGraph vs es) = PosetGraph (map snd vs') $ newEdges es
   where
     vs' = filter (\(_,v) -> not $ null v) $ zip [0..] vs
@@ -93,11 +93,11 @@ traverseGraph i (l:ls) = do edgesLeft <- get
                             
 traverseGraph _ [] = return []
 
-assertPosetGraph :: MonadSMT m => (SMTExpr Bool -> SMTExpr Bool) -> ([TypedExpr], [TypedExpr]) -> PosetGraph -> m [()]
+assertPosetGraph :: MonadSMT m => (SMTExpr Bool -> SMTExpr Bool) -> ([TypedExpr], [TypedExpr]) -> PosetGraph -> m ()
 assertPosetGraph f i (PosetGraph vertices edges) = do let vcs = map assertPosetGraphVs vertices
                                                           vc = foldl (.&&.) (constant True) $ vcs ++ assertPosetGraphEs edges
                                                       liftSMT $ assert (f vc)
-                                                      return []
+                                                      --return
   where
     assertPosetGraphVs (v:[]) = constant True
     assertPosetGraphVs (v:vs) = let c = map (\a -> mkRelation (fst i) (a, v) (.==.)) vs in
