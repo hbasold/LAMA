@@ -105,8 +105,9 @@ check' :: Invar
 check' indOpts getModel defs pastVars pastNs =
   do InductState{..} <- get
      liftIO $ when (printProgress indOpts) (putStrLn $ "Depth " ++ show kVal)
-     let statGraph = fromMaybe (PosetGraph [] []) binPoset
-     liftIO $ when (printInvStats indOpts) (putStrLn $ "Boolean Invariants:\n" ++ (show $ length $ vertices statGraph) ++ " Node(s) with\n" ++ (show $ length $ concat $ vertices statGraph) ++ " Element(s) and\n" ++ (show $ length $ edges statGraph) ++ " Edge(s)\n")
+     let statGraph = fromMaybe (fromMaybe (PosetGraph [] []) binInv) binPoset
+     let statMessage = if (isJust binPoset) then "Possible " else "Actual "
+     liftIO $ when (printInvStats indOpts) (putStrLn $ statMessage ++ "Boolean Invariants:\n" ++ (show $ length $ vertices statGraph) ++ " Node(s) with\n" ++ (show $ length $ concat $ vertices statGraph) ++ " Element(s) and\n" ++ (show $ length $ edges statGraph) ++ " Edge(s)\n")
      rBMC <- bmcStep getModel defs pastVars kDefs
      case rBMC of
        Just m -> return $ Failure kVal m
@@ -119,10 +120,11 @@ check' indOpts getModel defs pastVars pastNs =
               do binPoset' <- filterC (fromJust binPoset) kDefs
                  case binPoset' of
                    Just b  -> modify $ \indSt -> indSt { binPoset = Just b }
-                   Nothing -> do binInv' <- checkInvariantStep (fromJust binPoset) (n1,n2) pastNs
+                   Nothing -> do binInv' <- checkInvariantStep (fromJust binPoset) (n1,n2) pastNs defs
+                                 assertPosetGraph id (n1, n2) binInv'
                                  modify $ \indSt -> indSt { binPoset = Nothing, binInv = Just binInv' }
             assertPrecond (n0, n1) $ invariantDef defs
-            when (isJust binInv) $ assertPosetGraph id (n0, n1) $ fromJust binInv
+            when (isJust binInv) $ assertPosetGraph id (n1, n2) $ fromJust binInv
             modify $ \indSt -> indSt { nDefs = (n1, n2) }
             (indSuccess, hints) <- liftSMT . stack $
               do r <- checkStep defs (n1, n2)
@@ -162,17 +164,26 @@ filterC g@(PosetGraph v e) args =
                          return $ Just $ buildNextGraph (v0', v1') e
                   else pop >> return Nothing
 
-checkInvariantStep :: MonadSMT m => PosetGraph -> ([TypedExpr], [TypedExpr]) -> [[TypedExpr]] -> m PosetGraph
-checkInvariantStep g args pastVars = liftSMT $ do
+checkInvariantStep :: MonadSMT m => PosetGraph -> ([TypedExpr], [TypedExpr]) -> [[TypedExpr]] -> ProgDefs -> m PosetGraph
+checkInvariantStep g args pastVars defs = liftSMT $ do
   push
   mapM (\a -> assertPosetGraph id (a,a) g) $ pastVars
-  assertPosetGraph not' args g
-  r <- checkSat
-  trace (show r) $ if r
-    then do v' <- mapM (filterM $ evalTerm args) $ vertices g
-            pop
-            return $ removeEmptyNodes $ PosetGraph v' $ edges g
-     else pop >> return g
+  assumeTrace defs args
+  g' <- checkInvariantStep' g
+  pop
+  return g'
+  where
+    checkInvariantStep' graph@(PosetGraph v e) = do
+      push
+      assertPosetGraph not' args graph
+      r <- checkSat
+      trace (show r) $ if r
+        then do v0' <- mapM (filterM (\a -> evalTerm args a >>= return . not)) v
+                v1' <- mapM (filterM $ evalTerm args) v
+                pop
+                graph' <- checkInvariantStep' $ buildNextGraph (v0', v1') e
+                return graph'
+         else pop >> return graph
 
 -- | If requested, gets a model for the induction step
 retrieveHints :: SMT (Model i)
