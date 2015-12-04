@@ -8,7 +8,7 @@ Description:
 Executable test-lama
   default-language: Haskell2010
   build-depends: base, containers, mtl, bytestring, natural-numbers,
-    transformers, pretty, array, HUnit, language-lama
+    transformers, pretty, array, HUnit, language-lama, fgl >= 5.5.0.0
   hs-source-dirs: test lib
   GHC-Options: -Wall
   other-modules:

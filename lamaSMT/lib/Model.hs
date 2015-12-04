@@ -8,6 +8,9 @@ import Data.Natural
 import Text.PrettyPrint hiding ((<>))
 import Data.Array as Arr
 import Data.Monoid
+import Data.Maybe (fromJust)
+import qualified Data.List as List
+import Data.List (elemIndex)
 
 import Control.Monad.Reader (MonadReader(..), ReaderT(..))
 import Control.Applicative (Applicative(..), (<$>))
@@ -61,20 +64,23 @@ prettyNodeModel m = braces . nest 2 $
 
 prettyStream :: ValueStream -> Doc
 prettyStream (BoolVStream s) = prettyStreamVals s
-prettyStream (IntVStream s) = prettyStreamVals s
+prettyStream (IntVStream s)  = prettyStreamVals s
 prettyStream (RealVStream s) = prettyStreamVals s
 prettyStream (EnumVStream s) = prettyStreamVals s
-prettyStream (ProdVStream s) = parens . hcat . punctuate comma . fmap prettyStream $ Arr.elems s
+prettyStream (ProdVStream s)
+             = parens . hcat . punctuate comma . fmap prettyStream $ Arr.elems s
 
 prettyStreamVals :: Show t => ValueStreamT t -> Doc
-prettyStreamVals = cat . punctuate (char ',')
-               . map (\(n, v) -> (integer $ toInteger n) <+> text "->" <+> text (show v))
-               . Map.toList
+prettyStreamVals
+        = cat . punctuate (char ',')
+          . map (\(n, v) ->
+                (integer $ toInteger n) <+> text "->" <+> text (show v))
+          . Map.toList
 
-getModel :: VarEnv i -> Map Natural StreamPos -> SMT (Model i)
-getModel env = runReaderT (getModel' env)
+getModel :: VarEnv i -> Map Natural [TypedExpr] -> SMT (Model i)
+getModel env m = runReaderT (getModel' env) m
 
-type ModelM = ReaderT (Map Natural StreamPos) SMT
+type ModelM = ReaderT (Map Natural [TypedExpr]) SMT
 
 getModel' :: VarEnv i -> ModelM (Model i)
 getModel' env =
@@ -82,33 +88,67 @@ getModel' env =
 
 getNodeModel :: NodeEnv i -> ModelM (NodeModel i)
 getNodeModel (NodeEnv i o e) =
-  NodeModel <$> mapM getVarModel i <*> mapM getVarModel o <*> getModel' e
+  NodeModel <$> mapM getVarModel i <*> mapM (getVarModel . snd) o <*> getModel' e
 
-getVarsModel :: Map i (TypedStream i) -> ModelM (Map i ValueStream)
+getVarsModel :: Map i (TypedExpr) -> ModelM (Map i ValueStream)
 getVarsModel = mapM getVarModel
 
-getVarModel :: TypedStream i -> ModelM ValueStream
-getVarModel (BoolStream   s) = BoolVStream <$> getStreamValue s
-getVarModel (IntStream    s) = IntVStream <$> getStreamValue s
-getVarModel (RealStream   s) = RealVStream <$> getStreamValue s
-getVarModel (EnumStream _ s) = EnumVStream <$> getStreamValue s
-getVarModel (ProdStream   s) = ProdVStream <$> mapM getVarModel s
+--TODO
+getVarModel :: TypedExpr -> ModelM ValueStream
+getVarModel (BoolExpr s) = do vars   <- ask
+                              let i = fromJust $ List.elemIndex (BoolExpr s) (vars Map.! 0)
+                              stream <- liftSMT $ mapM (\l -> getValue $ unBool $ l !! i) vars
+                              return $ BoolVStream stream
+getVarModel (IntExpr s)  = do vars   <- ask
+                              let i = fromJust $ List.elemIndex (IntExpr s) (vars Map.! 0)
+                              stream <- liftSMT $ mapM (\l -> getValue $ unInt $ l !! i) vars
+                              return $ IntVStream stream
+getVarModel (RealExpr s) = do vars   <- ask
+                              let i = fromJust $ List.elemIndex (RealExpr s) (vars Map.! 0)
+                              stream <- liftSMT $ mapM (\l -> getValue $ unReal $ l !! i) vars
+                              return $ RealVStream stream
+getVarModel (EnumExpr s) = do vars   <- ask
+                              let i = fromJust $ List.elemIndex (EnumExpr s) (vars Map.! 0)
+                              stream <- liftSMT $ mapM (\l -> getValue $ unEnum $ l !! i) vars
+                              return $ EnumVStream stream
+getVarModel (ProdExpr s) = do vars <- ask
+                              let i = fromJust $ List.elemIndex (ProdExpr s) (vars Map.! 0)
+                                  newArg = Map.map (\l -> Arr.elems $ unProd $ l !! i) vars
+                              stream <- liftSMT $ mapM (\a -> runReaderT (getVarModel a) newArg) s
+                              return $ ProdVStream stream
 
-getStreamValue :: SMTValue t => Stream t -> ModelM (ValueStreamT t)
-getStreamValue s
-  = ask >>=
-    liftSMT . mapM (\i -> getValue $ s `app` i)
-
-scadeScenario :: Ident i => Program i -> [String] -> Natural -> Model i -> Doc
-scadeScenario p varPath lastIndex m =
+scadeScenario :: Ident i =>
+              Program i -> [String] -> Model i -> Doc
+scadeScenario p varPath m =
   let progInputNames = map varIdent . declsInput $ progDecls p
       progInputs = (Map.fromList $ zip progInputNames (repeat ()))
+      lastIndex = case fmap fst . Map.minView . modelVars $ m of
+        Nothing -> 0
+        Just s -> getLastIndex s
       inputTraces = Map.toList $ (modelVars m) `Map.intersection` progInputs
       path = case varPath of
         [] -> mempty
         _ -> (hcat $ punctuate (text "::") $ map text varPath) <> text ("/")
   in scenario inputTraces path lastIndex 0
   where
+    -- | Retrieves the last defined index of a given stream
+    getLastIndex :: ValueStream -> Natural
+    getLastIndex (BoolVStream s) = highestIndex s
+    getLastIndex (IntVStream s)  = highestIndex s
+    getLastIndex (RealVStream s) = highestIndex s
+    getLastIndex (EnumVStream s) = highestIndex s
+     -- abuses that products are non-empty
+    getLastIndex (ProdVStream a) = getLastIndex (a ! 0)
+
+    -- | Usese that streams are given by maps and so we can use findMax to
+    -- get the highest defined index.
+    highestIndex :: ValueStreamT t -> Natural
+    highestIndex s
+      | Map.null s = 0
+      | otherwise  = fst $ Map.findMax s
+
+    -- | Creates a Doc for all indices i..n from inp, setting the variables
+    -- under path.
     scenario inp path n i
       | i <= n =
         let setOp = text "SSM::set"

@@ -6,7 +6,8 @@ module Lang.LAMA.Parser.ErrM where
 
 -- the Error monad: like Maybe type with error msgs
 
-import Control.Monad (MonadPlus(..), liftM)
+import Control.Monad (MonadPlus(..), liftM, ap)
+import Control.Applicative
 
 data Err a = Ok a | Bad String
   deriving (Read, Show, Eq, Ord)
@@ -16,6 +17,14 @@ instance Monad Err where
   fail        = Bad
   Ok a  >>= f = f a
   Bad s >>= f = Bad s
+
+instance Applicative Err where
+    pure  = return
+    (<*>) = ap
+
+instance Alternative Err where
+    (<|>) = mplus
+    empty = mzero
 
 instance Functor Err where
   fmap = liftM

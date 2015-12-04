@@ -9,7 +9,7 @@ Executable scade2lama
   default-language: Haskell2010
   Build-Depends: base, containers, language-scade, language-lama,
     transformers, placeholders, mtl, bytestring, split, pretty,
-    natural-numbers, syb, fgl
+    natural-numbers, syb, fgl >= 5.5.0.0
   Hs-Source-Dirs: . lib
   GHC-Options: -Wall
   other-modules:

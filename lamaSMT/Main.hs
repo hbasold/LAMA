@@ -5,7 +5,7 @@ module Main (main) where
 
 import qualified Data.ByteString.Lazy.Char8 as BL
 
-import Text.PrettyPrint (render)
+import Text.PrettyPrint (Doc, render, vcat, text, ($$))
 import Data.List.Split (splitOn)
 import Data.List (intercalate)
 import Data.Natural
@@ -204,11 +204,36 @@ runCheck progOpts = chooseSolver progOpts . checkError
                       -- ++ solverBase
   -- withPipe solverCmd []
 
-checkModel :: Ident i => Options -> Program i -> Maybe (Natural, Model i) -> IO ()
-checkModel _ _ Nothing = putStrLn "42"
-checkModel opts prog (Just (lastIndex, m)) =
+checkModel :: Ident i =>
+           Options
+           -> Program i
+           -> (StrategyResult i)
+           -> IO ()
+checkModel _ _ Success = putStrLn "42"
+checkModel opts prog (Failure lastIndex m) =
   do putStrLn ":-("
+     putStrLn $ "Found counterexample at depth " ++ show lastIndex
      when (optDumpModel opts) (putStrLn . render $ prettyModel m)
      case optScenarioFile opts of
        Nothing -> return ()
-       Just f -> writeFile f $ render $ scadeScenario prog (optTopNodePath opts) lastIndex m
+       Just f -> writeFile f $ render $ scadeScenario prog (optTopNodePath opts) m
+checkModel opts prog (Unknown what hints) =
+  do putStrLn ":-("
+     putStrLn what
+     when (optDumpModel opts)
+          (putStrLn . render . prettyHints $ hints)
+     case optScenarioFile opts of
+       Nothing -> return ()
+       Just f ->
+         mapM_ (\h ->
+                 writeFile (f ++ "_" ++ hintDescr h)
+                 . render
+                 $ scadeScenario prog (optTopNodePath opts) (hintModel h))
+               hints
+
+prettyHints :: Ident i => Hints i -> Doc
+prettyHints = vcat . map prettyHint
+  where
+    prettyHint h
+      = text ("Hint for " ++ (hintDescr h))
+        $$ prettyModel (hintModel h)
