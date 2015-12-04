@@ -67,9 +67,10 @@ buildNextGraph (v0, v1) e = let leaves = getLeaves e
                                 i = length v0
                                 firstEdges = [(a, a+i) | a <- [0..i-1]] ++ e
                                 otherEdges = evalState (traverseGraph i leaves) e
-                                in removeEmptyNodes $ PosetGraph (v0 ++ v1) (firstEdges ++ otherEdges)
+                                in removeUnreachableNodes $ removeEmptyNodes $ PosetGraph (v0 ++ v1) (firstEdges ++ otherEdges)
   where
     getLeaves e = [snd $ head e]
+
 removeEmptyNodes :: PosetGraph -> PosetGraph
 removeEmptyNodes (PosetGraph vs es) = PosetGraph (map snd vs') $ newEdges es
   where
@@ -80,6 +81,11 @@ removeEmptyNodes (PosetGraph vs es) = PosetGraph (map snd vs') $ newEdges es
                                        Nothing -> newEdges eds
                                        Just j -> [(i,j)] ++ newEdges eds
     newEdges [] = []
+
+removeUnreachableNodes :: PosetGraph -> PosetGraph
+removeUnreachableNodes (PosetGraph vs es) = PosetGraph (map snd (filter (\a -> (elem (fst a) nodesWithEdges) || (length (snd a) > 1)) $ zip [0..] vs)) es
+  where
+    nodesWithEdges = (fst $ unzip es) ++ (snd $ unzip es)
 
 traverseGraph :: Int -> [Int] -> GraphM [PosetGraphEdge]
 traverseGraph i (l:ls) = do edgesLeft <- get
