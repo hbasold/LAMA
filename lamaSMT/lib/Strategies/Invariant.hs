@@ -64,7 +64,7 @@ instance StrategyClass Invar where
           n0  <- freshVars vars
           n1  <- freshVars vars
           assumeTrace defs (n0, n1)
-          let s0 = InductState baseK (vars, k1) (n0, n1) (Just $ PosetGraph [map fst . filter (\(x,y) -> (mod y 1) == 0) $ zip (instSetBool env) [1..]] []) Nothing
+          let s0 = InductState baseK (vars, k1) (n0, n1) (initGraph $ instSetBool env) Nothing Nothing Nothing
           (r, hints) <- runWriterT
                 $ (flip evalStateT s0)
                 $ check' indOpts (getModel $ varEnv env) defs (Map.singleton baseK vars) [n0]
@@ -85,8 +85,10 @@ data InductState = InductState
                    { kVal     :: Natural
                    , kDefs    :: ([TypedExpr], [TypedExpr])
                    , nDefs    :: ([TypedExpr], [TypedExpr])
-                   , binPoset :: Maybe PosetGraph
-                   , binInv   :: Maybe PosetGraph }
+                   , binPoset :: Maybe Poset
+                   , binInv   :: Maybe Poset
+                   , intPoset :: Maybe Poset
+                   , intInv   :: Maybe Poset }
 type KInductM i = StateT InductState (WriterT (Hints i) SMTErr)
 
 -- | Checks the program against its invariant. If the invariant
@@ -105,7 +107,7 @@ check' indOpts getModel defs pastVars pastNs =
      liftIO $ when (printProgress indOpts) (putStrLn $ "Depth " ++ show kVal)
      let statGraph = fromMaybe (fromMaybe (PosetGraph [] []) binInv) binPoset
      let statMessage = if (isJust binPoset) then "Possible " else "Actual "
-     liftIO $ when (printInvStats indOpts) (putStrLn $ statMessage ++ "Boolean Invariants:\n" ++ (show $ length $ vertices statGraph) ++ " Node(s) with\n" ++ (show $ length $ concat $ vertices statGraph) ++ " Element(s) and\n" ++ (show $ length $ edges statGraph) ++ " Edge(s)\n")
+     --liftIO $ when (printInvStats indOpts) (putStrLn $ statMessage ++ "Boolean Invariants:\n" ++ (show $ length $ vertices statGraph) ++ " Node(s) with\n" ++ (show $ length $ concat $ vertices statGraph) ++ " Element(s) and\n" ++ (show $ length $ edges statGraph) ++ " Edge(s)\n")
      rBMC <- bmcStep getModel defs pastVars kDefs
      case rBMC of
        Just m -> return $ Failure kVal m
@@ -114,16 +116,9 @@ check' indOpts getModel defs pastVars pastNs =
                 n1 = snd nDefs
                 pastNs' = pastNs ++ [n1]
             n2 <- freshVars n1
-            when (isJust binPoset) $
-              do binPoset' <- filterC (fromJust binPoset) kDefs
-                 case binPoset' of
-                   Just b  -> modify $ \indSt -> indSt { binPoset = Just b }
-                   Nothing -> do binInv' <- checkInvariantStep (fromJust binPoset) (n1,n2) pastNs defs
-                                 assertPosetGraph id (n1, n2) binInv'
-                                 modify $ \indSt -> indSt { binPoset = Nothing, binInv = Just binInv' }
             assertPrecond (n0, n1) $ invariantDef defs
-            when (isJust binInv) $ assertPosetGraph id (n1, n2) $ fromJust binInv
             modify $ \indSt -> indSt { nDefs = (n1, n2) }
+            heuristicInvariants defs pastNs
             (indSuccess, hints) <- liftSMT . stack $
               do r <- checkStep defs (n1, n2)
                  h <- retrieveHints (getModel pastVars) indOpts kVal r
@@ -150,10 +145,34 @@ check' indOpts getModel defs pastVars pastNs =
          put $ indState { kVal = k', kDefs = (k1, k2) }
          check' indOpts getModel defs pastVars' pNs
 
-filterC :: MonadSMT m => PosetGraph -> ([TypedExpr], [TypedExpr]) -> m (Maybe PosetGraph)
+heuristicInvariants :: ProgDefs -> [[TypedExpr]] -> KInductM i ()
+heuristicInvariants defs pastNs = do
+  InductState{..} <- get
+  if (isJust binPoset)
+  then
+    do binPoset' <- filterC (fromJust binPoset) kDefs
+       case binPoset' of
+         Just b  -> modify $ \indSt -> indSt { binPoset = Just b }
+         Nothing -> do binInv' <- checkInvariantStep (fromJust binPoset) nDefs pastNs defs
+                       assertPoset id nDefs binInv'
+                       modify $ \indSt -> indSt { binPoset = Nothing, binInv = Just binInv' }
+  else
+    assertPoset id nDefs $ fromJust binInv
+  if (isJust intPoset)
+  then
+    do intPoset' <- filterC (fromJust intPoset) kDefs
+       case intPoset' of
+         Just i  -> modify $ \indSt -> indSt { intPoset = Just i }
+         Nothing -> do intInv' <- checkInvariantStep (fromJust intPoset) nDefs pastNs defs
+                       assertPoset id nDefs intInv'
+                       modify $ \indSt -> indSt { intPoset = Nothing, intInv = Just intInv' }
+  else
+    return ()--assertPoset id nDefs $ fromJust intInv
+
+filterC :: MonadSMT m => Poset -> ([TypedExpr], [TypedExpr]) -> m (Maybe Poset)
 filterC g@(PosetGraph v e) args =
   liftSMT $ do push
-               assertPosetGraph not' args g
+               assertPoset not' args g
                r  <- checkSat
                trace (show r) $ if r
                  then do v0' <- mapM (filterM (\a -> evalTerm args a >>= return . not)) v
@@ -162,10 +181,11 @@ filterC g@(PosetGraph v e) args =
                          return $ Just $ buildNextGraph (v0', v1') e
                   else pop >> return Nothing
 
-checkInvariantStep :: MonadSMT m => PosetGraph -> ([TypedExpr], [TypedExpr]) -> [[TypedExpr]] -> ProgDefs -> m PosetGraph
+checkInvariantStep :: MonadSMT m => Poset -> ([TypedExpr], [TypedExpr]) -> [[TypedExpr]] -> ProgDefs -> m Poset
+
 checkInvariantStep g args pastVars defs = liftSMT $ do
   push
-  mapM (\a -> assertPosetGraph id (a,a) g) $ pastVars
+  mapM (\a -> assertPoset id (a,a) g) $ pastVars
   assumeTrace defs args
   g' <- checkInvariantStep' g
   pop
@@ -173,7 +193,7 @@ checkInvariantStep g args pastVars defs = liftSMT $ do
   where
     checkInvariantStep' graph@(PosetGraph v e) = do
       push
-      assertPosetGraph not' args graph
+      assertPoset not' args graph
       r <- checkSat
       trace (show r) $ if r
         then do v0' <- mapM (filterM (\a -> evalTerm args a >>= return . not)) v
