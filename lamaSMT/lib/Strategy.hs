@@ -4,13 +4,11 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 module Strategy where
 
-import Data.Map (Map)
 import Data.Natural
 import Control.Monad.Error
 
 import Language.SMTLib2
 
-import LamaSMTTypes
 import Definition
 import TransformEnv
 import Model
@@ -33,12 +31,11 @@ class StrategyClass s where
            -> ProgDefs
            -> SMTErr (StrategyResult i)
 
-checkWithModel :: SMTAnnotation Natural
-               -> Strategy
+checkWithModel :: Strategy
                -> ProgDefs
                -> Env i
                -> SMTErr (StrategyResult i)
-checkWithModel natAnn (Strategy s) d env = check s env d
+checkWithModel (Strategy s) d env = check s env d
 
 readOptions' :: String -> Strategy -> Strategy
 readOptions' o (Strategy s) = Strategy $ readOption o s

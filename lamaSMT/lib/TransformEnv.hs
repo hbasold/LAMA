@@ -12,14 +12,10 @@ import Language.SMTLib2 as SMT
 
 import Data.Array as Arr
 import qualified Data.List as List
-import Data.List (elemIndex)
 import qualified Data.Map as Map
 import Data.Map (Map)
-import qualified Data.Set as Set
-import Data.Set (Set)
 import Prelude hiding (mapM)
 import Data.Traversable
-import Data.List (replicate)
 
 import Control.Monad.State (StateT(..), MonadState(..), modify, gets)
 import Control.Monad.Error (ErrorT(..), MonadError(..))

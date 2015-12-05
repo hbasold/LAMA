@@ -22,23 +22,20 @@ import Lang.LAMA.Typing.TypedStructure
 import Lang.LAMA.Types
 import Language.SMTLib2 as SMT
 import Language.SMTLib2.Internals (declareType, SMTExpr(Var))
-import Data.Unit
 import Data.String (IsString(..))
 import Data.Array as Arr
 
 import Data.Natural
 import NatInstance
 import qualified Data.Set as Set
-import Data.Set (Set, union, unions)
+import Data.Set (Set)
 import qualified Data.Map as Map
 import Data.Map (Map)
-import qualified Data.List as List
 import Data.List (zip4)
 import Prelude hiding (mapM)
 import Data.Traversable
 import Data.Foldable (foldlM, foldrM)
 import Data.Monoid
-import Data.Maybe
 
 import Control.Monad.Trans.Class
 import Control.Monad.State (StateT(..), MonadState(..), gets)
@@ -263,7 +260,7 @@ trOutput m = do
                  outList <- mapM (trOutput' s) m
                  return $ mkProdExpr outList
                where
-                 trOutput' s (i, te) = case lookup i (fst s) of
+                 trOutput' s (i, _) = case lookup i (fst s) of
                                        Nothing -> throwError $ "No argument (output) binding for " ++ identPretty i
                                        Just n -> return n
 

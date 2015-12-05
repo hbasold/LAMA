@@ -4,11 +4,8 @@ module Strategies.Invariant where
 
 import Debug.Trace
 
-import Lang.LAMA.Types
-
 import Data.Natural
-import NatInstance
-import Data.List (stripPrefix, partition)
+import Data.List (stripPrefix)
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe (fromMaybe, isJust, fromJust)
