@@ -24,6 +24,7 @@ import Language.SMTLib2
 import Strategy
 import LamaSMTTypes
 import Definition
+import Posets
 import TransformEnv
 import Model (Model, getModel)
 import Strategies.BMC

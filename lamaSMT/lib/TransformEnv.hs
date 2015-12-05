@@ -28,6 +28,7 @@ import SMTEnum
 import NatInstance
 import LamaSMTTypes
 import Definition
+import Posets
 import Internal.Monads
 
 data NodeEnv i = NodeEnv
