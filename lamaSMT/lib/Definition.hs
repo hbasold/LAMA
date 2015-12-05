@@ -83,9 +83,16 @@ removeEmptyNodes (PosetGraph vs es) = PosetGraph (map snd vs') $ newEdges es
     newEdges [] = []
 
 removeUnreachableNodes :: PosetGraph -> PosetGraph
-removeUnreachableNodes (PosetGraph vs es) = PosetGraph (map snd (filter (\a -> (elem (fst a) nodesWithEdges) || (length (snd a) > 1)) $ zip [0..] vs)) es
+removeUnreachableNodes (PosetGraph vs es) = PosetGraph (map snd vs') $ newEdges es
   where
+    vs' = filter (\a -> (elem (fst a) nodesWithEdges) || (length (snd a) > 1)) $ zip [0..] vs
     nodesWithEdges = (fst $ unzip es) ++ (snd $ unzip es)
+    newEdges ((a,b):eds) = case List.elemIndex a (map fst vs') of
+                           Nothing -> newEdges eds
+                           Just i -> case List.elemIndex b (map fst vs') of
+                                       Nothing -> newEdges eds
+                                       Just j -> [(i,j)] ++ newEdges eds
+    newEdges [] = []
 
 traverseGraph :: Int -> [Int] -> GraphM [PosetGraphEdge]
 traverseGraph i (l:ls) = do edgesLeft <- get
