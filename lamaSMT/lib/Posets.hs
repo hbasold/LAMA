@@ -17,24 +17,21 @@ import LamaSMTTypes
 import Internal.Monads
 import Definition
 
-data Term =
-  BoolTerm [Int] (SMTFunction [TypedExpr] Bool)
-  | IntTerm [Int] (SMTFunction [TypedExpr] Integer)
-  | RealTerm [Int] (SMTFunction [TypedExpr] Rational)
+data Term a = Term [Int] (SMTFunction [TypedExpr] a)
   deriving (Show, Ord, Eq)
 
-type GraphNode = [Term]
+type GraphNode = [Term Bool]
 type GraphEdge = (Int, Int)
-type Chain     = [Term]
+type Chain     = [Term Integer]
 
 data Poset =
   PosetGraph [GraphNode] [GraphEdge]
-  | PosetChains [Chain] (Map Term [Term])
+  | PosetChains [Chain] (Map (Term Integer) [Term Integer])
   deriving (Show, Ord, Eq)
 
 type GraphM = State [GraphEdge]
 
-initGraph :: [Term] -> Maybe Poset
+initGraph :: [Term Bool] -> Maybe Poset
 initGraph instSet = Just $ PosetGraph [instSet] []
 
 buildNextGraph :: ([GraphNode], [GraphNode]) -> [GraphEdge] -> Poset
@@ -95,6 +92,6 @@ assertPoset f i (PosetGraph vs es) = do let vcs = map assertPosetGraphVs vs
     assertPosetGraphEs ecs = map (\(a,b) -> mkRelation (fst i) (head (vs !! a), head (vs !! b)) (.=>.)) ecs
 
 
-mkRelation :: [TypedExpr] -> (Term, Term) -> (SMTExpr Bool -> SMTExpr Bool -> SMTExpr Bool) -> SMTExpr Bool
-mkRelation i (BoolTerm argsf f, BoolTerm argsg g) r =
+mkRelation :: SMTType a => [TypedExpr] -> (Term a, Term a) -> (SMTExpr a -> SMTExpr a -> SMTExpr Bool) -> SMTExpr Bool
+mkRelation i (Term argsf f, Term argsg g) r =
   (f `app` lookupArgs argsf False (i, i)) `r` (g `app` lookupArgs argsg False (i, i))

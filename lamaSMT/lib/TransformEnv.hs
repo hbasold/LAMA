@@ -47,8 +47,8 @@ data Env i = Env
            , varEnv :: VarEnv i
            , currAutomatonIndex :: Integer
            , varList :: [TypedExpr]
-           , instSetBool :: [Term]
-           , instSetInt :: [Term]
+           , instSetBool :: [Term Bool]
+           , instSetInt :: [Term Integer]
            , natImpl :: NatImplementation
            , enumImpl :: EnumImplementation
            }
@@ -90,9 +90,9 @@ getN x = do vars <- gets varList
 
 putTerm :: Ident i => [Int] -> TypedFunc -> DeclM i ()
 putTerm argsN (BoolFunc t) = 
-  modify $ \env -> env { instSetBool = instSetBool env ++ [BoolTerm argsN t] }
+  modify $ \env -> env { instSetBool = instSetBool env ++ [Term argsN t] }
 putTerm argsN (IntFunc t) = 
-  modify $ \env -> env { instSetBool = instSetBool env ++ [IntTerm argsN t] }
+  modify $ \env -> env { instSetInt = instSetInt env ++ [Term argsN t] }
 putTerm argsN _ = 
   modify $ \env -> env
 
@@ -101,8 +101,8 @@ getTypedValue (BoolExpr s) = liftSMT $ getValue s >>= return . BoolExpr . consta
 getTypedValue (IntExpr s) = liftSMT $ getValue s >>= return . IntExpr . constant
 getTypedValue e = liftSMT $ return $ getBottom e
 
-evalTerm :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> Term -> m Bool
-evalTerm i (BoolTerm args f) = liftSMT $ getValue $ f `app` (lookupArgs args False i)
+evalTerm :: SMTValue t => MonadSMT m => ([TypedExpr], [TypedExpr]) -> Term t -> m t
+evalTerm i (Term args f) = liftSMT $ getValue $ f `app` (lookupArgs args False i)
 
 putEnumAnn :: Ident i => Map i (SMTAnnotation SMTEnum) -> DeclM i ()
 putEnumAnn eAnns =
