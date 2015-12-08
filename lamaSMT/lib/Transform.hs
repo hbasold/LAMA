@@ -129,6 +129,7 @@ declareVar :: Ident i => Variable i -> DeclM i ((i, TypedExpr))
 declareVar (Variable x t) =
   do v    <- typedVar (identString x) t
      putVar v
+     putTerm v
      return (x, v)
   where
     typedVar :: Ident i =>
@@ -320,7 +321,7 @@ declareDef x as ns succ ef =
      d           <- defFunc defType ann
                     $ \a -> liftRel (.==.) (head a) $ ef env $ zip (as ++ [error "Last argument must not be evaluated!"]) (tail a)
      let argsN   = ([xN] ++ ns)
-     putTerm argsN d
+     --putTerm argsN d
      return $ ensureDefinition argsN succ d
 
 varDefType :: TypedExpr -> Type i
@@ -617,6 +618,7 @@ mkLocationActivationCond activeCond e l =
      let cond = \_env t -> BoolExpr $ (unEnum $ snd $ last t) .==. lEnum
      activeVar <- liftSMT $ fmap BoolExpr $ varNamed condName
      lift $ putVar activeVar
+     lift $ putTerm activeVar
      argN <- lift $ getN e
      def <- lift $ declareConditionalAssign activeCond
             (const $ const $ BoolExpr $ constant False) activeVar [] [argN] False cond
@@ -734,7 +736,7 @@ declarePrecond activeCond e =
                  \a -> (flip (flip runTransM env) (zip args a))
 		       (trExpr e >>= \e' ->
                          return $ liftBool2 (.=>.) c e')
-     putTerm argsN d
+     --putTerm argsN d
      return $ ensureDefinition argsN False d
 
 declareInvariant :: Ident i =>

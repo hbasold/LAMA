@@ -47,8 +47,8 @@ data Env i = Env
            , varEnv :: VarEnv i
            , currAutomatonIndex :: Integer
            , varList :: [TypedExpr]
-           , instSetBool :: [Term Bool]
-           , instSetInt :: [Term Integer]
+           , instSetBool :: [Term]
+           , instSetInt :: [Term]
            , natImpl :: NatImplementation
            , enumImpl :: EnumImplementation
            }
@@ -88,21 +88,25 @@ getN x = do vars <- gets varList
                           Nothing -> error $ "Could not be found in list of variables: " ++ show x
                           Just n -> n
 
-putTerm :: Ident i => [Int] -> TypedFunc -> DeclM i ()
-putTerm argsN (BoolFunc t) = 
-  modify $ \env -> env { instSetBool = instSetBool env ++ [Term argsN t] }
-putTerm argsN (IntFunc t) = 
-  modify $ \env -> env { instSetInt = instSetInt env ++ [Term argsN t] }
-putTerm argsN _ = 
-  modify $ \env -> env
+putTerm :: Ident i => TypedExpr -> DeclM i ()
+putTerm e@(BoolExpr s) = do
+  n <- getN e
+  modify $ \env -> env { instSetBool = instSetBool env ++ [BoolTerm n] }
+putTerm e@(IntExpr s) = do
+  n <- getN e
+  modify $ \env -> env { instSetInt = instSetInt env ++ [IntTerm n] }
+putTerm _ = return ()
 
 getTypedValue :: MonadSMT m => TypedExpr -> m (TypedExpr)
 getTypedValue (BoolExpr s) = liftSMT $ getValue s >>= return . BoolExpr . constant
 getTypedValue (IntExpr s) = liftSMT $ getValue s >>= return . IntExpr . constant
 getTypedValue e = liftSMT $ return $ getBottom e
 
-evalTerm :: SMTValue t => MonadSMT m => ([TypedExpr], [TypedExpr]) -> Term t -> m t
-evalTerm i (Term args f) = liftSMT $ getValue $ f `app` (lookupArgs args False i)
+evalBoolTerm :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> Term -> m Bool
+evalBoolTerm i (BoolTerm f) = liftSMT $ getValue $ unBool $ head $ lookupArgs [f] False i
+
+evalIntTerm :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> Term -> m Integer
+evalIntTerm i (IntTerm f) = liftSMT $ getValue $ unInt $ head $ lookupArgs [f] False i
 
 putEnumAnn :: Ident i => Map i (SMTAnnotation SMTEnum) -> DeclM i ()
 putEnumAnn eAnns =

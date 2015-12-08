@@ -175,8 +175,8 @@ filterC g@(PosetGraph v e) args =
                assertPoset not' args g
                r  <- checkSat
                trace (show r) $ if r
-                 then do v0' <- mapM (filterM (\a -> evalTerm args a >>= return . not)) v
-                         v1' <- mapM (filterM $ evalTerm args) v
+                 then do v0' <- mapM (filterM (\a -> evalBoolTerm args a >>= return . not)) v
+                         v1' <- mapM (filterM $ evalBoolTerm args) v
                          pop
                          return $ Just $ buildNextGraph (v0', v1') e
                   else pop >> return Nothing
@@ -196,8 +196,8 @@ checkInvariantStep g args pastVars defs = liftSMT $ do
       assertPoset not' args graph
       r <- checkSat
       trace (show r) $ if r
-        then do v0' <- mapM (filterM (\a -> evalTerm args a >>= return . not)) v
-                v1' <- mapM (filterM $ evalTerm args) v
+        then do v0' <- mapM (filterM (\a -> evalBoolTerm args a >>= return . not)) v
+                v1' <- mapM (filterM $ evalBoolTerm args) v
                 pop
                 graph' <- checkInvariantStep' $ buildNextGraph (v0', v1') e
                 return graph'

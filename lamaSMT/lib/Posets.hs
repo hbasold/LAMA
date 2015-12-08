@@ -17,21 +17,21 @@ import LamaSMTTypes
 import Internal.Monads
 import Definition
 
-data Term a = Term [Int] (SMTFunction [TypedExpr] a)
+data Term = BoolTerm Int | IntTerm Int
   deriving (Show, Ord, Eq)
 
-type GraphNode = [Term Bool]
+type GraphNode = [Term]
 type GraphEdge = (Int, Int)
-type Chain     = [Term Integer]
+type Chain     = [Term]
 
 data Poset =
   PosetGraph [GraphNode] [GraphEdge]
-  | PosetChains [Chain] (Map (Term Integer) [Term Integer])
+  | PosetChains [Chain] (Map Term [Term])
   deriving (Show, Ord, Eq)
 
 type GraphM = State [GraphEdge]
 
-initGraph :: [Term Bool] -> Maybe Poset
+initGraph :: [Term] -> Maybe Poset
 initGraph instSet = Just $ PosetGraph [instSet] []
 
 buildNextGraph :: ([GraphNode], [GraphNode]) -> [GraphEdge] -> Poset
@@ -86,12 +86,16 @@ assertPoset f i (PosetGraph vs es) = do let vcs = map assertPosetGraphVs vs
                                         liftSMT $ assert (f vc)
   where
     assertPosetGraphVs (_:[]) = constant True
-    assertPosetGraphVs (vc:vcs) = let c = map (\a -> mkRelation (fst i) (a, vc) (.==.)) vcs in
+    assertPosetGraphVs (vc:vcs) = let c = map (\a -> mkBoolRelation (fst i) (a, vc) (.==.)) vcs in
                                   foldl (.&&.) (head c) $ tail c
     assertPosetGraphVs [] = constant True
-    assertPosetGraphEs ecs = map (\(a,b) -> mkRelation (fst i) (head (vs !! a), head (vs !! b)) (.=>.)) ecs
+    assertPosetGraphEs ecs = map (\(a,b) -> mkBoolRelation (fst i) (head (vs !! a), head (vs !! b)) (.=>.)) ecs
 
 
-mkRelation :: SMTType a => [TypedExpr] -> (Term a, Term a) -> (SMTExpr a -> SMTExpr a -> SMTExpr Bool) -> SMTExpr Bool
-mkRelation i (Term argsf f, Term argsg g) r =
-  (f `app` lookupArgs argsf False (i, i)) `r` (g `app` lookupArgs argsg False (i, i))
+mkBoolRelation :: [TypedExpr] -> (Term, Term) -> (SMTExpr Bool -> SMTExpr Bool -> SMTExpr Bool) -> SMTExpr Bool
+mkBoolRelation i (BoolTerm f, BoolTerm g) r =
+  (unBool $ head $ lookupArgs [f] False (i,i)) `r` (unBool $ head $ lookupArgs [g] False (i,i))
+
+mkIntRelation :: [TypedExpr] -> (Term, Term) -> (SMTExpr Integer -> SMTExpr Integer -> SMTExpr Bool) -> SMTExpr Bool
+mkIntRelation i (IntTerm f, IntTerm g) r =
+  (unInt $ head $ lookupArgs [f] False (i,i)) `r` (unInt $ head $ lookupArgs [g] False (i,i))
