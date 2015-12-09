@@ -34,12 +34,14 @@ data GenerateHints =
      | AllInductionSteps
 data Invar = Invar
                { depth :: Maybe Natural
-               , printProgress :: Bool
-               , printInvStats :: Bool
-               , generateHints :: GenerateHints }
+               , printProgress  :: Bool
+               , printInvStats  :: Bool
+               , boolInvariants :: Bool
+               , intInvariants  :: Bool
+               , generateHints  :: GenerateHints }
 
 instance StrategyClass Invar where
-  defaultStrategyOpts = Invar Nothing False False NoHints
+  defaultStrategyOpts = Invar Nothing False False True True NoHints
 
   readOption (stripPrefix "depth=" -> Just d) indOpts =
     case d of
@@ -49,6 +51,10 @@ instance StrategyClass Invar where
     indOpts { printProgress = True }
   readOption "invariant-stats" indOpts =
     indOpts { printInvStats = True }
+  readOption "only-bool-inv" indOpts =
+    indOpts { intInvariants = False }
+  readOption "only-int-inv" indOpts =
+    indOpts { boolInvariants = False }
   readOption (stripPrefix "hints" -> Just r) indOpts =
     case (stripPrefix "=" r) of
          Nothing    -> indOpts { generateHints = LastInductionStep }
@@ -56,7 +62,7 @@ instance StrategyClass Invar where
               "all"  -> indOpts { generateHints = AllInductionSteps }
               "last" -> indOpts { generateHints = LastInductionStep }
               _      -> error $ "Invalid hint option: " ++ which
-  readOption o _ = error $ "Invalid k-induction option: " ++ o
+  readOption o _ = error $ "Invalid invariant option: " ++ o
 
   check indOpts env defs =
     let baseK = 0
@@ -107,7 +113,7 @@ check' indOpts getModel defs pastVars pastNs =
   do InductState{..} <- get
      liftIO $ when (printProgress indOpts) (putStrLn $ "Depth " ++ show kVal)
      when (printInvStats indOpts) $ do invStats <- showInvStats
-                                       liftIO $ putStrLn invStats
+                                       liftIO $ putStr invStats
      rBMC <- bmcStep getModel defs pastVars kDefs
      case rBMC of
        Just m -> return $ Failure kVal m
@@ -148,12 +154,14 @@ check' indOpts getModel defs pastVars pastNs =
       InductState{..} <- get
       let boolStat = getPosetStats $ fromMaybe (fromJust binInv) binPoset
           intStat  = getPosetStats $ fromMaybe (fromJust intInv) intPoset
-      return $ (if isJust binPoset then "Possible boolean invariants: " ++ boolStat else "Boolean invariants: " ++ boolStat) ++ "\n" ++ (if isJust intPoset then "Possible integer invariants: " ++ intStat else "Integer invariants: " ++ intStat)
+          boolText = if isJust binPoset then "Possible boolean invariants: " ++ boolStat else "Boolean invariants: " ++ boolStat
+          intText  = if isJust intPoset then "Possible integer invariants: " ++ intStat else "Integer invariants: " ++ intStat
+      return $ (if boolInvariants indOpts then boolText ++ "\n" else "") ++ (if intInvariants indOpts then intText ++ "\n" else "")
 
 heuristicInvariants :: Invar -> ProgDefs -> [[TypedExpr]] -> KInductM i ()
 heuristicInvariants indOpts defs pastNs = do
   InductState{..} <- get
-  if (isJust binPoset)
+  when (boolInvariants indOpts) $ if (isJust binPoset)
   then
     do binPoset' <- filterC (fromJust binPoset) kDefs
        case binPoset' of
@@ -165,7 +173,7 @@ heuristicInvariants indOpts defs pastNs = do
                        modify $ \indSt -> indSt { binPoset = Nothing, binInv = Just binInv' }
   else
     assertPoset id nDefs $ fromJust binInv
-  if (isJust intPoset)
+  when (intInvariants indOpts) $ if (isJust intPoset)
   then
     do intPoset' <- filterC (fromJust intPoset) kDefs
        case intPoset' of
