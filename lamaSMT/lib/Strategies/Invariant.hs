@@ -5,6 +5,7 @@ module Strategies.Invariant where
 import Debug.Trace
 
 import Data.Natural
+import qualified Data.List as List
 import Data.List (stripPrefix)
 import qualified Data.Map as Map
 import Data.Map (Map)
@@ -64,7 +65,7 @@ instance StrategyClass Invar where
           n0  <- freshVars vars
           n1  <- freshVars vars
           assumeTrace defs (n0, n1)
-          let s0 = InductState baseK (vars, k1) (n0, n1) (initGraph $ instSetBool env) Nothing Nothing Nothing
+          let s0 = InductState baseK (vars, k1) (n0, n1) (initGraph $ instSetBool env) Nothing (initChains $ instSetInt env) Nothing
           (r, hints) <- runWriterT
                 $ (flip evalStateT s0)
                 $ check' indOpts (getModel $ varEnv env) defs (Map.singleton baseK vars) [n0]
@@ -167,19 +168,35 @@ heuristicInvariants defs pastNs = do
                        assertPoset id nDefs intInv'
                        modify $ \indSt -> indSt { intPoset = Nothing, intInv = Just intInv' }
   else
-    return ()--assertPoset id nDefs $ fromJust intInv
+    assertPoset id nDefs $ fromJust intInv
 
 filterC :: MonadSMT m => Poset -> ([TypedExpr], [TypedExpr]) -> m (Maybe Poset)
 filterC g@(PosetGraph v e) args =
   liftSMT $ do push
                assertPoset not' args g
                r  <- checkSat
-               trace (show r) $ if r
+               if r
                  then do v0' <- mapM (filterM (\a -> evalBoolTerm args a >>= return . not)) v
                          v1' <- mapM (filterM $ evalBoolTerm args) v
                          pop
                          return $ Just $ buildNextGraph (v0', v1') e
                   else pop >> return Nothing
+filterC i@(PosetChains cs m) args =
+  liftSMT $ do push
+               assertPoset not' args i
+               r  <- checkSat
+               trace (show r) $ if r
+                 then do let nodes = concat cs
+                         part <- mapM (partitionChainNode args) nodes
+                         pop
+                         return $ Just $ buildNextChain $ concat part
+                  else pop >> return Nothing
+
+partitionChainNode :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> ChainNode -> m [ChainNode]
+partitionChainNode args node = do values <- mapM (evalIntTerm args) $ snd node
+                                  let comb = zip values (snd node)
+                                      part = List.groupBy (\(a,_) (b,_) -> a == b) $ List.sort comb
+                                  return $ map (\n -> (fst node ++ [fst (head n)], map snd n)) part
 
 checkInvariantStep :: MonadSMT m => Poset -> ([TypedExpr], [TypedExpr]) -> [[TypedExpr]] -> ProgDefs -> m Poset
 
@@ -195,13 +212,24 @@ checkInvariantStep g args pastVars defs = liftSMT $ do
       push
       assertPoset not' args graph
       r <- checkSat
-      trace (show r) $ if r
+      if r
         then do v0' <- mapM (filterM (\a -> evalBoolTerm args a >>= return . not)) v
                 v1' <- mapM (filterM $ evalBoolTerm args) v
                 pop
                 graph' <- checkInvariantStep' $ buildNextGraph (v0', v1') e
                 return graph'
          else pop >> return graph
+    checkInvariantStep' chains@(PosetChains cs m) = do
+      push
+      assertPoset not' args chains
+      r <- checkSat
+      trace (show r) $ if r
+        then do let nodes = concat cs
+                part <- mapM (partitionChainNode args) nodes
+                pop
+                chains' <- checkInvariantStep' $ buildNextChain $ concat part
+                return chains'
+        else pop >> return chains
 
 -- | If requested, gets a model for the induction step
 retrieveHints :: SMT (Model i)

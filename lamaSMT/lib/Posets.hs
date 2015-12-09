@@ -1,5 +1,7 @@
 module Posets where
 
+import Debug.Trace
+
 import Lang.LAMA.Types
 
 import Language.SMTLib2 as SMT
@@ -22,7 +24,11 @@ data Term = BoolTerm Int | IntTerm Int
 
 type GraphNode = [Term]
 type GraphEdge = (Int, Int)
-type Chain     = [Term]
+type ChainNode = ([Integer], [Term])
+type Chain     = [ChainNode]
+
+--instance Ord ChainNode where
+--  compare (is,_) (js,_) = foldl (\b (i,j) -> b &&  zip is js
 
 data Poset =
   PosetGraph [GraphNode] [GraphEdge]
@@ -31,8 +37,11 @@ data Poset =
 
 type GraphM = State [GraphEdge]
 
-initGraph :: [Term] -> Maybe Poset
+initGraph :: GraphNode -> Maybe Poset
 initGraph instSet = Just $ PosetGraph [instSet] []
+
+initChains :: [Term] -> Maybe Poset
+initChains instSet = Just $ PosetChains [[([], instSet)]] $ Map.singleton (head instSet) []
 
 buildNextGraph :: ([GraphNode], [GraphNode]) -> [GraphEdge] -> Poset
 buildNextGraph (v0, v1) e = let leaves = getLeaves e
@@ -80,7 +89,48 @@ traverseGraph i (l:ls) = do edgesLeft <- get
 
 traverseGraph _ [] = return []
 
+type SortM = State ([Chain], Map Term [Term])
+
+buildNextChain :: [ChainNode] -> Poset
+buildNextChain ns = let s = execState (mapM insertChain ns) ([], Map.empty)
+                    in {-trace (show $ fst s) $ trace (show $ snd s) $-} PosetChains (fst s) (snd s)
+
+insertChain :: ChainNode -> SortM ()
+insertChain node = do chains <- get
+                      let res = unzip $ map (tryChain node) $ fst chains
+                          newChains = if fst chains == fst res then [[node]] else []
+                      put (fst res ++ newChains, Map.unions $ snd res ++ [snd chains, Map.singleton (head $ snd node) []])
+  where
+    tryChain :: ChainNode -> Chain -> (Chain, Map Term [Term])
+    tryChain n@(is,ts) c = let gB = List.findIndices (\a -> and $ map (\(b,c) -> b < c) $ zip (fst a) is) c
+                               i  = if List.length gB == 0 then 0 else (maximum gB) + 1
+                               lA = List.findIndices (\a -> and $ map (\(b,c) -> b > c) $ zip (fst a) is) c
+                               j  = if List.length lA == 0 then 0 else (minimum lA) + 1
+                           in if j == 1
+                             then ([n] ++ c, Map.empty)
+                             else if i == j - 1
+                               then let (cl,cr) = List.splitAt i c
+                                    in (cl ++ [n] ++ cr, Map.empty)
+                               else if i == List.length c
+                                 then (c ++ [n], Map.empty)
+                                 else let m1 = if i > 0 then Map.singleton (head $ snd (c !! (i - 1))) [head ts] else Map.empty
+                                          m2 = if j > 0 then Map.singleton (head ts) [head $ snd (c !! (j - 1))] else Map.empty
+                                      in (c, m1 `Map.union` m2)
+
 assertPoset :: MonadSMT m => (SMTExpr Bool -> SMTExpr Bool) -> ([TypedExpr], [TypedExpr]) -> Poset -> m ()
+assertPoset f i (PosetChains cs m) = do let eq = concat $ map (map (assertEquality . snd)) cs
+                                            rep = map (map (head . snd)) cs
+                                            ccs = map assertChain rep
+                                            cc  = concat $ ccs ++ eq
+                                            c  = foldl (.&&.) (constant True) cc
+                                        liftSMT $ assert $ f c
+  where
+    assertEquality (_:[]) = [constant True]
+    assertEquality (t:ts) = map (\a -> mkIntRelation (fst i) (a, t) (.==.)) ts
+    assertChain [] = [constant True]
+    assertChain (_:[]) = [constant True]
+    assertChain (t:ts) = [mkIntRelation (fst i) (t, head ts) (.<=.)] ++ assertChain (m Map.! t) ++ assertChain ts
+    assertChain x = error $ "ha: " ++ show x
 assertPoset f i (PosetGraph vs es) = do let vcs = map assertPosetGraphVs vs
                                             vc = foldl (.&&.) (constant True) $ vcs ++ assertPosetGraphEs es
                                         liftSMT $ assert (f vc)
