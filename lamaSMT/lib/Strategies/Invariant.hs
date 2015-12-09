@@ -106,9 +106,8 @@ check' :: Invar
 check' indOpts getModel defs pastVars pastNs =
   do InductState{..} <- get
      liftIO $ when (printProgress indOpts) (putStrLn $ "Depth " ++ show kVal)
-     let statGraph = fromMaybe (fromMaybe (PosetGraph [] []) binInv) binPoset
-     let statMessage = if (isJust binPoset) then "Possible " else "Actual "
-     --liftIO $ when (printInvStats indOpts) (putStrLn $ statMessage ++ "Boolean Invariants:\n" ++ (show $ length $ vertices statGraph) ++ " Node(s) with\n" ++ (show $ length $ concat $ vertices statGraph) ++ " Element(s) and\n" ++ (show $ length $ edges statGraph) ++ " Edge(s)\n")
+     when (printInvStats indOpts) $ do invStats <- showInvStats
+                                       liftIO $ putStrLn invStats
      rBMC <- bmcStep getModel defs pastVars kDefs
      case rBMC of
        Just m -> return $ Failure kVal m
@@ -119,7 +118,7 @@ check' indOpts getModel defs pastVars pastNs =
             n2 <- freshVars n1
             assertPrecond (n0, n1) $ invariantDef defs
             modify $ \indSt -> indSt { nDefs = (n1, n2) }
-            heuristicInvariants defs pastNs
+            heuristicInvariants indOpts defs pastNs
             (indSuccess, hints) <- liftSMT . stack $
               do r <- checkStep defs (n1, n2)
                  h <- retrieveHints (getModel pastVars) indOpts kVal r
@@ -145,16 +144,23 @@ check' indOpts getModel defs pastVars pastNs =
          k2 <- freshVars k1
          put $ indState { kVal = k', kDefs = (k1, k2) }
          check' indOpts getModel defs pastVars' pNs
+    showInvStats = do
+      InductState{..} <- get
+      let boolStat = getPosetStats $ fromMaybe (fromJust binInv) binPoset
+          intStat  = getPosetStats $ fromMaybe (fromJust intInv) intPoset
+      return $ (if isJust binPoset then "Possible boolean invariants: " ++ boolStat else "Boolean invariants: " ++ boolStat) ++ "\n" ++ (if isJust intPoset then "Possible integer invariants: " ++ intStat else "Integer invariants: " ++ intStat)
 
-heuristicInvariants :: ProgDefs -> [[TypedExpr]] -> KInductM i ()
-heuristicInvariants defs pastNs = do
+heuristicInvariants :: Invar -> ProgDefs -> [[TypedExpr]] -> KInductM i ()
+heuristicInvariants indOpts defs pastNs = do
   InductState{..} <- get
   if (isJust binPoset)
   then
     do binPoset' <- filterC (fromJust binPoset) kDefs
        case binPoset' of
          Just b  -> modify $ \indSt -> indSt { binPoset = Just b }
-         Nothing -> do binInv' <- checkInvariantStep (fromJust binPoset) nDefs pastNs defs
+         Nothing -> do liftIO $ when (printInvStats indOpts) $ putStrLn "Trying to prove inductive boolean invariants..."
+                       binInv' <- checkInvariantStep (fromJust binPoset) nDefs pastNs defs
+
                        assertPoset id nDefs binInv'
                        modify $ \indSt -> indSt { binPoset = Nothing, binInv = Just binInv' }
   else
@@ -164,7 +170,8 @@ heuristicInvariants defs pastNs = do
     do intPoset' <- filterC (fromJust intPoset) kDefs
        case intPoset' of
          Just i  -> modify $ \indSt -> indSt { intPoset = Just i }
-         Nothing -> do intInv' <- checkInvariantStep (fromJust intPoset) nDefs pastNs defs
+         Nothing -> do liftIO $ when (printInvStats indOpts) $ putStrLn "Trying to prove inductive integer invariants..."
+                       intInv' <- checkInvariantStep (fromJust intPoset) nDefs pastNs defs
                        assertPoset id nDefs intInv'
                        modify $ \indSt -> indSt { intPoset = Nothing, intInv = Just intInv' }
   else
@@ -185,7 +192,7 @@ filterC i@(PosetChains cs m) args =
   liftSMT $ do push
                assertPoset not' args i
                r  <- checkSat
-               trace (show r) $ if r
+               if r
                  then do let nodes = concat cs
                          part <- mapM (partitionChainNode args) nodes
                          pop
@@ -223,7 +230,7 @@ checkInvariantStep g args pastVars defs = liftSMT $ do
       push
       assertPoset not' args chains
       r <- checkSat
-      trace (show r) $ if r
+      if r
         then do let nodes = concat cs
                 part <- mapM (partitionChainNode args) nodes
                 pop

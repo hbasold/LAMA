@@ -40,6 +40,13 @@ initGraph instSet = Just $ PosetGraph [instSet] []
 initChains :: [Term] -> Maybe Poset
 initChains instSet = Just $ PosetChains [[([], instSet)]] $ Map.singleton (head instSet) []
 
+getPosetStats :: Poset -> String
+getPosetStats (PosetGraph ns es) = (show $ sum (map (\i -> (List.length i) - 1) ns)) ++ " equalities and " ++ (show $ List.length es) ++  " inequalities"
+getPosetStats (PosetChains cs m) = (show $ sum $ Set.toList (Set.map (\(_,i) -> (List.length i) - 1) $ getChainNodeSet cs)) ++ " equalities and " ++ (show $ (sum (map (\i -> (List.length i) - 1) cs)) + (List.length $ concat $ Map.elems m)) ++  " inequalities"
+
+getChainNodeSet :: [Chain] -> Set ChainNode
+getChainNodeSet cs = foldl (\s t -> Set.insert t s) Set.empty $ concat cs
+
 buildNextGraph :: ([GraphNode], [GraphNode]) -> [GraphEdge] -> Poset
 buildNextGraph (v0, v1) e = let leaves = getLeaves e
                                 i = length v0
@@ -96,7 +103,7 @@ insertChain :: ChainNode -> SortM ()
 insertChain node = do chains <- get
                       let res = unzip $ map (tryChain node) $ fst chains
                           newChains = if fst chains == fst res then [[node]] else []
-                      put (fst res ++ newChains, Map.unionsWith (++) $ snd res ++ [snd chains, Map.singleton (head $ snd node) []])
+                      put (fst res ++ newChains, Map.unions{-With (++)-}  $ snd res ++ [snd chains, Map.singleton (head $ snd node) []])
   where
     tryChain :: ChainNode -> Chain -> (Chain, Map Term [Term])
     tryChain n@(is,ts) c = let gB = List.findIndices (\a -> and $ map (\(b,c) -> b < c) $ zip (fst a) is) c
