@@ -27,9 +27,6 @@ type GraphEdge = (Int, Int)
 type ChainNode = ([Integer], [Term])
 type Chain     = [ChainNode]
 
---instance Ord ChainNode where
---  compare (is,_) (js,_) = foldl (\b (i,j) -> b &&  zip is js
-
 data Poset =
   PosetGraph [GraphNode] [GraphEdge]
   | PosetChains [Chain] (Map Term [Term])
@@ -99,7 +96,7 @@ insertChain :: ChainNode -> SortM ()
 insertChain node = do chains <- get
                       let res = unzip $ map (tryChain node) $ fst chains
                           newChains = if fst chains == fst res then [[node]] else []
-                      put (fst res ++ newChains, Map.unions $ snd res ++ [snd chains, Map.singleton (head $ snd node) []])
+                      put (fst res ++ newChains, Map.unionsWith (++) $ snd res ++ [snd chains, Map.singleton (head $ snd node) []])
   where
     tryChain :: ChainNode -> Chain -> (Chain, Map Term [Term])
     tryChain n@(is,ts) c = let gB = List.findIndices (\a -> and $ map (\(b,c) -> b < c) $ zip (fst a) is) c
