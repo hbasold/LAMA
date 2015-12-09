@@ -122,11 +122,10 @@ insertChain node = do chains <- get
                                       in (c, m1 `Map.union` m2)
 
 assertPoset :: MonadSMT m => (SMTExpr Bool -> SMTExpr Bool) -> ([TypedExpr], [TypedExpr]) -> Poset -> m ()
-assertPoset f i (PosetChains cs m) = do let eq = concat $ map (map (assertEquality . snd)) cs
+assertPoset f i (PosetChains cs m) = do let eq = concat $ map (assertEquality . snd) $ Set.toList $ getChainNodeSet cs
                                             rep = map (map (head . snd)) cs
-                                            ccs = map assertChain rep
-                                            cc  = concat $ ccs ++ eq
-                                            c  = foldl (.&&.) (constant True) cc
+                                            cc = concat $ map assertChain rep
+                                            c  = foldl (.&&.) (constant True) $ cc ++ eq
                                         liftSMT $ assert $ f c
   where
     assertEquality (_:[]) = [constant True]
