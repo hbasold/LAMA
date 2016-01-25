@@ -9,7 +9,6 @@ import Development.Placeholders
 
 import Data.Graph.Inductive.Graph as Gr
 import Data.Graph.Inductive.PatriciaTree
-import Data.Graph.Inductive.GenShow ()
 import qualified Data.Map as Map
 import Data.Map (Map, (!))
 import qualified Data.Set as Set

@@ -36,8 +36,6 @@ import Lang.LAMA.Identifier
 import Lang.LAMA.Types
 import Lang.LAMA.Typing.TypedStructure
 
-import Data.Graph.Inductive.GenShow ()
-
 -- fromSet :: Ord k => (k -> a) -> Set k -> Map k a
 -- fromSet f = Map.fromList . map (id &&& f) . Set.toList
 
