@@ -7,8 +7,6 @@ import qualified Data.ByteString.Lazy.Char8 as BL
 
 import Text.PrettyPrint (Doc, render, vcat, text, ($$))
 import Data.List.Split (splitOn)
-import Data.List (intercalate)
-import Data.Natural
 
 import System.IO (stdin)
 import System.Environment (getArgs)
@@ -170,7 +168,7 @@ run opts@Options{..} file inp = do
   model <- runCheck opts
     ( (liftSMT $ mapM_ setOption optSMTOpts) >>
       lamaSMT optNatImpl optEnumImpl p >>=
-      (uncurry $ checkWithModel optNatImpl optStrategy) )
+      (uncurry $ checkWithModel optStrategy) )
   liftIO $ checkModel opts p model
 
 checkErrors :: Either Error a -> MaybeT IO a

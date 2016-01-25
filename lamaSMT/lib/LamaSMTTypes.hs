@@ -136,7 +136,7 @@ instance Args (TypedExpr) where
   fromArgs (RealExpr xs) = fromArgs xs
   fromArgs (EnumExpr xs) = fromArgs xs
   fromArgs (ProdExpr xs) = concat $ fmap fromArgs $ Arr.elems xs
-  getSorts (_::TypedExpr) (BoolAnnotation ann) = error "lamasmt: no getSorts for TypedExpr"--getSorts (undefined::x) $ extractArgAnnotation ann
+  getSorts (_::TypedExpr) (BoolAnnotation _) = error "lamasmt: no getSorts for TypedExpr"
   getArgAnnotation _ _ = error "lamasmt: getArgAnnotation undefined for TypedExpr"
   showsArgs n p (BoolExpr x) = let (showx,nn) = showsArgs n 11 x
                                in (showParen (p>10) $
@@ -160,28 +160,6 @@ instance Args (TypedExpr) where
                                                   showsPrec 0 key .
                                                   showChar ',' .
                                                   str . showChar ')') lst',ni)
-
-type StreamPos = SMTExpr Natural
-type Stream t = SMTFunction StreamPos t
-data TypedStream i
-  = BoolStream (Stream Bool)
-  | IntStream (Stream Integer)
-  | RealStream (Stream Rational)
-  | EnumStream EnumAnn (Stream SMTEnum)
-  | ProdStream (Array Int (TypedStream i))
-  deriving Show
-
-mkProdStream :: [TypedStream i] -> TypedStream i
-mkProdStream [] = error "Cannot create empty product stream"
-mkProdStream [s] = s
-mkProdStream sts = ProdStream . uncurry listArray $ ((0,) . pred . length &&& id) sts
-
-appStream :: TypedStream i -> StreamPos -> TypedExpr
-appStream (BoolStream s) n = BoolExpr $ s `app` n
-appStream (IntStream s) n = IntExpr $ s `app` n
-appStream (RealStream s) n = RealExpr $ s `app` n
-appStream (EnumStream _ s) n = EnumExpr $ s `app` n
-appStream (ProdStream s) n = ProdExpr $ fmap (`appStream` n) s
 
 liftAssert :: TypedExpr -> SMT ()
 liftAssert (BoolExpr e) = assert e
