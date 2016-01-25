@@ -3,15 +3,12 @@
 module Strategies.BMC (BMC, assumeTrace, checkInvariant, bmcStep, assertPrecond, freshVars) where
 
 import Data.Natural
-import NatInstance
 import Data.List (stripPrefix)
 import qualified Data.Map as Map
 import Data.Map (Map)
 import qualified Data.Array as Array
-import Data.Array (Array)
 
 import Control.Monad.IO.Class
-import Control.Monad (when, liftM)
 import Control.Monad.State
 
 import Language.SMTLib2

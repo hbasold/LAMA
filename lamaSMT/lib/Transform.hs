@@ -22,17 +22,15 @@ import Lang.LAMA.Typing.TypedStructure
 import Lang.LAMA.Types
 import Language.SMTLib2 as SMT
 import Language.SMTLib2.Internals (declareType, SMTExpr(Var))
-import Data.Unit
 import Data.String (IsString(..))
 import Data.Array as Arr
 
 import Data.Natural
 import NatInstance
 import qualified Data.Set as Set
-import Data.Set (Set, union, unions)
+import Data.Set (Set)
 import qualified Data.Map as Map
 import Data.Map (Map)
-import qualified Data.List as List
 import Data.List (zip4)
 import Prelude hiding (mapM)
 import Data.Traversable
@@ -52,18 +50,6 @@ import LamaSMTTypes
 import Definition
 import TransformEnv
 import Internal.Monads
-
--- | Gets an "undefined" value for a given type of expression.
--- The expression itself is not further analysed.
--- FIXME: Make behaviour configurable, i.e. bottom can be some
--- default value or a left open stream
--- (atm it does the former).
-getBottom :: TypedExpr -> TypedExpr
-getBottom (BoolExpr _)     = BoolExpr $ constant False
-getBottom (IntExpr _)      = IntExpr  $ constant 0xdeadbeef
-getBottom (RealExpr _)     = RealExpr . constant $ fromInteger 0xdeadbeef
-getBottom (EnumExpr e) = EnumExpr e --evtl. TODO
-getBottom (ProdExpr strs)  = ProdExpr $ fmap getBottom strs
 
 -- | Transforms a LAMA program into a set of formulas which is
 -- directly declared and a set of defining functions. Those functions
@@ -143,7 +129,8 @@ declareVarList = mapM declareVar
 declareVar :: Ident i => Variable i -> DeclM i ((i, TypedExpr))
 declareVar (Variable x t) =
   do v    <- typedVar (identString x) t
-     addVar v
+     putVar v
+     putTerm v
      return (x, v)
   where
     typedVar :: Ident i =>
@@ -275,7 +262,7 @@ trOutput m = do
                  outList <- mapM (trOutput' s) m
                  return $ mkProdExpr outList
                where
-                 trOutput' s (i, te) = case lookup i (fst s) of
+                 trOutput' s (i, _) = case lookup i (fst s) of
                                        Nothing -> throwError $ "No argument (output) binding for " ++ identPretty i
                                        Just n -> return n
 
@@ -334,7 +321,9 @@ declareDef x as ns succ ef =
      ann         <- getTypedAnnotation $ [xN] ++ ns
      d           <- defFunc defType ann
                     $ \a -> liftRel (.==.) (head a) $ ef env $ zip (as ++ [error "Last argument must not be evaluated!"]) (tail a)
-     return $ ensureDefinition ([xN] ++ ns) succ d
+     let argsN   = ([xN] ++ ns)
+     --putTerm argsN d
+     return $ ensureDefinition argsN succ d
 
 varDefType :: TypedExpr -> Type i
 varDefType (ProdExpr ts) = ProdType . fmap varDefType $ Arr.elems ts
@@ -439,9 +428,9 @@ mkStateVars :: Ident i =>
 mkStateVars actName selName stateEnum =
   do stEnumAnn <- lookupEnumAnn stateEnum
      act <- liftSMT $ fmap EnumExpr $ varNamedAnn actName stEnumAnn
-     addVar act
+     putVar act
      sel <- liftSMT $ fmap EnumExpr $ varNamedAnn selName stEnumAnn
-     addVar sel
+     putVar sel
      return (act, sel)
 
 -- | Extracts the the expressions for each variable seperated into
@@ -629,7 +618,8 @@ mkLocationActivationCond activeCond e l =
      lEnum <- lift $ trEnumConsAnn lCons <$> lookupEnumConsAnn lCons
      let cond = \_env t -> BoolExpr $ (unEnum $ snd $ last t) .==. lEnum
      activeVar <- liftSMT $ fmap BoolExpr $ varNamed condName
-     lift $ addVar activeVar
+     lift $ putVar activeVar
+     lift $ putTerm activeVar
      argN <- lift $ getN e
      def <- lift $ declareConditionalAssign activeCond
             (const $ const $ BoolExpr $ constant False) activeVar [] [argN] False cond
@@ -747,6 +737,7 @@ declarePrecond activeCond e =
                  \a -> (flip (flip runTransM env) (zip args a))
 		       (trExpr e >>= \e' ->
                          return $ liftBool2 (.=>.) c e')
+     --putTerm argsN d
      return $ ensureDefinition argsN False d
 
 declareInvariant :: Ident i =>

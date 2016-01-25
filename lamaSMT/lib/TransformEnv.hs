@@ -12,12 +12,10 @@ import Language.SMTLib2 as SMT
 
 import Data.Array as Arr
 import qualified Data.List as List
-import Data.List (elemIndex)
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Prelude hiding (mapM)
 import Data.Traversable
-import Data.List (replicate)
 
 import Control.Monad.State (StateT(..), MonadState(..), modify, gets)
 import Control.Monad.Error (ErrorT(..), MonadError(..))
@@ -25,6 +23,8 @@ import Control.Monad.Error (ErrorT(..), MonadError(..))
 import SMTEnum
 import NatInstance
 import LamaSMTTypes
+import Definition
+import Posets
 import Internal.Monads
 
 data NodeEnv i = NodeEnv
@@ -47,15 +47,29 @@ data Env i = Env
            , varEnv :: VarEnv i
            , currAutomatonIndex :: Integer
            , varList :: [TypedExpr]
+           , instSetBool :: [Term]
+           , instSetInt :: [Term]
            , natImpl :: NatImplementation
            , enumImpl :: EnumImplementation
            }
+
+-- | Gets an "undefined" value for a given type of expression.
+-- The expression itself is not further analysed.
+-- FIXME: Make behaviour configurable, i.e. bottom can be some
+-- default value or a left open stream
+-- (atm it does the former).
+getBottom :: TypedExpr -> TypedExpr
+getBottom (BoolExpr _)     = BoolExpr $ constant False
+getBottom (IntExpr _)      = IntExpr  $ constant 0xdeadbeef
+getBottom (RealExpr _)     = RealExpr . constant $ fromInteger 0xdeadbeef
+getBottom (EnumExpr e) = EnumExpr e --evtl. TODO
+getBottom (ProdExpr strs)  = ProdExpr $ fmap getBottom strs
 
 emptyVarEnv :: VarEnv i
 emptyVarEnv = VarEnv Map.empty Map.empty
 
 emptyEnv :: NatImplementation -> EnumImplementation -> Env i
-emptyEnv = Env Map.empty Map.empty Map.empty emptyVarEnv 0 []
+emptyEnv = Env Map.empty Map.empty Map.empty emptyVarEnv 0 [] [] []
 
 type DeclM i = StateT (Env i) (ErrorT String SMT)
 
@@ -64,8 +78,8 @@ putConstants cs =
   let cs' = fmap trConstant cs
   in modify $ \env -> env { constants = cs' }
 
-addVar :: Ident i => TypedExpr -> DeclM i ()
-addVar var =
+putVar :: Ident i => TypedExpr -> DeclM i ()
+putVar var =
   modify $ \env -> env { varList = (varList env) ++ [var] }
 
 getN :: TypedExpr -> DeclM i Int
@@ -73,6 +87,26 @@ getN x = do vars <- gets varList
             return $ case List.elemIndex x vars of
                           Nothing -> error $ "Could not be found in list of variables: " ++ show x
                           Just n -> n
+
+putTerm :: Ident i => TypedExpr -> DeclM i ()
+putTerm e@(BoolExpr s) = do
+  n <- getN e
+  modify $ \env -> env { instSetBool = instSetBool env ++ [BoolTerm n] }
+putTerm e@(IntExpr s) = do
+  n <- getN e
+  modify $ \env -> env { instSetInt = instSetInt env ++ [IntTerm n] }
+putTerm _ = return ()
+
+getTypedValue :: MonadSMT m => TypedExpr -> m (TypedExpr)
+getTypedValue (BoolExpr s) = liftSMT $ getValue s >>= return . BoolExpr . constant
+getTypedValue (IntExpr s) = liftSMT $ getValue s >>= return . IntExpr . constant
+getTypedValue e = liftSMT $ return $ getBottom e
+
+evalBoolTerm :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> Term -> m Bool
+evalBoolTerm i (BoolTerm f) = liftSMT $ getValue $ unBool $ head $ lookupArgs [f] False i
+
+evalIntTerm :: MonadSMT m => ([TypedExpr], [TypedExpr]) -> Term -> m Integer
+evalIntTerm i (IntTerm f) = liftSMT $ getValue $ unInt $ head $ lookupArgs [f] False i
 
 putEnumAnn :: Ident i => Map i (SMTAnnotation SMTEnum) -> DeclM i ()
 putEnumAnn eAnns =

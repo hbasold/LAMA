@@ -10,7 +10,6 @@ import Data.Array as Arr
 import Data.Monoid
 import Data.Maybe (fromJust)
 import qualified Data.List as List
-import Data.List (elemIndex)
 
 import Control.Monad.Reader (MonadReader(..), ReaderT(..))
 import Control.Applicative (Applicative(..), (<$>))
@@ -95,25 +94,25 @@ getVarsModel = mapM getVarModel
 
 --TODO
 getVarModel :: TypedExpr -> ModelM ValueStream
-getVarModel (BoolExpr s) = do vars   <- ask
-                              let i = fromJust $ List.elemIndex (BoolExpr s) (vars Map.! 0)
-                              stream <- liftSMT $ mapM (\l -> getValue $ unBool $ l !! i) vars
+getVarModel (BoolExpr s) = do varMap   <- ask
+                              let i = fromJust $ List.elemIndex (BoolExpr s) (varMap Map.! 0)
+                              stream <- liftSMT $ mapM (\l -> getValue $ unBool $ l !! i) varMap
                               return $ BoolVStream stream
-getVarModel (IntExpr s)  = do vars   <- ask
-                              let i = fromJust $ List.elemIndex (IntExpr s) (vars Map.! 0)
-                              stream <- liftSMT $ mapM (\l -> getValue $ unInt $ l !! i) vars
+getVarModel (IntExpr s)  = do varMap   <- ask
+                              let i = fromJust $ List.elemIndex (IntExpr s) (varMap Map.! 0)
+                              stream <- liftSMT $ mapM (\l -> getValue $ unInt $ l !! i) varMap
                               return $ IntVStream stream
-getVarModel (RealExpr s) = do vars   <- ask
-                              let i = fromJust $ List.elemIndex (RealExpr s) (vars Map.! 0)
-                              stream <- liftSMT $ mapM (\l -> getValue $ unReal $ l !! i) vars
+getVarModel (RealExpr s) = do varMap   <- ask
+                              let i = fromJust $ List.elemIndex (RealExpr s) (varMap Map.! 0)
+                              stream <- liftSMT $ mapM (\l -> getValue $ unReal $ l !! i) varMap
                               return $ RealVStream stream
-getVarModel (EnumExpr s) = do vars   <- ask
-                              let i = fromJust $ List.elemIndex (EnumExpr s) (vars Map.! 0)
-                              stream <- liftSMT $ mapM (\l -> getValue $ unEnum $ l !! i) vars
+getVarModel (EnumExpr s) = do varMap   <- ask
+                              let i = fromJust $ List.elemIndex (EnumExpr s) (varMap Map.! 0)
+                              stream <- liftSMT $ mapM (\l -> getValue $ unEnum $ l !! i) varMap
                               return $ EnumVStream stream
-getVarModel (ProdExpr s) = do vars <- ask
-                              let i = fromJust $ List.elemIndex (ProdExpr s) (vars Map.! 0)
-                                  newArg = Map.map (\l -> Arr.elems $ unProd $ l !! i) vars
+getVarModel (ProdExpr s) = do varMap <- ask
+                              let i = fromJust $ List.elemIndex (ProdExpr s) (varMap Map.! 0)
+                                  newArg = Map.map (\l -> Arr.elems $ unProd $ l !! i) varMap
                               stream <- liftSMT $ mapM (\a -> runReaderT (getVarModel a) newArg) s
                               return $ ProdVStream stream
 

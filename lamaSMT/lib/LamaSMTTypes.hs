@@ -136,7 +136,7 @@ instance Args (TypedExpr) where
   fromArgs (RealExpr xs) = fromArgs xs
   fromArgs (EnumExpr xs) = fromArgs xs
   fromArgs (ProdExpr xs) = concat $ fmap fromArgs $ Arr.elems xs
-  getSorts (_::TypedExpr) (BoolAnnotation ann) = error "lamasmt: no getSorts for TypedExpr"--getSorts (undefined::x) $ extractArgAnnotation ann
+  getSorts (_::TypedExpr) (BoolAnnotation _) = error "lamasmt: no getSorts for TypedExpr"--getSorts (undefined::x) $ extractArgAnnotation ann
   getArgAnnotation _ _ = error "lamasmt: getArgAnnotation undefined for TypedExpr"
   showsArgs n p (BoolExpr x) = let (showx,nn) = showsArgs n 11 x
                                in (showParen (p>10) $

@@ -1,8 +1,8 @@
 module Definition where
 
-import Data.Array as Arr
-
 import Language.SMTLib2 as SMT
+
+import Data.Array as Arr
 
 import LamaSMTTypes
 import Internal.Monads
@@ -15,7 +15,7 @@ data Definition =
 ensureDefinition :: [Int] -> Bool -> TypedFunc -> Definition
 ensureDefinition argN succ (BoolFunc s) = SingleDef argN succ s
 ensureDefinition argN succ (ProdFunc ps) = ProdDef $ fmap (ensureDefinition argN succ) ps
-ensureDefinition argN succ _
+ensureDefinition _ _ _
   = error $ "ensureDefinition: not a boolean function" -- : " ++ show s
 
 assertDefinition :: MonadSMT m =>

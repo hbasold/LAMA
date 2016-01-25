@@ -3,7 +3,6 @@
 module Strategies.KInduction where
 
 import Data.Natural
-import NatInstance
 import Data.List (stripPrefix)
 import qualified Data.Map as Map
 import Data.Map (Map)
