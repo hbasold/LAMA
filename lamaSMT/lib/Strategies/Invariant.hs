@@ -2,8 +2,6 @@
 {-# LANGUAGE ViewPatterns #-}
 module Strategies.Invariant where
 
-import Debug.Trace
-
 import Data.Natural
 import qualified Data.List as List
 import Data.List (stripPrefix)
@@ -131,17 +129,16 @@ check' indOpts getModel defs pastVars pastNs =
                  return (r, h)
             tell hints
             let k' = succ kVal
-            --if indSuccess
-               --then return Success
-               --else case depth indOpts of
-            case depth indOpts of
-              Nothing -> cont k' pastVars pastNs'
-              Just l  ->
-                if k' > l
-                  then return $ Unknown ("Cancelled induction. Found no"
-                                           ++" proof within given depth")
-                                 []
-                  else cont k' pastVars pastNs'
+            if indSuccess
+               then return Success
+               else case depth indOpts of
+                      Nothing -> cont k' pastVars pastNs'
+                      Just l  ->
+                        if k' > l
+                          then return $ Unknown ("Cancelled induction. Found no"
+                                                   ++" proof within given depth")
+                                         []
+                          else cont k' pastVars pastNs'
   where
     cont k' pastVars pNs =
       do indState@InductState{..} <- get

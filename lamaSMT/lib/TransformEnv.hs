@@ -162,36 +162,6 @@ nextAutomatonIndex = state $ \env ->
   let i = currAutomatonIndex env
   in (i, env { currAutomatonIndex = i+1 })
 
--- | Defines a stream analogous to defFun.
-defStream :: Ident i =>
-             Type i -> (StreamPos -> TypedExpr) -> DeclM i (TypedStream i)
-defStream ty sf = gets natImpl >>= \natAnn -> defStream' natAnn ty sf
-  where
-    defStream' :: Ident i =>
-                  NatImplementation -> Type i -> (StreamPos -> TypedExpr)
-                  -> DeclM i (TypedStream i)
-    defStream' natAnn (GroundType BoolT) f
-      = liftSMT . fmap BoolStream $ defFunAnn natAnn (unBool' . f)
-    defStream' natAnn (GroundType IntT) f
-      = liftSMT . fmap IntStream $ defFunAnn natAnn (unInt . f)
-    defStream' natAnn (GroundType RealT) f
-      = liftSMT . fmap RealStream $ defFunAnn natAnn (unReal . f)
-    defStream' natAnn (GroundType _) f = $notImplemented
-    defStream' natAnn (EnumType alias) f
-      = do ann <- lookupEnumAnn alias
-           liftSMT $ fmap (EnumStream ann) $ defFunAnn natAnn (unEnum . f)
-    -- We have to pull the product out of a stream.
-    -- If we are given a function f : StreamPos -> (Ix -> TE) = TypedExpr as above,
-    -- we would like to have as result something like:
-    -- g : Ix -> (StreamPos -> TE)
-    -- g(i)(t) = defStream(λt'.f(t')(i))(t)
-    -- Here i is the index into the product and t,t' are time variables.
-    defStream' natAnn (ProdType ts) f =
-      do let u = length ts - 1
-         x <- mapM defParts $ zip ts [0..u]
-         return . ProdStream $ listArray (0,u) x
-      where defParts (ty2, i) = defStream' natAnn ty2 ((! i) . unProd' . f)
-
 -- | Defines a function instead of streams
 defFunc :: Ident i =>
             Type i -> [TypedAnnotation] -> ([TypedExpr] -> TypedExpr) -> DeclM i (TypedFunc)
@@ -205,19 +175,12 @@ defFunc (GroundType _) ann f = $notImplemented
 defFunc (EnumType alias) ann f = do eann <- lookupEnumAnn alias
                                     liftSMT $ fmap (EnumFunc eann) $
                                       defFunAnn ann (unEnum . f)
--- We have to pull the product out of a stream.
--- If we are given a function f : FuncPos -> (Ix -> TE) = TypedExpr as above,
--- we would like to have as result something like:
--- g : Ix -> (FuncPos -> TE)
--- g(i)(t) = defFunc(λt'.f(t')(i))(t)
--- Here i is the index into the product and t,t' are time variables.
+-- We have to pull the product out of a function
 defFunc (ProdType ts) ann f =
   do let u = length ts - 1
      x <- mapM defParts $ zip ts [0..u]
      return . ProdFunc $ listArray (0,u) x
   where defParts (ty2, i) = defFunc ty2 ann ((! i) . unProd' . f)
-
--- stream :: Ident i => Type i -> DeclM i (Stream t)
 
 trConstant :: Ident i => Constant i -> TypedExpr
 trConstant (untyped -> BoolConst c) = BoolExpr $ constant c

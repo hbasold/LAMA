@@ -92,7 +92,6 @@ getNodeModel (NodeEnv i o e) =
 getVarsModel :: Map i (TypedExpr) -> ModelM (Map i ValueStream)
 getVarsModel = mapM getVarModel
 
---TODO
 getVarModel :: TypedExpr -> ModelM ValueStream
 getVarModel (BoolExpr s) = do varMap   <- ask
                               let i = fromJust $ List.elemIndex (BoolExpr s) (varMap Map.! 0)
