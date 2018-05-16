@@ -8,12 +8,11 @@ Description:
 Library 
   default-language: Haskell2010
   Build-Depends: base, containers, mtl, bytestring, natural-numbers,
-    transformers, pretty, array, fgl, text, filepath, placeholders,
+    transformers, pretty, array, fgl >= 5.5.0.0, text, filepath, placeholders,
     prelude-extras
   Hs-Source-Dirs: . lib
   GHC-Options: -Wall -O2
   exposed-modules:
-    Data.Graph.Inductive.GenShow
     Data.Bits.Size
     Lang.LAMA.Identifier
     Lang.LAMA.Types
