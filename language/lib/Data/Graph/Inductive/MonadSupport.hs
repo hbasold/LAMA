@@ -4,13 +4,15 @@ module Data.Graph.Inductive.MonadSupport where
 
 import Data.Graph.Inductive.Graph
 
-ufoldM :: forall m. forall gr a b c. (Graph gr, Monad m) => (Context a b -> c -> m c) -> c -> gr a b -> m c
+ufoldM :: forall m gr a b c. (Graph gr, Monad m) =>
+          (Context a b -> c -> m c) -> c -> gr a b -> m c
 ufoldM f z0 = ufold f' (return z0)
   where
     f' :: Context a b -> m c -> m c
     f' c z = z >>= f c
 
-gmapM :: forall m. forall gr a b c d. (DynGraph gr, Monad m) => (Context a b -> m (Context c d)) -> gr a b -> m (gr c d)
+gmapM :: forall m gr a b c d. (DynGraph gr, Monad m) =>
+         (Context a b -> m (Context c d)) -> gr a b -> m (gr c d)
 gmapM f = ufold f' (return empty)
   where
     f' :: Context a b -> m (gr c d) -> m (gr c d)
